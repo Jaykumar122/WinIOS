@@ -32,6 +32,8 @@ public:
     // Clears every general-purpose register, stack pointer, and program
     // counter to zero.
     void reset();
+    // Resets CPU state and starts execution at a validated guest entry point.
+    void initialize_entry(std::uint64_t entry_address, const Memory& memory);
 
     // Checked accessors; throw std::out_of_range for index >= kRegisterCount.
     std::uint64_t read_register(std::size_t index) const;

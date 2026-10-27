@@ -208,6 +208,16 @@ void CPU::reset() {
     program_counter_ = 0;
 }
 
+void CPU::initialize_entry(std::uint64_t entry_address, const Memory& memory) {
+    if (entry_address % 4u != 0
+        || entry_address > memory.size()
+        || memory.size() - static_cast<std::size_t>(entry_address) < 4u) {
+        throw std::invalid_argument("Invalid guest entry address");
+    }
+    reset();
+    program_counter_ = entry_address;
+}
+
 std::uint64_t CPU::read_register(std::size_t index) const {
     if (index >= kRegisterCount) {
         throw std::out_of_range(register_index_message(index));

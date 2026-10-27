@@ -73,6 +73,32 @@ PC=0x0 WORD=0xd2800540 MOVZ X0, #42 PC_AFTER=0x4
 The debugger is intended for this small interpreter only; it is not a
 breakpoint engine, GUI, remote debugger, or arbitrary-application debugger.
 
+### Raw binary loading and execution
+
+`BinaryLoader` accepts a non-empty raw binary containing little-endian,
+32-bit AArch64 instruction words. It validates the complete file before
+copying it into guest memory, checks aligned addresses and whole-instruction
+size, and rejects destination ranges that do not fit. Failed loads do not
+partially modify guest memory.
+
+The loader does not parse ELF, Mach-O, IPA, IPSW, or any other executable or
+firmware format. The entry address is a guest-memory address and is also the
+load address in the command-line mode. CPU initialization resets registers,
+SP, and PC, then sets PC to that entry address.
+
+Run the committed raw fixture with a required instruction limit:
+
+```powershell
+.\build\Debug\win_ios.exe --run-binary .\examples\test_program.bin `
+  --memory-size 65536 --entry 0 --max-instructions 5
+```
+
+Add `--trace` to print the existing instruction trace. The fixture executes
+five supported instructions, ending at a branch-to-self limit, and produces
+`X0 = 47`, `X1 = 256`, and guest memory at `0x100` equal to `47`.
+Reaching the instruction limit is not natural guest termination; this
+interpreter has no general halt instruction.
+
 ### Implemented AArch64 instructions
 
 - 64-bit `MOVZ` (wide immediate), including all valid halfword shifts.
@@ -126,6 +152,9 @@ WinIOS/
 │   ├── loader/
 │   ├── debugger/
 │   └── app/
+├── examples/
+│   ├── test_program.S
+│   └── test_program.bin
 ├── tests/
 │   └── unit/
 │       ├── test_harness.h
@@ -179,6 +208,8 @@ Individual suites:
 ```powershell
 .\build\Debug\memory_tests.exe
 .\build\Debug\cpu_tests.exe
+.\build\Debug\debugger_tests.exe
+.\build\Debug\loader_tests.exe
 ```
 
 To configure without tests, pass `-DBUILD_TESTING=OFF`.
