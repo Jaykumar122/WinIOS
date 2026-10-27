@@ -129,6 +129,17 @@ void movz_supports_halfword_shift() {
     CHECK(cpu.read_register(2) == 0x12340000ull);
 }
 
+void movz_destination_31_is_zero_register() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0xD2800540u); // MOVZ XZR, #42 (destination discarded)
+
+    cpu.step(memory);
+
+    CHECK(cpu.get_program_counter() == 4);
+    CHECK(cpu.get_stack_pointer() == 0);
+}
+
 void add_immediate_writes_result() {
     CPU cpu;
     Memory memory(4);
@@ -138,6 +149,18 @@ void add_immediate_writes_result() {
     cpu.step(memory);
 
     CHECK(cpu.read_register(0) == 20);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void add_immediate_supports_shifted_immediate() {
+    CPU cpu;
+    Memory memory(4);
+    cpu.write_register(1, 7);
+    memory.write_u32(0, 0x91401420u); // ADD X0, X1, #5, LSL #12
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(0) == 7u + (5u << 12u));
     CHECK(cpu.get_program_counter() == 4);
 }
 
@@ -184,6 +207,14 @@ void unsupported_instruction_fails_explicitly() {
     CHECK_RUNTIME_ERROR(cpu.step(memory));
 }
 
+void unsupported_movz_width_fails_explicitly() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0x52800540u); // MOVZ W0, #42 (32-bit form unsupported)
+
+    CHECK_RUNTIME_ERROR(cpu.step(memory));
+}
+
 void instruction_fetch_beyond_memory_fails() {
     CPU cpu;
     Memory memory(4);
@@ -198,6 +229,15 @@ void execution_limit_stops_self_branch() {
     memory.write_u32(0, 0x14000000u); // B . (self branch)
 
     CHECK(cpu.run(memory, 5) == 5);
+    CHECK(cpu.get_program_counter() == 0);
+}
+
+void zero_instruction_limit_executes_nothing() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0x14000000u); // B . (would branch to itself)
+
+    CHECK(cpu.run(memory, 0) == 0);
     CHECK(cpu.get_program_counter() == 0);
 }
 
@@ -216,13 +256,17 @@ int main() {
     demo_preserves_expected_result();
     movz_writes_immediate();
     movz_supports_halfword_shift();
+    movz_destination_31_is_zero_register();
     add_immediate_writes_result();
+    add_immediate_supports_shifted_immediate();
     add_immediate_uses_stack_pointer_for_register_31();
     branch_changes_pc_relative_to_instruction();
     branch_supports_negative_offset();
     unsupported_instruction_fails_explicitly();
+    unsupported_movz_width_fails_explicitly();
     instruction_fetch_beyond_memory_fails();
     execution_limit_stops_self_branch();
+    zero_instruction_limit_executes_nothing();
 
     return test::summarize("cpu_tests");
 }

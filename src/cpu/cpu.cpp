@@ -76,7 +76,9 @@ void CPU::step(Memory& memory) {
         const std::uint32_t destination = instruction & 0x1Fu;
         const std::uint32_t halfword = (instruction >> 21u) & 0x3u;
         const std::uint64_t immediate = (instruction >> 5u) & 0xFFFFu;
-        write_register(destination, immediate << (halfword * 16u));
+        if (destination != CPU::kRegisterCount) {
+            write_register(destination, immediate << (halfword * 16u));
+        }
         program_counter_ = instruction_address + 4u;
         return;
     }

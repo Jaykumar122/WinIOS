@@ -32,6 +32,8 @@ See `docs/progress.md` for the recorded build, test, and run output.
 - 31 general-purpose registers (`X0`..`X30`) and a 64-bit program counter.
 - A separate 64-bit stack pointer is used where an instruction encoding names
   register 31 as `SP`.
+- `MOVZ` treats destination register 31 as `XZR` and discards the result;
+  `ADD (immediate)` treats register 31 as `SP` for both operands.
 - `reset()` clears every register, the stack pointer, and the program counter.
 - `read_register(index)` / `write_register(index, value)` are checked; indices
   outside `0..30` throw `std::out_of_range`.

@@ -291,7 +291,9 @@ register results and program-counter updates.
   and reset PC is zero, ordinary instructions advance PC by four, and
   branches set PC relative to the branch instruction address.
 - Implemented and tested only these instruction forms:
-  - 64-bit `MOVZ` with immediate and halfword shift.
+  - 64-bit `MOVZ` with immediate and halfword shift. Destination register 31
+    is the zero register (`XZR`) and is discarded; unsupported 32-bit `MOVZ`
+    is rejected.
   - 64-bit, non-flag-setting `ADD` immediate with optional shift and the
     instruction-specific register-31 `SP` behavior.
   - `B` with signed 26-bit, word-scaled forward and backward offsets.
@@ -301,8 +303,8 @@ register results and program-counter updates.
   instruction is treated as a no-op.
 - Extended CPU tests with canonical instruction words documented at each test
   site. The suite covers register results, SP behavior, PC updates, both
-  branch directions, unsupported instructions, fetch bounds, and execution
-  limits.
+  branch directions, shifted immediates, XZR behavior, unsupported
+  encodings, fetch bounds, zero limits, and execution limits.
 
 ### Validation
 
@@ -321,8 +323,8 @@ Tests:
 ctest --test-dir WinIOS\build -C Debug --output-on-failure
 ```
 
-Result: `2/2` CTest tests passed. The direct CPU suite reported
-`cpu_tests: all 95 checks passed`; the existing memory suite remained green.
+Result: `2/2` CTest tests passed. The updated CPU suite and the existing memory
+suite both remained green.
 
 Application:
 

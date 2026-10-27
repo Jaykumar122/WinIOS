@@ -15,7 +15,8 @@ public:
 
     CPU();
 
-    // Clears every general-purpose register and the program counter to zero.
+    // Clears every general-purpose register, stack pointer, and program
+    // counter to zero.
     void reset();
 
     // Checked accessors; throw std::out_of_range for index >= kRegisterCount.
