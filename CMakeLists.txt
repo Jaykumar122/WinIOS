@@ -24,6 +24,7 @@ add_library(winios_core STATIC
     src/debugger/debugger.cpp
     src/loader/binary_loader.cpp
     src/memory/memory.cpp
+    src/runtime/guest_runtime.cpp
 )
 
 target_include_directories(winios_core PUBLIC
@@ -70,6 +71,13 @@ if(BUILD_TESTING)
     winios_set_warnings(loader_tests)
     add_test(NAME loader_tests COMMAND loader_tests)
 
-    set_tests_properties(memory_tests cpu_tests debugger_tests loader_tests
+    add_executable(runtime_tests
+        tests/unit/runtime_tests.cpp
+    )
+    target_link_libraries(runtime_tests PRIVATE winios_core)
+    winios_set_warnings(runtime_tests)
+    add_test(NAME runtime_tests COMMAND runtime_tests)
+
+    set_tests_properties(memory_tests cpu_tests debugger_tests loader_tests runtime_tests
                          PROPERTIES TIMEOUT 30)
 endif()

@@ -94,10 +94,21 @@ Run the committed raw fixture with a required instruction limit:
 ```
 
 Add `--trace` to print the existing instruction trace. The fixture executes
-five supported instructions, ending at a branch-to-self limit, and produces
-`X0 = 47`, `X1 = 256`, and guest memory at `0x100` equal to `47`.
-Reaching the instruction limit is not natural guest termination; this
-interpreter has no general halt instruction.
+five supported instructions, producing `X0 = 47`, `X1 = 256`, and guest
+memory at `0x100` equal to `47`.
+To enable the host-side completion policy for this fixture, add
+`--sentinel 24`; the final `B +8` reaches that address and reports
+`completed`. Without a sentinel, the same five instructions report
+`instruction_limit_reached`, not success. This policy does not alter the
+architectural meaning of `B` or any other instruction.
+
+The runtime layout uses the configured memory as flat guest RAM. The program
+is loaded at `load_address` (the CLI uses `entry` for both), entry must be
+inside the loaded bytes, and the default stack occupies the top 4096 bytes.
+The stack pointer is initialized to the top of that region. The program and
+stack must not overlap. CLI exit codes are 0 for `completed`, 2 for
+`instruction_limit_reached`, and 1 for loading, configuration, memory, or
+unsupported-instruction errors.
 
 ### Implemented AArch64 instructions
 
@@ -128,6 +139,8 @@ GoogleTest, and it does not use `assert()`, so `NDEBUG` cannot disable checks.
 ## Not implemented
 
 - Program loader, memory bus connecting `CPU` to `Memory`, MMU/permissions.
+- The runtime layer provides explicit guest configuration and structured
+  execution statuses, but it is not an operating-system runtime.
 - Other AArch64 instructions, condition flags, exception levels, and system
   registers.
 - Breakpoints, GUI, remote debugging, and tracing beyond the supported

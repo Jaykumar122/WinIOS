@@ -4,9 +4,9 @@
 // ADD X0, X0, #5
 // MOVZ X1, #0x100
 // STR X0, [X1, #0]
-// B .
+// B +8 (completion sentinel at 0x18)
 .word 0xD2800540
 .word 0x91001400
 .word 0xD2802001
 .word 0xF9000020
-.word 0x14000000
+.word 0x14000002

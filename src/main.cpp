@@ -1,10 +1,12 @@
 #include "cpu/cpu.h"
 #include "debugger/debugger.h"
 #include "loader/binary_loader.h"
+#include "runtime/guest_runtime.h"
 
 #include <charconv>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 
@@ -33,10 +35,13 @@ int run_binary_mode(int argc, char* argv[]) {
     std::string binary_path;
     std::size_t memory_size = 0;
     std::uint64_t entry = 0;
+    std::uint64_t stack_base = 0;
+    std::size_t stack_size = 0;
     std::size_t max_instructions = 0;
     bool have_memory_size = false;
     bool have_entry = false;
     bool have_limit = false;
+    std::optional<std::uint64_t> sentinel;
     bool trace = false;
 
     for (int index = 1; index < argc; ++index) {
@@ -58,6 +63,9 @@ int run_binary_mode(int argc, char* argv[]) {
             max_instructions = static_cast<std::size_t>(
                 parse_integer(argv[index], "--max-instructions"));
             have_limit = true;
+        } else if (option == "--sentinel") {
+            if (++index >= argc) throw std::invalid_argument("Missing completion sentinel");
+            sentinel = parse_integer(argv[index], "--sentinel");
         } else if (option == "--trace") {
             trace = true;
         } else {
@@ -71,30 +79,39 @@ int run_binary_mode(int argc, char* argv[]) {
             "max-instructions");
     }
 
-    Memory memory(memory_size);
-    const LoadedBinary loaded =
-        BinaryLoader::load(binary_path, memory, entry);
-    CPU cpu;
-    cpu.initialize_entry(loaded.entry_address, memory);
+    stack_size = 4096;
+    if (memory_size < stack_size) {
+        throw std::invalid_argument("Memory size is too small for the default stack");
+    }
+    stack_base = memory_size - stack_size;
+    RuntimeConfig config{memory_size, entry, entry, stack_base, stack_size,
+                         max_instructions, sentinel, trace};
+    CPU::TraceSink sink;
     if (trace) {
-        cpu.set_trace_sink([](const CPU::TraceRecord& record) {
+        sink = [](const CPU::TraceRecord& record) {
             std::cout << "PC=0x" << std::hex << record.instruction_address
                       << " WORD=0x" << record.instruction_word << std::dec
                       << " " << record.disassembly << " PC_AFTER=0x"
                       << std::hex << record.program_counter_after << std::dec
                       << '\n';
-        });
+        };
     }
-    const std::size_t executed = cpu.run(memory, max_instructions);
-    std::cout << "Loaded bytes: " << loaded.loaded_bytes << '\n'
-              << "Instructions executed: " << executed << '\n'
-              << "Final PC: 0x" << std::hex << cpu.get_program_counter()
-              << std::dec << '\n'
-              << "X0: " << cpu.read_register(0) << '\n'
-              << "X1: " << cpu.read_register(1) << '\n'
-              << "SP: " << cpu.get_stack_pointer() << '\n'
-              << "Memory[0x100]: " << memory.read_u64(0x100) << '\n';
-    return 0;
+    const ExecutionResult result = GuestRuntime::execute(binary_path, config, sink);
+    std::cout << "Status: " << execution_status_name(result.status) << '\n'
+              << "Loaded bytes: " << result.loaded_bytes << '\n'
+              << "Instructions executed: " << result.instructions_executed << '\n'
+              << "Final PC: 0x" << std::hex << result.final_pc << std::dec << '\n'
+              << "X0: " << result.final_registers[0] << '\n'
+              << "X1: " << result.final_registers[1] << '\n'
+              << "SP: " << result.final_stack_pointer << '\n';
+    if (result.memory_at_0x100.has_value()) {
+        std::cout << "Memory[0x100]: " << *result.memory_at_0x100 << '\n';
+    }
+    if (!result.error.empty()) {
+        std::cerr << "Execution error: " << result.error << '\n';
+    }
+    return result.status == ExecutionStatus::completed ? 0
+         : result.status == ExecutionStatus::instruction_limit_reached ? 2 : 1;
 }
 } // namespace
 
