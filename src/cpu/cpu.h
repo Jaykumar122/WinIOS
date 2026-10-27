@@ -22,6 +22,7 @@ public:
         std::uint32_t instruction_word{};
         std::string disassembly;
         std::uint64_t program_counter_after{};
+        std::uint8_t nzcv_after{};
         std::vector<std::string> changed_registers;
     };
 
@@ -44,6 +45,7 @@ public:
 
     std::uint64_t get_stack_pointer() const noexcept { return stack_pointer_; }
     void set_stack_pointer(std::uint64_t value) noexcept { stack_pointer_ = value; }
+    std::uint8_t get_nzcv() const noexcept { return nzcv_; }
 
     // A null sink disables tracing. Tracing is disabled by default.
     void set_trace_sink(TraceSink sink) { trace_sink_ = std::move(sink); }
@@ -65,5 +67,6 @@ private:
     std::uint64_t registers_[kRegisterCount]{};
     std::uint64_t stack_pointer_{};
     std::uint64_t program_counter_{};
+    std::uint8_t nzcv_{};
     TraceSink trace_sink_{};
 };

@@ -17,7 +17,9 @@ std::string hex_value(std::uint64_t value, unsigned width) {
 std::string Debugger::inspect_cpu() const {
     std::ostringstream output;
     output << "PC=" << hex_value(cpu_.get_program_counter(), 16)
-           << " SP=" << hex_value(cpu_.get_stack_pointer(), 16) << '\n';
+           << " SP=" << hex_value(cpu_.get_stack_pointer(), 16)
+           << " NZCV=0x" << std::hex
+           << static_cast<unsigned>(cpu_.get_nzcv()) << std::dec << '\n';
     for (std::size_t index = 0; index < CPU::kRegisterCount; ++index) {
         output << "X" << index << "="
                << hex_value(cpu_.read_register(index), 16);

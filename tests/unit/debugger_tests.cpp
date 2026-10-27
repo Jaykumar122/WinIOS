@@ -24,6 +24,7 @@ void tracing_reports_instruction_without_changing_state() {
     CHECK(records[0].instruction_word == 0xD280055Fu);
     CHECK(records[0].disassembly == "MOVZ XZR, #42");
     CHECK(records[0].program_counter_after == 4);
+    CHECK(records[0].nzcv_after == 0);
     CHECK(records[0].changed_registers.empty());
     CHECK(cpu.get_program_counter() == 4);
 }

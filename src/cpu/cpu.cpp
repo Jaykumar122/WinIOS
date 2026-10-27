@@ -24,6 +24,21 @@ constexpr std::uint32_t kLdr64 = 0xF9400000u;
 constexpr std::uint32_t kStr64 = 0xF9000000u;
 constexpr std::uint32_t kBranchMask = 0xFC000000u;
 constexpr std::uint32_t kBranch = 0x14000000u;
+constexpr std::uint32_t kConditionalBranchMask = 0xFF000010u;
+constexpr std::uint32_t kConditionalBranch = 0x54000000u;
+constexpr std::uint32_t kCompareBranchMask = 0x7F000000u;
+constexpr std::uint32_t kCbz = 0x34000000u;
+constexpr std::uint32_t kAddSubImmediateMask = 0x1F800000u;
+constexpr std::uint32_t kAddImmediate = 0x11000000u;
+constexpr std::uint32_t kAddSubRegisterMask = 0x1F200000u;
+constexpr std::uint32_t kAddSubRegister = 0x0B000000u;
+constexpr std::uint32_t kAndsRegisterMask = 0x1F200000u;
+constexpr std::uint32_t kAndsRegister = 0x0A000000u;
+
+constexpr std::uint8_t kNegative = 0x8u;
+constexpr std::uint8_t kZero = 0x4u;
+constexpr std::uint8_t kCarry = 0x2u;
+constexpr std::uint8_t kOverflow = 0x1u;
 
 std::string register_index_message(std::size_t index) {
     return "Register index out of range: " + std::to_string(index)
@@ -75,6 +90,72 @@ std::uint64_t read_stack_pointer_operand(const CPU& cpu,
                : cpu.read_register(register_index);
 }
 
+std::uint64_t width_mask(bool is64) {
+    return is64 ? std::numeric_limits<std::uint64_t>::max() : 0xFFFFFFFFull;
+}
+
+std::uint64_t read_width_operand(const CPU& cpu, std::uint32_t index,
+                                 bool is64, bool stack_pointer_allowed) {
+    const std::uint64_t value = index == CPU::kRegisterCount
+        ? (stack_pointer_allowed ? cpu.get_stack_pointer() : 0)
+        : cpu.read_register(index);
+    return value & width_mask(is64);
+}
+
+void write_width_result(CPU& cpu, std::uint32_t index, std::uint64_t value,
+                        bool is64, bool stack_pointer_allowed) {
+    value &= width_mask(is64);
+    if (index == CPU::kRegisterCount) {
+        if (stack_pointer_allowed) {
+            cpu.set_stack_pointer(value);
+        }
+    } else {
+        cpu.write_register(index, value);
+    }
+}
+
+std::uint8_t arithmetic_flags(std::uint64_t left, std::uint64_t right,
+                              std::uint64_t result, bool subtract, bool is64) {
+    const std::uint64_t mask = width_mask(is64);
+    const std::uint64_t sign = is64 ? (1ull << 63u) : (1ull << 31u);
+    left &= mask;
+    right &= mask;
+    result &= mask;
+    std::uint8_t flags = (result & sign) != 0 ? kNegative : 0;
+    if (result == 0) flags |= kZero;
+    if (subtract ? left >= right : result < left) flags |= kCarry;
+    const bool overflow = subtract
+        ? (((left ^ right) & (left ^ result) & sign) != 0)
+        : (((~(left ^ right)) & (left ^ result) & sign) != 0);
+    if (overflow) flags |= kOverflow;
+    return flags;
+}
+
+bool condition_holds(std::uint32_t condition, std::uint8_t nzcv) {
+    const bool n = (nzcv & kNegative) != 0;
+    const bool z = (nzcv & kZero) != 0;
+    const bool c = (nzcv & kCarry) != 0;
+    const bool v = (nzcv & kOverflow) != 0;
+    switch (condition & 0xFu) {
+    case 0x0: return z;
+    case 0x1: return !z;
+    case 0x2: return c;
+    case 0x3: return !c;
+    case 0x4: return n;
+    case 0x5: return !n;
+    case 0x6: return v;
+    case 0x7: return !v;
+    case 0x8: return c && !z;
+    case 0x9: return !c || z;
+    case 0xA: return n == v;
+    case 0xB: return n != v;
+    case 0xC: return !z && (n == v);
+    case 0xD: return z || (n != v);
+    case 0xE: return true;
+    default: return false;
+    }
+}
+
 void write_add_result(CPU& cpu, std::uint32_t register_index, std::uint64_t value) {
     if (register_index == CPU::kRegisterCount) {
         cpu.set_stack_pointer(value);
@@ -105,6 +186,25 @@ std::string hex_word(std::uint32_t word) {
 }
 
 std::string decode_disassembly(std::uint32_t instruction) {
+    const std::uint32_t wide_opcode = instruction & 0x7F800000u;
+    if (wide_opcode == 0x12800000u
+        || wide_opcode == 0x72800000u
+        || wide_opcode == 0x52800000u) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const auto destination = instruction & 0x1Fu;
+        const auto halfword = (instruction >> 21u) & 0x3u;
+        const auto immediate = (instruction >> 5u) & 0xFFFFu;
+        const char* mnemonic = wide_opcode == 0x12800000u
+            ? "MOVN" : wide_opcode == 0x72800000u ? "MOVK" : "MOVZ";
+        const std::string destination_name =
+            destination == CPU::kRegisterCount
+                ? (is64 ? "XZR" : "WZR")
+                : (std::string(is64 ? "X" : "W") + std::to_string(destination));
+        std::ostringstream stream;
+        stream << mnemonic << ' ' << destination_name << ", #" << immediate;
+        if (halfword != 0) stream << ", LSL #" << (halfword * 16u);
+        return stream.str();
+    }
     if ((instruction & kMovzMask) == kMovn64
         || (instruction & kMovzMask) == kMovk64) {
         const auto destination = instruction & 0x1Fu;
@@ -131,13 +231,13 @@ std::string decode_disassembly(std::uint32_t instruction) {
         }
         return stream.str();
     }
-    if ((instruction & kLogicalRegisterMask) == kOrr64) {
+    if ((instruction & 0x7F200000u) == 0x2A000000u) {
         const auto destination = instruction & 0x1Fu;
         const auto source = (instruction >> 5u) & 0x1Fu;
         const auto shifted = (instruction >> 16u) & 0x1Fu;
         const auto shift_type = (instruction >> 22u) & 0x3u;
         const auto amount = (instruction >> 10u) & 0x3Fu;
-        static constexpr const char* names[] = {"LSL", "LSR", "ASR"};
+        static constexpr const char* names[] = {"LSL", "LSR", "ASR", "RESERVED"};
         std::ostringstream stream;
         stream << "ORR " << register_name(destination, false) << ", "
                << register_name(source, false) << ", "
@@ -145,6 +245,47 @@ std::string decode_disassembly(std::uint32_t instruction) {
         if (amount != 0 || shift_type != 0) {
             stream << ", " << names[shift_type] << " #" << amount;
         }
+        return stream.str();
+    }
+    if ((instruction & kAddSubRegisterMask) == kAddSubRegister) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool subtract = (instruction & 0x40000000u) != 0;
+        const bool set_flags = (instruction & 0x20000000u) != 0;
+        const auto destination = instruction & 0x1Fu;
+        const auto source = (instruction >> 5u) & 0x1Fu;
+        const auto shifted = (instruction >> 16u) & 0x1Fu;
+        const auto amount = (instruction >> 10u) & 0x3Fu;
+        std::ostringstream stream;
+        stream << (set_flags ? (subtract ? "SUBS " : "ADDS ")
+                             : (subtract ? "SUB " : "ADD "))
+               << (is64 ? "X" : "W") << destination << ", "
+               << (is64 ? "X" : "W") << source << ", "
+               << (is64 ? "X" : "W") << shifted;
+        if (amount != 0) stream << ", LSL #" << amount;
+        return stream.str();
+    }
+    if ((instruction & kConditionalBranchMask) == kConditionalBranch) {
+        static constexpr const char* conditions[] = {
+            "EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC",
+            "HI", "LS", "GE", "LT", "GT", "LE", "AL", "NV"};
+        const auto encoded = (instruction >> 5u) & 0x7FFFFu;
+        std::int64_t offset = static_cast<std::int64_t>(encoded);
+        if ((encoded & 0x40000u) != 0) offset -= (std::int64_t{1} << 19u);
+        std::ostringstream stream;
+        stream << "B." << conditions[instruction & 0xFu] << " " << offset * 4;
+        return stream.str();
+    }
+    if ((instruction & kCompareBranchMask) == kCbz
+        || (instruction & kCompareBranchMask) == (kCbz | 0x01000000u)) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool nonzero = (instruction & 0x01000000u) != 0;
+        const auto source = instruction & 0x1Fu;
+        const auto encoded = (instruction >> 5u) & 0x7FFFFu;
+        std::int64_t offset = static_cast<std::int64_t>(encoded);
+        if ((encoded & 0x40000u) != 0) offset -= (std::int64_t{1} << 19u);
+        std::ostringstream stream;
+        stream << (nonzero ? "CBNZ " : "CBZ ") << (is64 ? "X" : "W")
+               << source << ", " << offset * 4;
         return stream.str();
     }
     if ((instruction & kLoadStoreUnsignedMask) == kLdr64
@@ -224,6 +365,7 @@ void CPU::reset() {
     }
     stack_pointer_ = 0;
     program_counter_ = 0;
+    nzcv_ = 0;
 }
 
 void CPU::initialize_entry(std::uint64_t entry_address, const Memory& memory) {
@@ -264,27 +406,35 @@ void CPU::step(Memory& memory) {
             trace_sink_(TraceRecord{instruction_address, instruction,
                                     decode_disassembly(instruction),
                                     program_counter_,
+                                    nzcv_,
                                     changed_registers(*this, before, before_sp)});
         }
     };
 
-    if ((instruction & kMovzMask) == kMovn64
-        || (instruction & kMovzMask) == kMovk64
-        || (instruction & kMovzMask) == kMovz64) {
+    const std::uint32_t wide_opcode = instruction & 0x7F800000u;
+    if (wide_opcode == 0x12800000u
+        || wide_opcode == 0x72800000u
+        || wide_opcode == 0x52800000u) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
         const std::uint32_t destination = instruction & 0x1Fu;
         const std::uint32_t halfword = (instruction >> 21u) & 0x3u;
         const std::uint64_t immediate = (instruction >> 5u) & 0xFFFFu;
+        if (!is64 && halfword >= 2u) {
+            throw std::runtime_error("Unsupported 32-bit wide-move shift");
+        }
         const std::uint64_t mask = std::uint64_t{0xFFFF} << (halfword * 16u);
         const std::uint64_t shifted = immediate << (halfword * 16u);
-        if ((instruction & kMovzMask) == kMovn64) {
-            write_zero_register_result(*this, destination, ~shifted);
-        } else if ((instruction & kMovzMask) == kMovk64) {
+        if (wide_opcode == 0x12800000u) {
+            write_width_result(*this, destination, ~shifted, is64, false);
+        } else if (wide_opcode == 0x72800000u) {
             if (destination != CPU::kRegisterCount) {
-                write_register(destination,
-                              (read_register(destination) & ~mask) | shifted);
+                const std::uint64_t current = read_register(destination)
+                    & width_mask(is64);
+                write_width_result(*this, destination,
+                                   (current & ~mask) | shifted, is64, false);
             }
         } else {
-            write_zero_register_result(*this, destination, shifted);
+            write_width_result(*this, destination, shifted, is64, false);
         }
         program_counter_ = checked_add_address(
             instruction_address, 4u, "Instruction PC increment");
@@ -292,7 +442,10 @@ void CPU::step(Memory& memory) {
         return;
     }
 
-    if ((instruction & kAddImmediateMask) == kAddImmediate64) {
+    if ((instruction & kAddSubImmediateMask) == kAddImmediate) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool subtract = (instruction & 0x40000000u) != 0;
+        const bool set_flags = (instruction & 0x20000000u) != 0;
         const std::uint32_t destination = instruction & 0x1Fu;
         const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t shift = (instruction >> 22u) & 0x1u;
@@ -301,32 +454,58 @@ void CPU::step(Memory& memory) {
             throw std::runtime_error("Unsupported ADD (immediate) shift encoding");
         }
         const std::uint64_t shifted_immediate = immediate << (shift * 12u);
-        write_add_result(*this, destination,
-                         read_add_operand(*this, source) + shifted_immediate);
-        program_counter_ = checked_add_address(
-            instruction_address, 4u, "Instruction PC increment");
+        const std::uint64_t left = read_width_operand(
+            *this, source, is64, true);
+        const std::uint64_t right = shifted_immediate & width_mask(is64);
+        const std::uint64_t result = subtract ? left - right : left + right;
+        if (set_flags) {
+            nzcv_ = arithmetic_flags(left, right, result, subtract, is64);
+        }
+        write_width_result(*this, destination, result, is64, true);
+        program_counter_ = checked_add_address(instruction_address, 4u,
+                                                "Instruction PC increment");
         emit_trace();
         return;
     }
 
-    if ((instruction & kAddImmediateMask) == kSubImmediate64) {
+    if ((instruction & kAddSubRegisterMask) == kAddSubRegister) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool subtract = (instruction & 0x40000000u) != 0;
+        const bool set_flags = (instruction & 0x20000000u) != 0;
         const std::uint32_t destination = instruction & 0x1Fu;
         const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
-        const std::uint32_t shift = (instruction >> 22u) & 0x1u;
-        const std::uint64_t immediate = (instruction >> 10u) & 0xFFFu;
-        const std::uint64_t shifted_immediate = immediate << (shift * 12u);
-        if (shift > 1u) {
-            throw std::runtime_error("Unsupported SUB (immediate) shift encoding");
+        const std::uint32_t shifted = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t shift_type = (instruction >> 22u) & 0x3u;
+        const std::uint32_t amount = (instruction >> 10u) & 0x3Fu;
+        if (shift_type == 3u || amount >= (is64 ? 64u : 32u)) {
+            throw std::runtime_error("Unsupported ADD/SUB register shift");
         }
-        write_add_result(*this, destination,
-                         read_add_operand(*this, source) - shifted_immediate);
-        program_counter_ = checked_add_address(
-            instruction_address, 4u, "Instruction PC increment");
+        std::uint64_t right = read_width_operand(
+            *this, shifted, is64, false);
+        if (shift_type == 0u) {
+            right = (amount == 0u) ? right : right << amount;
+        } else if (shift_type == 1u) {
+            right >>= amount;
+        } else {
+            const std::uint64_t sign = is64 ? (1ull << 63u) : (1ull << 31u);
+            right = (right & sign) == 0 ? right >> amount
+                                        : ~(~right >> amount);
+        }
+        const std::uint64_t left = read_width_operand(
+            *this, source, is64, false);
+        const std::uint64_t result = subtract ? left - right : left + right;
+        if (set_flags) {
+            nzcv_ = arithmetic_flags(left, right, result, subtract, is64);
+        }
+        write_width_result(*this, destination, result, is64, false);
+        program_counter_ = checked_add_address(instruction_address, 4u,
+                                                "Instruction PC increment");
         emit_trace();
         return;
     }
 
-    if ((instruction & kLogicalRegisterMask) == kOrr64) {
+    if ((instruction & 0x7F200000u) == 0x2A000000u) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
         const std::uint32_t destination = instruction & 0x1Fu;
         const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t shifted = (instruction >> 16u) & 0x1Fu;
@@ -335,7 +514,8 @@ void CPU::step(Memory& memory) {
         if (shift_type == 3u || amount >= 64u) {
             throw std::runtime_error("Unsupported ORR shift encoding");
         }
-        const std::uint64_t value = read_zero_register_operand(*this, shifted);
+        const std::uint64_t value = read_width_operand(
+            *this, shifted, is64, false);
         std::uint64_t shifted_value = value;
         if (shift_type == 1u) {
             shifted_value = value >> amount;
@@ -346,11 +526,45 @@ void CPU::step(Memory& memory) {
         } else if (amount != 0) {
             shifted_value = value << amount;
         }
-        write_zero_register_result(
-            *this, destination,
-            read_zero_register_operand(*this, source) | shifted_value);
+        write_width_result(*this, destination,
+                           read_width_operand(*this, source, is64, false)
+                               | shifted_value,
+                           is64, false);
         program_counter_ = checked_add_address(
             instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+
+    if ((instruction & kAndsRegisterMask) == kAndsRegister) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const std::uint32_t destination = instruction & 0x1Fu;
+        const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t shifted = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t shift_type = (instruction >> 22u) & 0x3u;
+        const std::uint32_t amount = (instruction >> 10u) & 0x3Fu;
+        if (shift_type == 3u || amount >= (is64 ? 64u : 32u)) {
+            throw std::runtime_error("Unsupported ANDS shift encoding");
+        }
+        std::uint64_t right = read_width_operand(
+            *this, shifted, is64, false);
+        if (shift_type == 0u) {
+            right = amount == 0u ? right : right << amount;
+        } else if (shift_type == 1u) {
+            right >>= amount;
+        } else {
+            const std::uint64_t sign = is64 ? (1ull << 63u) : (1ull << 31u);
+            right = (right & sign) == 0 ? right >> amount : ~(~right >> amount);
+        }
+        const std::uint64_t result = read_width_operand(
+            *this, source, is64, false) & right;
+        nzcv_ = (result & (is64 ? (1ull << 63u) : (1ull << 31u))) != 0
+                    ? kNegative
+                    : 0;
+        if (result == 0) nzcv_ |= kZero;
+        write_width_result(*this, destination, result, is64, false);
+        program_counter_ = checked_add_address(instruction_address, 4u,
+                                                "Instruction PC increment");
         emit_trace();
         return;
     }
@@ -375,6 +589,64 @@ void CPU::step(Memory& memory) {
         }
         program_counter_ = checked_add_address(
             instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+
+    if ((instruction & kConditionalBranchMask) == kConditionalBranch) {
+        const std::uint32_t condition = instruction & 0xFu;
+        const std::uint32_t encoded = (instruction >> 5u) & 0x7FFFFu;
+        std::int64_t offset = static_cast<std::int64_t>(encoded);
+        if ((encoded & 0x40000u) != 0) {
+            offset -= (std::int64_t{1} << 19u);
+        }
+        const std::int64_t displacement = offset * 4;
+        if (condition_holds(condition, nzcv_)) {
+            if (displacement >= 0) {
+                program_counter_ = checked_add_address(
+                    instruction_address, static_cast<std::uint64_t>(displacement),
+                    "Conditional branch target");
+            } else {
+                program_counter_ = checked_sub_address(
+                    instruction_address, static_cast<std::uint64_t>(-displacement),
+                    "Conditional branch target");
+            }
+        } else {
+            program_counter_ = checked_add_address(
+                instruction_address, 4u, "Instruction PC increment");
+        }
+        emit_trace();
+        return;
+    }
+
+    if ((instruction & kCompareBranchMask) == kCbz
+        || (instruction & kCompareBranchMask) == (kCbz | 0x01000000u)) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool nonzero = (instruction & 0x01000000u) != 0;
+        const std::uint32_t source = instruction & 0x1Fu;
+        const std::uint32_t encoded = (instruction >> 5u) & 0x7FFFFu;
+        std::int64_t offset = static_cast<std::int64_t>(encoded);
+        if ((encoded & 0x40000u) != 0) {
+            offset -= (std::int64_t{1} << 19u);
+        }
+        const std::uint64_t value = read_width_operand(
+            *this, source, is64, false);
+        const bool take = nonzero ? value != 0 : value == 0;
+        if (take) {
+            const std::int64_t displacement = offset * 4;
+            if (displacement >= 0) {
+                program_counter_ = checked_add_address(
+                    instruction_address, static_cast<std::uint64_t>(displacement),
+                    "Compare branch target");
+            } else {
+                program_counter_ = checked_sub_address(
+                    instruction_address, static_cast<std::uint64_t>(-displacement),
+                    "Compare branch target");
+            }
+        } else {
+            program_counter_ = checked_add_address(
+                instruction_address, 4u, "Instruction PC increment");
+        }
         emit_trace();
         return;
     }

@@ -380,7 +380,9 @@ void unsupported_movz_width_fails_explicitly() {
     Memory memory(4);
     memory.write_u32(0, 0x52800540u); // MOVZ W0, #42 (32-bit form unsupported)
 
-    CHECK_RUNTIME_ERROR(cpu.step(memory));
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 42);
+    CHECK(cpu.get_program_counter() == 4);
 }
 
 void instruction_fetch_beyond_memory_fails() {
@@ -407,6 +409,87 @@ void zero_instruction_limit_executes_nothing() {
 
     CHECK(cpu.run(memory, 0) == 0);
     CHECK(cpu.get_program_counter() == 0);
+}
+
+void register_add_sub_support_shifted_and_32_bit_forms() {
+    CPU cpu;
+    Memory memory(20);
+    cpu.write_register(1, 10);
+    cpu.write_register(2, 3);
+    memory.write_u32(0, 0x8B020020u); // ADD X0, X1, X2
+    memory.write_u32(4, 0xCB020020u); // SUB X0, X1, X2
+    memory.write_u32(8, 0x8B021020u); // ADD X0, X1, X2, LSL #4
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 13);
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 7);
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 58);
+
+    cpu.write_register(1, 0xFFFFFFFF00000001ull);
+    cpu.write_register(2, 2);
+    memory.write_u32(12, 0x0B020020u); // ADD W0, W1, W2
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 3);
+}
+
+void flag_setting_arithmetic_updates_nzcv() {
+    CPU cpu;
+    Memory memory(16);
+    cpu.write_register(1, 0xFFFFFFFFFFFFFFFFull);
+    memory.write_u32(0, 0xAB010020u); // ADDS X0, X1, X1
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 0xFFFFFFFFFFFFFFFEull);
+    CHECK(cpu.get_nzcv() == 0xAu); // N and C
+
+    cpu.write_register(1, 0);
+    memory.write_u32(4, 0xF100043Fu); // SUBS XZR, X1, #1 (CMP X1, #1)
+    cpu.step(memory);
+    CHECK((cpu.get_nzcv() & 0xFu) == 0x8u); // N=1, Z=0, C=0, V=0
+
+    cpu.write_register(1, 0x7FFFFFFFFFFFFFFFull);
+    memory.write_u32(8, 0xB1000420u); // ADDS X0, X1, #1
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 0x8000000000000000ull);
+    CHECK(cpu.get_nzcv() == 0x9u); // N and V
+}
+
+void conditional_branches_and_compare_aliases_work() {
+    CPU cpu;
+    Memory memory(32);
+    cpu.write_register(0, 1);
+    memory.write_u32(0, 0xF100041Fu); // CMP X0, #1
+    memory.write_u32(4, 0x54000040u); // B.EQ +8
+    memory.write_u32(8, 0xD2800001u); // MOVZ X1, #0 (skipped)
+    memory.write_u32(12, 0xD2800021u); // MOVZ X1, #1
+    cpu.step(memory);
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 12);
+    cpu.step(memory);
+    CHECK(cpu.read_register(1) == 1);
+
+    cpu.reset();
+    memory.write_u32(0, 0xB4000040u); // CBZ X0, +8
+    memory.write_u32(4, 0xD2800001u); // MOVZ X1, #0 (skipped)
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 8);
+
+    cpu.reset();
+    cpu.write_register(0, 1);
+    memory.write_u32(0, 0xB5000040u); // CBNZ X0, +8
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 8);
+}
+
+void tst_alias_sets_zero_and_negative_flags() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.write_register(0, 0x8000000000000000ull);
+    cpu.write_register(1, 0xFFFFFFFFFFFFFFFFull);
+    memory.write_u32(0, 0xEA01001Fu); // TST X0, X1 (ANDS XZR, X0, X1)
+    cpu.step(memory);
+    CHECK((cpu.get_nzcv() & 0xCu) == 0x8u);
+    CHECK(cpu.get_program_counter() == 4);
 }
 
 } // namespace
@@ -448,6 +531,10 @@ int main() {
     instruction_fetch_beyond_memory_fails();
     execution_limit_stops_self_branch();
     zero_instruction_limit_executes_nothing();
+    register_add_sub_support_shifted_and_32_bit_forms();
+    flag_setting_arithmetic_updates_nzcv();
+    conditional_branches_and_compare_aliases_work();
+    tst_alias_sets_zero_and_negative_flags();
 
     return test::summarize("cpu_tests");
 }

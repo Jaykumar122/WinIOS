@@ -46,8 +46,8 @@ See `docs/progress.md` for the recorded build, test, and run output.
   bounded.
 - Optional instruction tracing uses `CPU::TraceSink`; it is disabled by
   default and receives the pre-execution PC, raw word, decoded text, resulting
-  PC, and changed register names. The callback can write to a file or test
-  buffer.
+  PC, NZCV value, and changed register names. The callback can write to a file
+  or test buffer.
 
 ### Debugger
 
@@ -121,23 +121,35 @@ and CPU state.
 
 ### Implemented AArch64 instructions
 
-- 64-bit `MOVZ` (wide immediate), including all valid halfword shifts.
-- 64-bit `MOVN` and `MOVK` wide-immediate forms, including halfword shifts.
-- 64-bit, non-flag-setting `ADD` (immediate), including the optional 12-bit
-  shift and the instruction-specific `XZR`/`SP` register-31 semantics.
-- 64-bit non-flag-setting `SUB` (immediate), including the optional 12-bit
-  shift and SP semantics.
-- 64-bit shifted-register `ORR` with LSL, LSR, and ASR.
-- 64-bit unsigned-immediate `LDR` and `STR`, with scaled offsets and SP base
-  addressing.
-- `B` (unconditional immediate), with signed 26-bit word offsets relative to
-  the branch instruction address.
+The decoder currently supports this explicit table. `sf=1` denotes 64-bit
+operands and `sf=0` denotes 32-bit operands where listed. Register 31 is
+contextual: arithmetic immediate forms use SP, while logical/register forms
+use XZR/WZR.
+
+| Instruction form | Encoding family | Operands and effects | Flags / memory | Tests |
+|---|---|---|---|---|
+| MOVZ, MOVN, MOVK | wide-immediate | 32/64-bit `Wn`/`Xn`, shifts 0/16/32/48 (32-bit only 0/16) | no flags, no memory | CPU |
+| ADD/SUB immediate | add/sub immediate | 32/64-bit, optional `LSL #12`, SP-aware | flags unchanged, no memory | CPU, loader, runtime |
+| ADD/SUB shifted register | add/sub shifted-register | 32/64-bit, LSL/LSR/ASR | flags unchanged, no memory | CPU |
+| ADDS/SUBS immediate/register | flag-setting add/sub families | 32/64-bit arithmetic; aliases CMP when destination is register 31 | updates NZCV | CPU |
+| ORR shifted register | logical shifted-register | 32/64-bit, LSL/LSR/ASR, XZR/WZR | flags unchanged | CPU |
+| TST alias | ANDS shifted-register | supported 32/64-bit shifted-register AND with discarded result | updates N and Z; C/V cleared | CPU |
+| B | unconditional immediate | signed 26-bit word offset from instruction address | no flags, no memory | CPU, runtime |
+| B.cond | conditional immediate | signed 19-bit word offset; all standard conditions | reads NZCV | CPU |
+| CBZ/CBNZ | compare-and-branch | 32/64-bit register, signed 19-bit word offset | does not change NZCV | CPU |
+| LDR/STR | unsigned immediate 64-bit | scaled offset, SP base support | no flags, guest memory access | CPU, loader, runtime |
 
 Instruction words and shift encodings that are not in this subset throw an
 explicit exception. LDR reads complete before a destination register changes;
 STR reads its source before attempting the memory write. Fetches and data
 accesses that fall outside guest memory propagate the memory bounds error
 without silently changing state.
+
+NZCV is exposed as a four-bit value using the architectural bit order
+`N=bit 3, Z=bit 2, C=bit 1, V=bit 0`. `reset()` clears NZCV. Reference words
+in the instruction tests are documented beside each test and were verified
+against the AArch64 encoding layout; no external assembler or differential
+reference emulator is required to build or test this project.
 
 ### Tests (`tests/unit/`)
 
@@ -150,8 +162,7 @@ GoogleTest, and it does not use `assert()`, so `NDEBUG` cannot disable checks.
 - Program loader, memory bus connecting `CPU` to `Memory`, MMU/permissions.
 - The runtime layer provides explicit guest configuration and structured
   execution statuses, but it is not an operating-system runtime.
-- Other AArch64 instructions, condition flags, exception levels, and system
-  registers.
+- Other AArch64 instructions, exception levels, and system registers.
 - Breakpoints, GUI, remote debugging, and tracing beyond the supported
   instruction subset.
 - Any iOS firmware, IPSW, or device emulation. Genuine iOS 26 boot is an open

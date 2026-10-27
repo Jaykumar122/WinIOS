@@ -540,3 +540,40 @@ The default demo output remained unchanged and exited 0. The fixture with
 `--sentinel 24` completed with five instructions, final PC `0x18`, X0 `47`,
 X1 `256`, and memory `0x100=47`; without the sentinel it reported
 `instruction_limit_reached` and exited 2.
+
+## 2026-10-28 — Phase 11: arithmetic and conditional branches
+
+### Work completed
+
+- Added explicit four-bit NZCV state (`N=bit 3`, `Z=bit 2`, `C=bit 1`,
+  `V=bit 0`) with reset semantics and `CPU::get_nzcv()`.
+- Added 32-bit W-register behavior for wide moves, arithmetic, logical
+  operations, and compare branches. Writes to W registers zero-extend into
+  the corresponding X register.
+- Added register shifted `ADD` and `SUB` with LSL, LSR, and ASR.
+- Added flag-setting `ADDS` and `SUBS` immediate and shifted-register forms,
+  including unsigned carry and signed overflow calculation.
+- Added `B.cond`, `CBZ`, and `CBNZ` with checked signed PC-relative offsets
+  and complete standard condition evaluation.
+- Added `TST` through the supported `ANDS` shifted-register encoding.
+  `CMP` is supported through the existing `SUBS` destination-register-31
+  semantics.
+- Preserved explicit unsupported-instruction and memory-fault behavior.
+  Conditional branches do not update NZCV, and ordinary ADD/SUB/ORR forms
+  leave NZCV unchanged.
+
+### Reference encodings and tests
+
+The CPU tests document the exact 32-bit words beside each new case, including
+`ADD/SUB`, `ADDS/SUBS`, `CMP`, `TST`, `B.EQ`, `CBZ`, and `CBNZ`. The words were
+verified from the fixed AArch64 instruction field layouts (rather than
+fabricated runtime opcodes); no external assembler or differential emulator
+was used as a test dependency.
+
+The expanded CPU suite covers positive and negative arithmetic, 32-bit
+zero-extension, NZCV negative/zero/carry/overflow cases, taken conditional
+branches, compare aliases, and instruction-limit regressions. Existing
+debugger, loader, runtime, and memory suites remain compatible. Final direct
+counts were `memory_tests: 53`, `cpu_tests: 150`, `debugger_tests: 28`,
+`loader_tests: 34`, and `runtime_tests: 41`; CTest passed all five suites.
+The MSVC build emitted no warnings under `/W4 /permissive-`.
