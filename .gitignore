@@ -1,0 +1,25 @@
+# Build output
+build/
+out/
+cmake-build-*/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+
+# Binaries (the project builds these; sources stay tracked)
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.dll
+
+# OS noise
+Thumbs.db
+desktop.ini
