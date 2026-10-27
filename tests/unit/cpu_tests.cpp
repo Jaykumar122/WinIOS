@@ -132,10 +132,12 @@ void movz_supports_halfword_shift() {
 void movz_destination_31_is_zero_register() {
     CPU cpu;
     Memory memory(4);
-    memory.write_u32(0, 0xD2800540u); // MOVZ XZR, #42 (destination discarded)
+    cpu.write_register(0, 7);
+    memory.write_u32(0, 0xD280055Fu); // MOVZ XZR, #42 (destination discarded)
 
     cpu.step(memory);
 
+    CHECK(cpu.read_register(0) == 7);
     CHECK(cpu.get_program_counter() == 4);
     CHECK(cpu.get_stack_pointer() == 0);
 }

@@ -1,6 +1,10 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 class Memory;
 
@@ -12,6 +16,16 @@ public:
     // general-purpose register (it is the zero register / stack pointer in
     // instruction encodings), so it is deliberately not addressable here.
     static constexpr std::size_t kRegisterCount = 31;
+
+    struct TraceRecord {
+        std::uint64_t instruction_address{};
+        std::uint32_t instruction_word{};
+        std::string disassembly;
+        std::uint64_t program_counter_after{};
+        std::vector<std::string> changed_registers;
+    };
+
+    using TraceSink = std::function<void(const TraceRecord&)>;
 
     CPU();
 
@@ -29,6 +43,10 @@ public:
     std::uint64_t get_stack_pointer() const noexcept { return stack_pointer_; }
     void set_stack_pointer(std::uint64_t value) noexcept { stack_pointer_ = value; }
 
+    // A null sink disables tracing. Tracing is disabled by default.
+    void set_trace_sink(TraceSink sink) { trace_sink_ = std::move(sink); }
+    void clear_trace_sink() { trace_sink_ = {}; }
+
     // Fetches and executes one 32-bit instruction at the current PC.
     // Unsupported encodings throw std::runtime_error and memory errors from
     // the fetch are propagated.
@@ -45,4 +63,5 @@ private:
     std::uint64_t registers_[kRegisterCount]{};
     std::uint64_t stack_pointer_{};
     std::uint64_t program_counter_{};
+    TraceSink trace_sink_{};
 };

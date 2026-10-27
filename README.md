@@ -44,6 +44,34 @@ See `docs/progress.md` for the recorded build, test, and run output.
 - `run(Memory&, max_instructions)` executes at most the requested number of
   instructions and returns the count executed, so branch-to-self code is
   bounded.
+- Optional instruction tracing uses `CPU::TraceSink`; it is disabled by
+  default and receives the pre-execution PC, raw word, decoded text, resulting
+  PC, and changed register names. The callback can write to a file or test
+  buffer.
+
+### Debugger
+
+`Debugger` in `src/debugger/` is a small API around an existing `CPU` and
+`Memory`. It can inspect all registers and SP, inspect a validated memory
+range, execute one instruction, continue for a bounded count, and enable or
+disable a trace sink. Invalid memory ranges throw `std::out_of_range`, and
+unsupported instructions retain the CPU's explicit `std::runtime_error`.
+
+The executable keeps its default demo behavior. A built-in demonstration
+debug session can be run with:
+
+```powershell
+.\build\Debug\win_ios.exe --debug
+```
+
+It prints trace records in this form:
+
+```text
+PC=0x0 WORD=0xd2800540 MOVZ X0, #42 PC_AFTER=0x4
+```
+
+The debugger is intended for this small interpreter only; it is not a
+breakpoint engine, GUI, remote debugger, or arbitrary-application debugger.
 
 ### Implemented AArch64 instructions
 
@@ -68,7 +96,8 @@ GoogleTest, and it does not use `assert()`, so `NDEBUG` cannot disable checks.
 - Program loader, memory bus connecting `CPU` to `Memory`, MMU/permissions.
 - Other AArch64 instructions, condition flags, exception levels, and system
   registers.
-- Debugger, tracing, CLI controls, or GUI.
+- Breakpoints, GUI, remote debugging, and tracing beyond the supported
+  instruction subset.
 - Any iOS firmware, IPSW, or device emulation. Genuine iOS 26 boot is an open
   feasibility question, not a supported feature.
 

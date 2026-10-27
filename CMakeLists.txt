@@ -21,6 +21,7 @@ endfunction()
 # Emulator core, shared by the demo executable and the unit tests.
 add_library(winios_core STATIC
     src/cpu/cpu.cpp
+    src/debugger/debugger.cpp
     src/memory/memory.cpp
 )
 
@@ -54,5 +55,12 @@ if(BUILD_TESTING)
     winios_set_warnings(cpu_tests)
     add_test(NAME cpu_tests COMMAND cpu_tests)
 
-    set_tests_properties(memory_tests cpu_tests PROPERTIES TIMEOUT 30)
+    add_executable(debugger_tests
+        tests/unit/debugger_tests.cpp
+    )
+    target_link_libraries(debugger_tests PRIVATE winios_core)
+    winios_set_warnings(debugger_tests)
+    add_test(NAME debugger_tests COMMAND debugger_tests)
+
+    set_tests_properties(memory_tests cpu_tests debugger_tests PROPERTIES TIMEOUT 30)
 endif()

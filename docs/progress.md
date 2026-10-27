@@ -341,3 +341,37 @@ no loader, memory bus, MMU, permissions model, exception handling, flags,
 other AArch64 instructions, firmware, or iOS support. It must not be used to
 claim that WinIOS boots iOS, executes arbitrary ARM64 code, or runs iOS
 applications.
+
+## 2026-10-28 — Phase 6: tracing and basic debugger
+
+### Work completed
+
+- Added optional `CPU::TraceSink` tracing, disabled by default. Successful
+  steps report the pre-execution PC, raw 32-bit word, decoded mnemonic and
+  operands, post-execution PC, and changed register names.
+- Added `Debugger`, a platform-neutral component that provides CPU/SP
+  inspection, bounded guest-memory inspection, single-step execution, bounded
+  continue, and trace enable/disable control.
+- Added `win_ios.exe --debug`, while preserving the original default demo
+  output. The debug demonstration runs verified `MOVZ X0, #42` and
+  `ADD X1, X0, #5` words and prints trace/state/memory output.
+- Added a dedicated debugger test executable covering trace enable/disable,
+  trace contents, unchanged execution semantics, register and memory
+  inspection, invalid ranges, single-step, bounded continuation, and
+  branch-to-self behavior. Existing CPU and memory tests remain registered.
+
+### Phase 6 validation
+
+```powershell
+cmake -S WinIOS -B WinIOS\build -G "Visual Studio 18 2026" -A x64
+cmake --build WinIOS\build --config Debug
+ctest --test-dir WinIOS\build -C Debug --output-on-failure
+.\WinIOS\build\Debug\win_ios.exe
+.\WinIOS\build\Debug\win_ios.exe --debug
+```
+
+MSVC build completed with no warnings under `/W4 /permissive-`. The final
+CTest run covers `memory_tests`, `cpu_tests`, and `debugger_tests`; direct
+debugger, CPU, and memory runs also pass. The default executable output is
+unchanged. The debug mode only exercises the documented subset and does not
+debug arbitrary AArch64 applications.
