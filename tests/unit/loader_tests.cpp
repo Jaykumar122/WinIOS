@@ -78,6 +78,20 @@ void invalid_address_and_entry_are_rejected() {
     CHECK_INVALID_ARGUMENT(cpu.initialize_entry(16, memory));
 }
 
+void loading_at_memory_end_is_checked() {
+    TemporaryFile file("end");
+    write_file(file.path(), {1, 2, 3, 4});
+    Memory memory(8);
+
+    const LoadedBinary loaded = BinaryLoader::load(file.path(), memory, 4);
+    CHECK(loaded.entry_address == 4);
+    CHECK(loaded.loaded_bytes == 4);
+    CHECK(memory.read_u32(4) == 0x04030201u);
+
+    CHECK_OUT_OF_RANGE(BinaryLoader::load(file.path(), memory, 8));
+    CHECK_INVALID_ARGUMENT(BinaryLoader::load(file.path(), memory, 1));
+}
+
 void loaded_program_starts_at_entry_and_executes() {
     TemporaryFile file("program");
     const std::vector<std::uint8_t> bytes{
@@ -112,6 +126,7 @@ int main() {
     missing_and_empty_files_fail();
     oversized_and_invalid_loads_do_not_modify_memory();
     invalid_address_and_entry_are_rejected();
+    loading_at_memory_end_is_checked();
     loaded_program_starts_at_entry_and_executes();
     return test::summarize("loader_tests");
 }

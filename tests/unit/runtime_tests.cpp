@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,87 @@ void invalid_configuration_is_rejected() {
     CHECK(result.instructions_executed == 0);
 }
 
+void invalid_entry_and_sentinel_ranges_are_rejected() {
+    TemporaryFile file("ranges");
+    write_words(file.path(), {0xD2800540u});
+
+    RuntimeConfig config = valid_config();
+    config.entry_address = 2;
+    ExecutionResult result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+
+    config = valid_config();
+    config.entry_address = 4;
+    result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+
+    config = valid_config();
+    config.completion_sentinel = 2;
+    result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+
+    config = valid_config();
+    config.completion_sentinel = 256;
+    result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+
+    config = valid_config();
+    config.load_address = std::numeric_limits<std::uint64_t>::max();
+    result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+
+    config = valid_config();
+    config.stack_base = std::numeric_limits<std::uint64_t>::max();
+    result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+}
+
+void zero_limit_is_invalid_and_exact_limit_is_reported() {
+    TemporaryFile file("limit_boundary");
+    write_words(file.path(), {0xD2800540u});
+    RuntimeConfig config = valid_config();
+
+    config.max_instructions = 0;
+    ExecutionResult result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::invalid_configuration);
+
+    config.max_instructions = 1;
+    result = GuestRuntime::execute(file.path(), config);
+    CHECK(result.status == ExecutionStatus::instruction_limit_reached);
+    CHECK(result.instructions_executed == 1);
+    CHECK(result.final_pc == 4);
+    CHECK(result.final_registers[0] == 42);
+}
+
+void invalid_branch_target_is_a_memory_fault() {
+    TemporaryFile file("branch_fault");
+    write_words(file.path(), {0x14000200u}); // B +2048, beyond 512-byte RAM
+    const ExecutionResult result = GuestRuntime::execute(file.path(), valid_config());
+
+    CHECK(result.status == ExecutionStatus::memory_fault);
+    CHECK(result.instructions_executed == 1);
+    CHECK(result.final_pc == 2048);
+    CHECK(!result.error.empty());
+}
+
+void repeated_execution_does_not_reuse_cpu_state() {
+    TemporaryFile file("repeated");
+    write_words(file.path(), {0xD2800540u}); // MOVZ X0, #42
+    RuntimeConfig config = valid_config();
+    config.max_instructions = 1;
+
+    ExecutionResult first = GuestRuntime::execute(file.path(), config);
+    CHECK(first.status == ExecutionStatus::instruction_limit_reached);
+    CHECK(first.final_registers[0] == 42);
+    CHECK(first.instructions_executed == 1);
+
+    write_words(file.path(), {0xD28000E0u}); // MOVZ X0, #7
+    ExecutionResult second = GuestRuntime::execute(file.path(), config);
+    CHECK(second.status == ExecutionStatus::instruction_limit_reached);
+    CHECK(second.final_registers[0] == 7);
+    CHECK(second.instructions_executed == 1);
+}
+
 void unsupported_and_memory_errors_are_distinct() {
     TemporaryFile unsupported("unsupported");
     write_words(unsupported.path(), {0});
@@ -123,6 +205,10 @@ int main() {
     completion_policy_reports_success();
     limit_exhaustion_is_distinct();
     invalid_configuration_is_rejected();
+    invalid_entry_and_sentinel_ranges_are_rejected();
+    zero_limit_is_invalid_and_exact_limit_is_reported();
+    invalid_branch_target_is_a_memory_fault();
+    repeated_execution_does_not_reuse_cpu_state();
     unsupported_and_memory_errors_are_distinct();
     successful_program_reports_register_and_memory_state_via_trace();
     return test::summarize("runtime_tests");

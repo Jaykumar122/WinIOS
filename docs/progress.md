@@ -504,3 +504,39 @@ code. No warnings were emitted under `/W4 /permissive-`.
 The runtime is only a controlled test harness around the supported subset. It
 does not provide processes, syscalls, virtual memory, a loader for ELF or
 Mach-O, firmware support, iOS booting, or iOS application execution.
+
+## 2026-10-28 — Phase 10: guest runtime hardening and negative testing
+
+### Confirmed defect fixed
+
+- CPU load/store effective-address addition now rejects unsigned 64-bit
+  overflow instead of wrapping to a low guest address.
+- CPU branch target addition and subtraction now reject guest-address
+  overflow or underflow before changing the PC.
+- Ordinary instruction PC increments use checked address arithmetic as well.
+  Existing memory bounds behavior remains unchanged, including permitted
+  unaligned data accesses.
+
+### Negative tests added
+
+- Loader success at the final valid aligned address and rejection at the
+  first byte beyond guest memory or at a misaligned address.
+- CPU effective-address overflow and branch-underflow failures preserve the
+  destination state and PC.
+- Runtime rejection of zero instruction limits, misaligned/out-of-range entry
+  points, invalid sentinel placement, and near-maximum address configuration.
+- Runtime branch to unmapped memory reports `memory_fault` with the executed
+  branch count, final PC, and error text.
+- Exact instruction-limit behavior and repeated execution verify fresh CPU,
+  memory, counters, and result state.
+
+### Phase 10 validation
+
+The existing Visual Studio 18 2026 Debug configuration was rebuilt with
+`/W4 /permissive-`; it completed with no warnings. CTest passed all five
+suites. Direct suite counts were `memory_tests: 53`, `cpu_tests: 134`,
+`debugger_tests: 27`, `loader_tests: 34`, and `runtime_tests: 41` checks.
+The default demo output remained unchanged and exited 0. The fixture with
+`--sentinel 24` completed with five instructions, final PC `0x18`, X0 `47`,
+X1 `256`, and memory `0x100=47`; without the sentinel it reported
+`instruction_limit_reached` and exited 2.

@@ -110,6 +110,15 @@ stack must not overlap. CLI exit codes are 0 for `completed`, 2 for
 `instruction_limit_reached`, and 1 for loading, configuration, memory, or
 unsupported-instruction errors.
 
+Runtime and CPU address arithmetic is checked for unsigned overflow and
+underflow. A wrapped load/store address or branch target is reported as a
+memory fault rather than being reused as a low guest address. Branches to
+unmapped guest memory fail on the following fetch. A zero runtime instruction
+limit is invalid; a positive limit reached exactly after the last successful
+instruction reports `instruction_limit_reached` unless the sentinel policy
+has completed execution. Each runtime invocation creates fresh guest memory
+and CPU state.
+
 ### Implemented AArch64 instructions
 
 - 64-bit `MOVZ` (wide immediate), including all valid halfword shifts.
@@ -223,7 +232,13 @@ Individual suites:
 .\build\Debug\cpu_tests.exe
 .\build\Debug\debugger_tests.exe
 .\build\Debug\loader_tests.exe
+.\build\Debug\runtime_tests.exe
 ```
+
+The negative tests cover maximum-sized addresses, end-of-memory and
+misaligned binary loads, invalid entry/stack/sentinel regions, branch target
+faults, arithmetic overflow and underflow, exact instruction limits,
+unsupported instructions, memory faults, and repeated runtime execution.
 
 To configure without tests, pass `-DBUILD_TESTING=OFF`.
 

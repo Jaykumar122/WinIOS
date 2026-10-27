@@ -37,6 +37,24 @@ std::size_t pc_as_memory_offset(std::uint64_t pc) {
     return static_cast<std::size_t>(pc);
 }
 
+std::uint64_t checked_add_address(std::uint64_t address,
+                                  std::uint64_t displacement,
+                                  const char* description) {
+    if (displacement > std::numeric_limits<std::uint64_t>::max() - address) {
+        throw std::out_of_range(std::string(description) + " overflows guest address space");
+    }
+    return address + displacement;
+}
+
+std::uint64_t checked_sub_address(std::uint64_t address,
+                                  std::uint64_t displacement,
+                                  const char* description) {
+    if (displacement > address) {
+        throw std::out_of_range(std::string(description) + " underflows guest address space");
+    }
+    return address - displacement;
+}
+
 std::uint64_t read_add_operand(const CPU& cpu, std::uint32_t register_index) {
     return register_index == CPU::kRegisterCount
                ? cpu.get_stack_pointer()
@@ -268,7 +286,8 @@ void CPU::step(Memory& memory) {
         } else {
             write_zero_register_result(*this, destination, shifted);
         }
-        program_counter_ = instruction_address + 4u;
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
         emit_trace();
         return;
     }
@@ -284,7 +303,8 @@ void CPU::step(Memory& memory) {
         const std::uint64_t shifted_immediate = immediate << (shift * 12u);
         write_add_result(*this, destination,
                          read_add_operand(*this, source) + shifted_immediate);
-        program_counter_ = instruction_address + 4u;
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
         emit_trace();
         return;
     }
@@ -300,7 +320,8 @@ void CPU::step(Memory& memory) {
         }
         write_add_result(*this, destination,
                          read_add_operand(*this, source) - shifted_immediate);
-        program_counter_ = instruction_address + 4u;
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
         emit_trace();
         return;
     }
@@ -328,7 +349,8 @@ void CPU::step(Memory& memory) {
         write_zero_register_result(
             *this, destination,
             read_zero_register_operand(*this, source) | shifted_value);
-        program_counter_ = instruction_address + 4u;
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
         emit_trace();
         return;
     }
@@ -340,8 +362,9 @@ void CPU::step(Memory& memory) {
         const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
         const std::uint64_t offset =
             static_cast<std::uint64_t>((instruction >> 10u) & 0xFFFu) * 8u;
-        const std::uint64_t address =
-            read_stack_pointer_operand(*this, base) + offset;
+        const std::uint64_t address = checked_add_address(
+            read_stack_pointer_operand(*this, base), offset,
+            "Load/store effective address");
         const std::size_t memory_address = pc_as_memory_offset(address);
         if (load) {
             const std::uint64_t value = memory.read_u64(memory_address);
@@ -350,7 +373,8 @@ void CPU::step(Memory& memory) {
             const std::uint64_t value = read_zero_register_operand(*this, target);
             memory.write_u64(memory_address, value);
         }
-        program_counter_ = instruction_address + 4u;
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
         emit_trace();
         return;
     }
@@ -363,11 +387,13 @@ void CPU::step(Memory& memory) {
         }
         offset *= 4;
         if (offset >= 0) {
-            program_counter_ = instruction_address
-                               + static_cast<std::uint64_t>(offset);
+            program_counter_ = checked_add_address(
+                instruction_address, static_cast<std::uint64_t>(offset),
+                "Branch target");
         } else {
-            program_counter_ = instruction_address
-                               - static_cast<std::uint64_t>(-offset);
+            program_counter_ = checked_sub_address(
+                instruction_address, static_cast<std::uint64_t>(-offset),
+                "Branch target");
         }
         emit_trace();
         return;

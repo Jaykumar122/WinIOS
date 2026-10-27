@@ -325,6 +325,18 @@ void invalid_store_leaves_memory_and_pc_unchanged() {
     CHECK(memory.read_u32(0) == 0xF9000420u);
 }
 
+void overflowing_effective_address_fails_without_state_change() {
+    CPU cpu;
+    Memory memory(16);
+    cpu.write_register(0, 0x1234);
+    cpu.write_register(1, std::numeric_limits<std::uint64_t>::max() - 3u);
+    memory.write_u32(0, 0xF9400420u); // LDR X0, [X1, #8] (address overflow)
+
+    CHECK_OUT_OF_RANGE(cpu.step(memory));
+    CHECK(cpu.read_register(0) == 0x1234);
+    CHECK(cpu.get_program_counter() == 0);
+}
+
 void branch_changes_pc_relative_to_instruction() {
     CPU cpu;
     Memory memory(12);
@@ -343,6 +355,15 @@ void branch_supports_negative_offset() {
 
     cpu.step(memory);
 
+    CHECK(cpu.get_program_counter() == 0);
+}
+
+void branch_underflow_fails_without_changing_pc() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0x17FFFFFFu); // B -4 (target below guest address zero)
+
+    CHECK_OUT_OF_RANGE(cpu.step(memory));
     CHECK(cpu.get_program_counter() == 0);
 }
 
@@ -418,8 +439,10 @@ int main() {
     ldr_and_str_support_sp_base();
     invalid_load_leaves_state_unchanged();
     invalid_store_leaves_memory_and_pc_unchanged();
+    overflowing_effective_address_fails_without_state_change();
     branch_changes_pc_relative_to_instruction();
     branch_supports_negative_offset();
+    branch_underflow_fails_without_changing_pc();
     unsupported_instruction_fails_explicitly();
     unsupported_movz_width_fails_explicitly();
     instruction_fetch_beyond_memory_fails();
