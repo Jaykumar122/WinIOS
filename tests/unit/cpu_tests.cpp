@@ -180,6 +180,151 @@ void add_immediate_uses_stack_pointer_for_register_31() {
     CHECK(cpu.read_register(1) == 20);
 }
 
+void movn_inverts_shifted_immediate() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0x92A24680u); // MOVN X0, #0x1234, LSL #16
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(0) == 0xFFFFFFFFEDCBFFFFull);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void movk_preserves_unselected_halfwords() {
+    CPU cpu;
+    Memory memory(4);
+    cpu.write_register(0, 0x0123456789ABCDEFull);
+    memory.write_u32(0, 0xF2AACF00u); // MOVK X0, #0x5678, LSL #16
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(0) == 0x012345675678CDEFu);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void movn_and_movk_discard_register_31_writes() {
+    CPU cpu;
+    Memory memory(4);
+    cpu.set_stack_pointer(0x1234);
+    memory.write_u32(0, 0xF280055Fu); // MOVK XZR, #42
+
+    cpu.step(memory);
+
+    CHECK(cpu.get_stack_pointer() == 0x1234);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void orr_supports_shifted_register() {
+    CPU cpu;
+    Memory memory(4);
+    cpu.write_register(1, 1);
+    cpu.write_register(2, 0x10);
+    memory.write_u32(0, 0xAA021020u); // ORR X0, X1, X2, LSL #4
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(0) == 0x101);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void orr_supports_lsr_and_asr() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.write_register(1, 0x8000000000000010ull);
+    cpu.write_register(2, 0x40);
+    memory.write_u32(0, 0xAA421020u); // ORR X0, X1, X2, LSR #4
+    memory.write_u32(4, 0xAA821020u); // ORR X0, X1, X2, ASR #4
+
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 0x8000000000000014ull);
+    cpu.write_register(2, 0x8000000000000000ull);
+    cpu.step(memory);
+    CHECK(cpu.read_register(0) == 0xF800000000000010ull);
+}
+
+void orr_rejects_reserved_shift_type() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0xAAC21020u); // ORR X0, X1, X2, reserved shift type
+
+    CHECK_RUNTIME_ERROR(cpu.step(memory));
+    CHECK(cpu.get_program_counter() == 0);
+}
+
+void sub_immediate_supports_shift_and_sp() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.write_register(1, 0x6000);
+    memory.write_u32(0, 0xD1001420u); // SUB X0, X1, #5
+    memory.write_u32(4, 0xD14023FFu); // SUB SP, SP, #8, LSL #12
+    cpu.set_stack_pointer(0x20000);
+
+    cpu.step(memory);
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(0) == 0x5FFB);
+    CHECK(cpu.get_stack_pointer() == 0x18000);
+    CHECK(cpu.get_program_counter() == 8);
+}
+
+void ldr_and_str_use_scaled_offsets() {
+    CPU cpu;
+    Memory memory(32);
+    cpu.write_register(1, 8);
+    cpu.write_register(0, 0x0123456789ABCDEFull);
+    memory.write_u64(16, 0);
+    memory.write_u32(0, 0xF9000420u); // STR X0, [X1, #8]
+    memory.write_u32(4, 0xF9400422u); // LDR X2, [X1, #8]
+
+    cpu.step(memory);
+    cpu.step(memory);
+
+    CHECK(memory.read_u64(16) == 0x0123456789ABCDEFull);
+    CHECK(cpu.read_register(2) == 0x0123456789ABCDEFull);
+    CHECK(cpu.get_program_counter() == 8);
+}
+
+void ldr_and_str_support_sp_base() {
+    CPU cpu;
+    Memory memory(24);
+    cpu.set_stack_pointer(8);
+    cpu.write_register(0, 0xAABBCCDDEEFF0011ull);
+    memory.write_u32(0, 0xF90007FFu); // STR XZR, [SP, #0x?] (zero store)
+    memory.write_u32(4, 0xF94007E1u); // LDR X1, [SP, #0x?]
+    memory.write_u64(16, 0xFFFFFFFFFFFFFFFFull);
+
+    cpu.step(memory);
+    cpu.step(memory);
+
+    CHECK(memory.read_u64(8) == 0);
+    CHECK(cpu.read_register(1) == 0);
+}
+
+void invalid_load_leaves_state_unchanged() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.write_register(0, 0x1234);
+    cpu.write_register(1, 8);
+    memory.write_u32(0, 0xF9400420u); // LDR X0, [X1, #8] (out of bounds)
+
+    CHECK_OUT_OF_RANGE(cpu.step(memory));
+    CHECK(cpu.read_register(0) == 0x1234);
+    CHECK(cpu.get_program_counter() == 0);
+}
+
+void invalid_store_leaves_memory_and_pc_unchanged() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.write_register(0, 0x1234);
+    cpu.write_register(1, 8);
+    memory.write_u32(0, 0xF9000420u); // STR X0, [X1, #8] (out of bounds)
+
+    CHECK_OUT_OF_RANGE(cpu.step(memory));
+    CHECK(cpu.get_program_counter() == 0);
+    CHECK(memory.read_u32(0) == 0xF9000420u);
+}
+
 void branch_changes_pc_relative_to_instruction() {
     CPU cpu;
     Memory memory(12);
@@ -262,6 +407,17 @@ int main() {
     add_immediate_writes_result();
     add_immediate_supports_shifted_immediate();
     add_immediate_uses_stack_pointer_for_register_31();
+    movn_inverts_shifted_immediate();
+    movk_preserves_unselected_halfwords();
+    movn_and_movk_discard_register_31_writes();
+    orr_supports_shifted_register();
+    orr_supports_lsr_and_asr();
+    orr_rejects_reserved_shift_type();
+    sub_immediate_supports_shift_and_sp();
+    ldr_and_str_use_scaled_offsets();
+    ldr_and_str_support_sp_base();
+    invalid_load_leaves_state_unchanged();
+    invalid_store_leaves_memory_and_pc_unchanged();
     branch_changes_pc_relative_to_instruction();
     branch_supports_negative_offset();
     unsupported_instruction_fails_explicitly();

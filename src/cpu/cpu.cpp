@@ -12,8 +12,16 @@
 namespace {
 constexpr std::uint32_t kMovzMask = 0xFF800000u;
 constexpr std::uint32_t kMovz64 = 0xD2800000u;
+constexpr std::uint32_t kMovn64 = 0x92800000u;
+constexpr std::uint32_t kMovk64 = 0xF2800000u;
 constexpr std::uint32_t kAddImmediateMask = 0xFF800000u;
 constexpr std::uint32_t kAddImmediate64 = 0x91000000u;
+constexpr std::uint32_t kSubImmediate64 = 0xD1000000u;
+constexpr std::uint32_t kLogicalRegisterMask = 0xFF200000u;
+constexpr std::uint32_t kOrr64 = 0xAA000000u;
+constexpr std::uint32_t kLoadStoreUnsignedMask = 0xFFC00000u;
+constexpr std::uint32_t kLdr64 = 0xF9400000u;
+constexpr std::uint32_t kStr64 = 0xF9000000u;
 constexpr std::uint32_t kBranchMask = 0xFC000000u;
 constexpr std::uint32_t kBranch = 0x14000000u;
 
@@ -35,10 +43,31 @@ std::uint64_t read_add_operand(const CPU& cpu, std::uint32_t register_index) {
                : cpu.read_register(register_index);
 }
 
+std::uint64_t read_zero_register_operand(const CPU& cpu,
+                                         std::uint32_t register_index) {
+    return register_index == CPU::kRegisterCount
+               ? 0
+               : cpu.read_register(register_index);
+}
+
+std::uint64_t read_stack_pointer_operand(const CPU& cpu,
+                                         std::uint32_t register_index) {
+    return register_index == CPU::kRegisterCount
+               ? cpu.get_stack_pointer()
+               : cpu.read_register(register_index);
+}
+
 void write_add_result(CPU& cpu, std::uint32_t register_index, std::uint64_t value) {
     if (register_index == CPU::kRegisterCount) {
         cpu.set_stack_pointer(value);
     } else {
+        cpu.write_register(register_index, value);
+    }
+}
+
+void write_zero_register_result(CPU& cpu, std::uint32_t register_index,
+                                std::uint64_t value) {
+    if (register_index != CPU::kRegisterCount) {
         cpu.write_register(register_index, value);
     }
 }
@@ -58,6 +87,20 @@ std::string hex_word(std::uint32_t word) {
 }
 
 std::string decode_disassembly(std::uint32_t instruction) {
+    if ((instruction & kMovzMask) == kMovn64
+        || (instruction & kMovzMask) == kMovk64) {
+        const auto destination = instruction & 0x1Fu;
+        const auto halfword = (instruction >> 21u) & 0x3u;
+        const auto immediate = (instruction >> 5u) & 0xFFFFu;
+        const bool keep = (instruction & kMovzMask) == kMovk64;
+        std::ostringstream stream;
+        stream << (keep ? "MOVK " : "MOVN ")
+               << register_name(destination, false) << ", #" << immediate;
+        if (halfword != 0) {
+            stream << ", LSL #" << (halfword * 16u);
+        }
+        return stream.str();
+    }
     if ((instruction & kMovzMask) == kMovz64) {
         const auto destination = instruction & 0x1Fu;
         const auto halfword = (instruction >> 21u) & 0x3u;
@@ -70,6 +113,34 @@ std::string decode_disassembly(std::uint32_t instruction) {
         }
         return stream.str();
     }
+    if ((instruction & kLogicalRegisterMask) == kOrr64) {
+        const auto destination = instruction & 0x1Fu;
+        const auto source = (instruction >> 5u) & 0x1Fu;
+        const auto shifted = (instruction >> 16u) & 0x1Fu;
+        const auto shift_type = (instruction >> 22u) & 0x3u;
+        const auto amount = (instruction >> 10u) & 0x3Fu;
+        static constexpr const char* names[] = {"LSL", "LSR", "ASR"};
+        std::ostringstream stream;
+        stream << "ORR " << register_name(destination, false) << ", "
+               << register_name(source, false) << ", "
+               << register_name(shifted, false);
+        if (amount != 0 || shift_type != 0) {
+            stream << ", " << names[shift_type] << " #" << amount;
+        }
+        return stream.str();
+    }
+    if ((instruction & kLoadStoreUnsignedMask) == kLdr64
+        || (instruction & kLoadStoreUnsignedMask) == kStr64) {
+        const auto target = instruction & 0x1Fu;
+        const auto base = (instruction >> 5u) & 0x1Fu;
+        const auto offset = (instruction >> 10u) & 0xFFFu;
+        std::ostringstream stream;
+        stream << (((instruction & kLoadStoreUnsignedMask) == kLdr64)
+                       ? "LDR " : "STR ")
+               << register_name(target, false) << ", ["
+               << register_name(base, true) << ", #" << (offset * 8u) << "]";
+        return stream.str();
+    }
     if ((instruction & kAddImmediateMask) == kAddImmediate64) {
         const auto destination = instruction & 0x1Fu;
         const auto source = (instruction >> 5u) & 0x1Fu;
@@ -77,6 +148,19 @@ std::string decode_disassembly(std::uint32_t instruction) {
         const auto immediate = (instruction >> 10u) & 0xFFFu;
         std::ostringstream stream;
         stream << "ADD " << register_name(destination, true) << ", "
+               << register_name(source, true) << ", #" << immediate;
+        if (shift != 0) {
+            stream << ", LSL #12";
+        }
+        return stream.str();
+    }
+    if ((instruction & kAddImmediateMask) == kSubImmediate64) {
+        const auto destination = instruction & 0x1Fu;
+        const auto source = (instruction >> 5u) & 0x1Fu;
+        const auto shift = (instruction >> 22u) & 0x1u;
+        const auto immediate = (instruction >> 10u) & 0xFFFu;
+        std::ostringstream stream;
+        stream << "SUB " << register_name(destination, true) << ", "
                << register_name(source, true) << ", #" << immediate;
         if (shift != 0) {
             stream << ", LSL #12";
@@ -156,12 +240,23 @@ void CPU::step(Memory& memory) {
         }
     };
 
-    if ((instruction & kMovzMask) == kMovz64) {
+    if ((instruction & kMovzMask) == kMovn64
+        || (instruction & kMovzMask) == kMovk64
+        || (instruction & kMovzMask) == kMovz64) {
         const std::uint32_t destination = instruction & 0x1Fu;
         const std::uint32_t halfword = (instruction >> 21u) & 0x3u;
         const std::uint64_t immediate = (instruction >> 5u) & 0xFFFFu;
-        if (destination != CPU::kRegisterCount) {
-            write_register(destination, immediate << (halfword * 16u));
+        const std::uint64_t mask = std::uint64_t{0xFFFF} << (halfword * 16u);
+        const std::uint64_t shifted = immediate << (halfword * 16u);
+        if ((instruction & kMovzMask) == kMovn64) {
+            write_zero_register_result(*this, destination, ~shifted);
+        } else if ((instruction & kMovzMask) == kMovk64) {
+            if (destination != CPU::kRegisterCount) {
+                write_register(destination,
+                              (read_register(destination) & ~mask) | shifted);
+            }
+        } else {
+            write_zero_register_result(*this, destination, shifted);
         }
         program_counter_ = instruction_address + 4u;
         emit_trace();
@@ -179,6 +274,72 @@ void CPU::step(Memory& memory) {
         const std::uint64_t shifted_immediate = immediate << (shift * 12u);
         write_add_result(*this, destination,
                          read_add_operand(*this, source) + shifted_immediate);
+        program_counter_ = instruction_address + 4u;
+        emit_trace();
+        return;
+    }
+
+    if ((instruction & kAddImmediateMask) == kSubImmediate64) {
+        const std::uint32_t destination = instruction & 0x1Fu;
+        const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t shift = (instruction >> 22u) & 0x1u;
+        const std::uint64_t immediate = (instruction >> 10u) & 0xFFFu;
+        const std::uint64_t shifted_immediate = immediate << (shift * 12u);
+        if (shift > 1u) {
+            throw std::runtime_error("Unsupported SUB (immediate) shift encoding");
+        }
+        write_add_result(*this, destination,
+                         read_add_operand(*this, source) - shifted_immediate);
+        program_counter_ = instruction_address + 4u;
+        emit_trace();
+        return;
+    }
+
+    if ((instruction & kLogicalRegisterMask) == kOrr64) {
+        const std::uint32_t destination = instruction & 0x1Fu;
+        const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t shifted = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t shift_type = (instruction >> 22u) & 0x3u;
+        const std::uint32_t amount = (instruction >> 10u) & 0x3Fu;
+        if (shift_type == 3u || amount >= 64u) {
+            throw std::runtime_error("Unsupported ORR shift encoding");
+        }
+        const std::uint64_t value = read_zero_register_operand(*this, shifted);
+        std::uint64_t shifted_value = value;
+        if (shift_type == 1u) {
+            shifted_value = value >> amount;
+        } else if (shift_type == 2u) {
+            shifted_value = (value & (std::uint64_t{1} << 63u)) == 0
+                                 ? value >> amount
+                                 : ~(~value >> amount);
+        } else if (amount != 0) {
+            shifted_value = value << amount;
+        }
+        write_zero_register_result(
+            *this, destination,
+            read_zero_register_operand(*this, source) | shifted_value);
+        program_counter_ = instruction_address + 4u;
+        emit_trace();
+        return;
+    }
+
+    if ((instruction & kLoadStoreUnsignedMask) == kLdr64
+        || (instruction & kLoadStoreUnsignedMask) == kStr64) {
+        const bool load = (instruction & kLoadStoreUnsignedMask) == kLdr64;
+        const std::uint32_t target = instruction & 0x1Fu;
+        const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
+        const std::uint64_t offset =
+            static_cast<std::uint64_t>((instruction >> 10u) & 0xFFFu) * 8u;
+        const std::uint64_t address =
+            read_stack_pointer_operand(*this, base) + offset;
+        const std::size_t memory_address = pc_as_memory_offset(address);
+        if (load) {
+            const std::uint64_t value = memory.read_u64(memory_address);
+            write_zero_register_result(*this, target, value);
+        } else {
+            const std::uint64_t value = read_zero_register_operand(*this, target);
+            memory.write_u64(memory_address, value);
+        }
         program_counter_ = instruction_address + 4u;
         emit_trace();
         return;

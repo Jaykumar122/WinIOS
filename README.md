@@ -76,14 +76,22 @@ breakpoint engine, GUI, remote debugger, or arbitrary-application debugger.
 ### Implemented AArch64 instructions
 
 - 64-bit `MOVZ` (wide immediate), including all valid halfword shifts.
+- 64-bit `MOVN` and `MOVK` wide-immediate forms, including halfword shifts.
 - 64-bit, non-flag-setting `ADD` (immediate), including the optional 12-bit
   shift and the instruction-specific `XZR`/`SP` register-31 semantics.
+- 64-bit non-flag-setting `SUB` (immediate), including the optional 12-bit
+  shift and SP semantics.
+- 64-bit shifted-register `ORR` with LSL, LSR, and ASR.
+- 64-bit unsigned-immediate `LDR` and `STR`, with scaled offsets and SP base
+  addressing.
 - `B` (unconditional immediate), with signed 26-bit word offsets relative to
   the branch instruction address.
 
-Instruction words that are not in this subset, including unsupported
-encodings, throw an explicit exception. Fetches that fall outside guest
-memory propagate the memory bounds error rather than being ignored.
+Instruction words and shift encodings that are not in this subset throw an
+explicit exception. LDR reads complete before a destination register changes;
+STR reads its source before attempting the memory write. Fetches and data
+accesses that fall outside guest memory propagate the memory bounds error
+without silently changing state.
 
 ### Tests (`tests/unit/`)
 

@@ -375,3 +375,30 @@ CTest run covers `memory_tests`, `cpu_tests`, and `debugger_tests`; direct
 debugger, CPU, and memory runs also pass. The default executable output is
 unchanged. The debug mode only exercises the documented subset and does not
 debug arbitrary AArch64 applications.
+
+## 2026-10-28 — Phase 7: expanded instruction coverage
+
+### Work completed
+
+- Added 64-bit `MOVN` and `MOVK` wide-immediate instructions.
+- Added 64-bit shifted-register `ORR` with LSL, LSR, and ASR shift types.
+- Added non-flag-setting 64-bit `SUB` immediate with optional 12-bit shift.
+- Added 64-bit unsigned-immediate `LDR` and `STR` with scaled offsets and
+  SP-based addressing.
+- Preserved tracing and added decoded records for all new instructions.
+- Data loads read guest memory before changing the destination register.
+  Stores read the source register before attempting the guest-memory write;
+  bounds failures propagate and do not advance PC.
+- Extended CPU and debugger tests with documented machine words, register-31
+  behavior, shifted operands, memory results, invalid encodings, boundary
+  failures, PC updates, and expanded trace disassembly.
+
+### Supported subset after Phase 7
+
+`MOVZ`, `MOVN`, `MOVK`, `ADD` immediate, `SUB` immediate, shifted-register
+`ORR`, unsigned-immediate 64-bit `LDR`/`STR`, and unconditional `B`.
+
+These are only the tested forms listed above. The project still has no loader,
+MMU, permissions, condition flags, exception levels, system registers, or
+general AArch64 compatibility, and it does not boot iOS or run iOS
+applications.
