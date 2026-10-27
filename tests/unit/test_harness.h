@@ -66,3 +66,7 @@ inline int summarize(const char* suite) {
 #define CHECK_INVALID_ARGUMENT(expression)                                    \
     test::expect_throw<std::invalid_argument>(                                \
         [&] { (void)(expression); }, #expression, __FILE__, __LINE__)
+
+#define CHECK_RUNTIME_ERROR(expression)                                      \
+    test::expect_throw<std::runtime_error>(                                  \
+        [&] { (void)(expression); }, #expression, __FILE__, __LINE__)

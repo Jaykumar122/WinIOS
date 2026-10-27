@@ -1,9 +1,11 @@
 #include "cpu/cpu.h"
+#include "memory/memory.h"
 #include "test_harness.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 
 namespace {
 
@@ -36,6 +38,13 @@ void reset_clears_program_counter() {
     cpu.reset();
 
     CHECK(cpu.get_program_counter() == 0);
+}
+
+void reset_clears_stack_pointer() {
+    CPU cpu;
+    cpu.set_stack_pointer(0x1234);
+    cpu.reset();
+    CHECK(cpu.get_stack_pointer() == 0);
 }
 
 void register_read_write() {
@@ -99,18 +108,121 @@ void demo_preserves_expected_result() {
     CHECK(cpu.get_program_counter() == 0);
 }
 
+void movz_writes_immediate() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0xD2800A21u); // MOVZ X1, #0x51 (Arm ARM encoding)
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(1) == 0x51);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void movz_supports_halfword_shift() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0xD2A24682u); // MOVZ X2, #0x1234, LSL #16
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(2) == 0x12340000ull);
+}
+
+void add_immediate_writes_result() {
+    CPU cpu;
+    Memory memory(4);
+    cpu.write_register(3, 10);
+    memory.write_u32(0, 0x91002860u); // ADD X0, X3, #10
+
+    cpu.step(memory);
+
+    CHECK(cpu.read_register(0) == 20);
+    CHECK(cpu.get_program_counter() == 4);
+}
+
+void add_immediate_uses_stack_pointer_for_register_31() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.set_stack_pointer(100);
+    memory.write_u32(0, 0x9100281Fu); // ADD SP, X0, #10
+    memory.write_u32(4, 0x91002BE1u); // ADD X1, SP, #10
+
+    cpu.step(memory);
+    cpu.step(memory);
+
+    CHECK(cpu.get_stack_pointer() == 10);
+    CHECK(cpu.read_register(1) == 20);
+}
+
+void branch_changes_pc_relative_to_instruction() {
+    CPU cpu;
+    Memory memory(12);
+    memory.write_u32(0, 0x14000002u); // B +8
+
+    cpu.step(memory);
+
+    CHECK(cpu.get_program_counter() == 8);
+}
+
+void branch_supports_negative_offset() {
+    CPU cpu;
+    Memory memory(8);
+    cpu.set_program_counter(4);
+    memory.write_u32(4, 0x17FFFFFFu); // B -4
+
+    cpu.step(memory);
+
+    CHECK(cpu.get_program_counter() == 0);
+}
+
+void unsupported_instruction_fails_explicitly() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0);
+
+    CHECK_RUNTIME_ERROR(cpu.step(memory));
+}
+
+void instruction_fetch_beyond_memory_fails() {
+    CPU cpu;
+    Memory memory(4);
+    cpu.set_program_counter(4);
+
+    CHECK_OUT_OF_RANGE(cpu.step(memory));
+}
+
+void execution_limit_stops_self_branch() {
+    CPU cpu;
+    Memory memory(4);
+    memory.write_u32(0, 0x14000000u); // B . (self branch)
+
+    CHECK(cpu.run(memory, 5) == 5);
+    CHECK(cpu.get_program_counter() == 0);
+}
+
 } // namespace
 
 int main() {
     constructor_starts_zeroed();
     reset_clears_all_registers();
     reset_clears_program_counter();
+    reset_clears_stack_pointer();
     register_read_write();
     register_30_is_valid();
     register_31_is_rejected();
     huge_register_index_is_rejected();
     program_counter_read_write();
     demo_preserves_expected_result();
+    movz_writes_immediate();
+    movz_supports_halfword_shift();
+    add_immediate_writes_result();
+    add_immediate_uses_stack_pointer_for_register_31();
+    branch_changes_pc_relative_to_instruction();
+    branch_supports_negative_offset();
+    unsupported_instruction_fails_explicitly();
+    instruction_fetch_beyond_memory_fails();
+    execution_limit_stops_self_branch();
 
     return test::summarize("cpu_tests");
 }

@@ -5,11 +5,9 @@ experimental foundation, not a working iOS emulator.
 
 ## Status
 
-The project now has a bounds-checked guest-memory model, a checked AArch64
-general-purpose register file with reset support, and CTest-registered unit
-tests. It still does **not** fetch, decode, or execute ARM64 instructions, and
-it cannot boot iOS or run iOS apps. The `X2 = 30` output remains a host-side
-demonstration of register state.
+The project now has a bounds-checked guest-memory model and a small,
+CTest-covered AArch64 interpreter. It still cannot boot iOS or run iOS apps.
+The `X2 = 30` output remains a host-side demonstration of register state.
 
 See `docs/progress.md` for the recorded build, test, and run output.
 
@@ -32,12 +30,30 @@ See `docs/progress.md` for the recorded build, test, and run output.
 ### CPU (`src/cpu/`)
 
 - 31 general-purpose registers (`X0`..`X30`) and a 64-bit program counter.
-- `reset()` clears every register and the program counter.
+- A separate 64-bit stack pointer is used where an instruction encoding names
+  register 31 as `SP`.
+- `reset()` clears every register, the stack pointer, and the program counter.
 - `read_register(index)` / `write_register(index, value)` are checked; indices
   outside `0..30` throw `std::out_of_range`.
 - `get_program_counter()` / `set_program_counter()`.
-- `run_demo()` is explicitly a register-state demonstration, not an
-  instruction interpreter.
+- `step(Memory&)` fetches one little-endian 32-bit instruction at the current
+  PC and executes the supported subset below. The initial and reset PC is zero;
+  ordinary instructions advance it by four bytes.
+- `run(Memory&, max_instructions)` executes at most the requested number of
+  instructions and returns the count executed, so branch-to-self code is
+  bounded.
+
+### Implemented AArch64 instructions
+
+- 64-bit `MOVZ` (wide immediate), including all valid halfword shifts.
+- 64-bit, non-flag-setting `ADD` (immediate), including the optional 12-bit
+  shift and the instruction-specific `XZR`/`SP` register-31 semantics.
+- `B` (unconditional immediate), with signed 26-bit word offsets relative to
+  the branch instruction address.
+
+Instruction words that are not in this subset, including unsupported
+encodings, throw an explicit exception. Fetches that fall outside guest
+memory propagate the memory bounds error rather than being ignored.
 
 ### Tests (`tests/unit/`)
 
@@ -45,10 +61,11 @@ A small custom harness (`test_harness.h`) reports failures with file, line,
 and expression, and exits nonzero on failure. It does not depend on
 GoogleTest, and it does not use `assert()`, so `NDEBUG` cannot disable checks.
 
-## Not implemented yet
+## Not implemented
 
-- ARM64 instruction decoding and execution (`MOVZ`, `ADD`, `B`, ...).
 - Program loader, memory bus connecting `CPU` to `Memory`, MMU/permissions.
+- Other AArch64 instructions, condition flags, exception levels, and system
+  registers.
 - Debugger, tracing, CLI controls, or GUI.
 - Any iOS firmware, IPSW, or device emulation. Genuine iOS 26 boot is an open
   feasibility question, not a supported feature.

@@ -279,3 +279,63 @@ Phase 6: decode and execute a small documented AArch64 subset (`MOVZ`, `ADD`,
 `B`) over a 32-bit instruction word, with known-good encodings, an execution
 step limit, explicit unsupported-instruction errors, and unit tests for
 register results and program-counter updates.
+
+## 2026-10-28 — Phase 5: initial AArch64 instruction interpreter
+
+### Work completed
+
+- Connected `CPU::step(Memory&)` to the existing bounds-checked,
+  little-endian `Memory` implementation. It fetches exactly one 32-bit word
+  at the current PC; fetch errors are propagated.
+- Added explicit reset state for the 64-bit PC and stack pointer. The initial
+  and reset PC is zero, ordinary instructions advance PC by four, and
+  branches set PC relative to the branch instruction address.
+- Implemented and tested only these instruction forms:
+  - 64-bit `MOVZ` with immediate and halfword shift.
+  - 64-bit, non-flag-setting `ADD` immediate with optional shift and the
+    instruction-specific register-31 `SP` behavior.
+  - `B` with signed 26-bit, word-scaled forward and backward offsets.
+- Added `CPU::run(Memory&, max_instructions)`, which returns the number of
+  executed instructions and bounds branch-to-self loops.
+- Unsupported instruction encodings throw `std::runtime_error`; no unknown
+  instruction is treated as a no-op.
+- Extended CPU tests with canonical instruction words documented at each test
+  site. The suite covers register results, SP behavior, PC updates, both
+  branch directions, unsupported instructions, fetch bounds, and execution
+  limits.
+
+### Validation
+
+Configure and build:
+
+```powershell
+cmake -S WinIOS -B WinIOS\build -G "Visual Studio 18 2026" -A x64
+cmake --build WinIOS\build --config Debug
+```
+
+Result: completed successfully with no warnings under `/W4 /permissive-`.
+
+Tests:
+
+```powershell
+ctest --test-dir WinIOS\build -C Debug --output-on-failure
+```
+
+Result: `2/2` CTest tests passed. The direct CPU suite reported
+`cpu_tests: all 95 checks passed`; the existing memory suite remained green.
+
+Application:
+
+```powershell
+.\WinIOS\build\Debug\win_ios.exe
+```
+
+Result: exit code `0`; the existing demo output remained unchanged.
+
+### Known limitations
+
+This is an instruction-interpreter milestone, not a system emulator. There is
+no loader, memory bus, MMU, permissions model, exception handling, flags,
+other AArch64 instructions, firmware, or iOS support. It must not be used to
+claim that WinIOS boots iOS, executes arbitrary ARM64 code, or runs iOS
+applications.

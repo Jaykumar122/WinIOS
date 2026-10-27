@@ -2,8 +2,10 @@
 #include <cstddef>
 #include <cstdint>
 
-// Host-side model of the AArch64 general-purpose register file and program
-// counter. It does not fetch, decode, or execute instructions.
+class Memory;
+
+// Small, deliberately bounded model of the AArch64 general-purpose register
+// file, stack pointer, and program counter.
 class CPU {
 public:
     // AArch64 exposes X0..X30 as the general-purpose registers. X31 is not a
@@ -23,11 +25,23 @@ public:
     std::uint64_t get_program_counter() const noexcept { return program_counter_; }
     void set_program_counter(std::uint64_t address) noexcept { program_counter_ = address; }
 
-    // Demonstration only: performs host arithmetic on the register file and
-    // prints the result. It does not decode or execute ARM64 instructions.
+    std::uint64_t get_stack_pointer() const noexcept { return stack_pointer_; }
+    void set_stack_pointer(std::uint64_t value) noexcept { stack_pointer_ = value; }
+
+    // Fetches and executes one 32-bit instruction at the current PC.
+    // Unsupported encodings throw std::runtime_error and memory errors from
+    // the fetch are propagated.
+    void step(Memory& memory);
+
+    // Executes at most max_instructions instructions and returns the count
+    // actually executed. A zero limit performs no fetch.
+    std::size_t run(Memory& memory, std::size_t max_instructions);
+
+    // Demonstration only: performs host arithmetic on the register file.
     void run_demo();
 
 private:
     std::uint64_t registers_[kRegisterCount]{};
+    std::uint64_t stack_pointer_{};
     std::uint64_t program_counter_{};
 };
