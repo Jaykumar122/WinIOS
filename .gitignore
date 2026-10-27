@@ -23,3 +23,14 @@ CMakeUserPresets.json
 # OS noise
 Thumbs.db
 desktop.ini
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+secrets.json
