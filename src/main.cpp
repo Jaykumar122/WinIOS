@@ -1,14 +1,19 @@
 #include "cpu/cpu.h"
 #include "debugger/debugger.h"
+#include "inferno/inferno_launcher.h"
 #include "loader/binary_loader.h"
 #include "runtime/guest_runtime.h"
 
 #include <charconv>
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 std::uint64_t parse_integer(std::string_view text, const char* option) {
@@ -28,7 +33,175 @@ void print_usage() {
               << "  win_ios.exe\n"
               << "  win_ios.exe --debug\n"
               << "  win_ios.exe --run-binary <path> --memory-size <bytes>"
-                 " --entry <address> --max-instructions <count> [--trace]\n";
+                 " --entry <address> --max-instructions <count> [--trace]\n"
+              << "  win_ios.exe --inferno info|version|machines|t8030"
+                 " [--inferno-exe <path>] [--inferno-runtime <dir>]\n"
+                 "                [--inferno-workdir <dir>] [--inferno-timeout <ms>]\n";
+}
+
+std::filesystem::path path_from_utf8(const std::string& text) {
+    return std::filesystem::path(
+        std::u8string(reinterpret_cast<const char8_t*>(text.data()), text.size()));
+}
+
+std::string path_to_display(const std::filesystem::path& path) {
+    if (path.empty()) {
+        return "(not configured)";
+    }
+    const std::u8string text = path.u8string();
+    return std::string(reinterpret_cast<const char*>(text.data()), text.size());
+}
+
+void print_launch_result(const InfernoLaunchResult& result) {
+    if (!result.standard_output.empty()) {
+        std::cout << "--- stdout ---\n" << result.standard_output;
+        if (result.standard_output.back() != '\n') {
+            std::cout << '\n';
+        }
+    }
+    if (!result.standard_error.empty()) {
+        std::cout << "--- stderr ---\n" << result.standard_error;
+        if (result.standard_error.back() != '\n') {
+            std::cout << '\n';
+        }
+    }
+    if (result.output_truncated) {
+        std::cout << "(captured output was truncated at the configured limit)\n";
+    }
+    if (result.launched) {
+        std::cout << "Exit code: " << result.exit_code << '\n';
+    }
+    std::cout << "Result: "
+              << (result.succeeded() ? "success"
+                                     : inferno_launch_failure_name(result.failure))
+              << '\n';
+    if (!result.error_message.empty()) {
+        std::cerr << "Launch error: " << result.error_message << '\n';
+    }
+}
+
+int run_inferno_mode(int argc, char* argv[]) {
+    if (argc < 3) {
+        print_usage();
+        return 2;
+    }
+    const std::string_view action(argv[2]);
+    if (action != "info" && action != "version" && action != "machines"
+        && action != "t8030") {
+        print_usage();
+        return 2;
+    }
+
+    InfernoConfig config;
+    for (int index = 3; index < argc; ++index) {
+        const std::string_view option(argv[index]);
+        if (option == "--inferno-exe") {
+            if (++index >= argc) throw std::invalid_argument("Missing Inferno executable path");
+            config.executable_path = std::filesystem::path(argv[index]);
+        } else if (option == "--inferno-runtime") {
+            if (++index >= argc) throw std::invalid_argument("Missing UCRT64 runtime directory");
+            config.runtime_directory = std::filesystem::path(argv[index]);
+        } else if (option == "--inferno-workdir") {
+            if (++index >= argc) throw std::invalid_argument("Missing working directory");
+            config.working_directory = std::filesystem::path(argv[index]);
+        } else if (option == "--inferno-timeout") {
+            if (++index >= argc) throw std::invalid_argument("Missing Inferno timeout");
+            const std::uint64_t milliseconds = parse_integer(argv[index], "--inferno-timeout");
+            if (milliseconds == 0
+                || milliseconds > static_cast<std::uint64_t>(INT32_MAX)) {
+                throw std::invalid_argument("Invalid Inferno timeout");
+            }
+            config.timeout = std::chrono::milliseconds(milliseconds);
+        } else {
+            print_usage();
+            return 2;
+        }
+    }
+
+    // The executable and runtime directory may also come from read-only
+    // environment variables, so an interactive session does not need to repeat
+    // the long paths. The launcher never writes to the environment.
+    const std::vector<std::string> environment = read_parent_environment();
+    if (config.executable_path.empty()) {
+        const std::string value = find_environment_value(
+            environment, inferno_launcher::kExecutableEnvironmentVariable);
+        if (!value.empty()) {
+            config.executable_path = path_from_utf8(value);
+        }
+    }
+    if (config.runtime_directory.empty()) {
+        const std::string value = find_environment_value(
+            environment, inferno_launcher::kRuntimeEnvironmentVariable);
+        if (!value.empty()) {
+            config.runtime_directory = path_from_utf8(value);
+        }
+    }
+
+    InfernoLauncher launcher(config);
+
+    if (action == "info") {
+        const InfernoConfigValidation validation = launcher.validation();
+        std::cout << "Inferno executable  : " << path_to_display(config.executable_path) << '\n'
+                  << "UCRT64 runtime dir  : " << path_to_display(config.runtime_directory) << '\n'
+                  << "Working directory   : "
+                  << (config.working_directory.empty()
+                          ? std::string("(emulator directory)")
+                          : path_to_display(config.working_directory))
+                  << '\n'
+                  << "Timeout (ms)        : " << config.timeout.count() << '\n'
+                  << "Output limit (bytes): " << config.max_output_bytes
+                  << " per stream\n"
+                  << "Configuration       : "
+                  << (validation.valid() ? std::string("valid")
+                                         : std::string("invalid (")
+                                               + inferno_launch_failure_name(
+                                                     validation.failure)
+                                               + ")")
+                  << '\n';
+        if (!validation.valid()) {
+            std::cerr << "Launch error: " << validation.message << '\n';
+            return 1;
+        }
+        return 0;
+    }
+
+    if (action == "version") {
+        std::cout << "Running: " << path_to_display(config.executable_path)
+                  << " --version\n";
+        const InfernoLaunchResult result = launcher.query_version();
+        print_launch_result(result);
+        if (!result.succeeded()) {
+            return 1;
+        }
+        const bool identified = version_output_identifies_inferno(result.standard_output);
+        std::cout << "Inferno identity: "
+                  << (identified ? "confirmed" : "not recognised") << '\n';
+        return identified ? 0 : 1;
+    }
+
+    if (action == "machines") {
+        std::cout << "Running: " << path_to_display(config.executable_path)
+                  << " -M help\n";
+        const InfernoLaunchResult result = launcher.query_machine_list();
+        print_launch_result(result);
+        if (!result.succeeded()) {
+            return 1;
+        }
+        const bool registered = machine_list_contains(result.standard_output, "t8030");
+        std::cout << "t8030 registered: " << (registered ? "yes" : "no") << '\n';
+        return registered ? 0 : 1;
+    }
+
+    std::cout << "Running: " << path_to_display(config.executable_path)
+              << " -M t8030,help\n";
+    const InfernoLaunchResult result = launcher.query_machine_help("t8030");
+    print_launch_result(result);
+    if (!result.succeeded()) {
+        return 1;
+    }
+    std::cout << "t8030 help reported: " << result.standard_output.size()
+              << " bytes\n";
+    return 0;
 }
 
 int run_binary_mode(int argc, char* argv[]) {
@@ -122,6 +295,9 @@ int main(int argc, char* argv[]) {
     try {
     if (argc > 1 && std::string_view(argv[1]) == "--run-binary") {
         return run_binary_mode(argc, argv);
+    }
+    if (argc > 1 && std::string_view(argv[1]) == "--inferno") {
+        return run_inferno_mode(argc, argv);
     }
     if (argc > 1 && std::string_view(argv[1]) == "--debug") {
         Memory memory(8);
