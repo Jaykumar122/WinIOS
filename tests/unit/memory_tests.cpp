@@ -30,6 +30,17 @@ void byte_round_trip() {
     CHECK(memory.read_u8(2) == 0);
 }
 
+void word16_round_trip() {
+    Memory memory(8);
+
+    memory.write_u16(2, std::uint16_t{0x1234});
+
+    CHECK(memory.read_u16(2) == 0x1234);
+    CHECK(memory.read_u16(0) == 0);
+    CHECK(memory.read_u8(2) == 0x34);
+    CHECK(memory.read_u8(3) == 0x12);
+}
+
 void word32_round_trip() {
     Memory memory(8);
 
@@ -98,6 +109,8 @@ void huge_offset_rejected() {
 void multi_byte_access_crossing_boundary() {
     Memory memory(8);
 
+    CHECK_OUT_OF_RANGE(memory.read_u16(7));
+    CHECK_OUT_OF_RANGE(memory.write_u16(7, 0x1234));
     CHECK_OUT_OF_RANGE(memory.read_u32(6));
     CHECK_OUT_OF_RANGE(memory.write_u32(6, 0x11223344u));
     CHECK_OUT_OF_RANGE(memory.read_u64(1));
@@ -113,6 +126,7 @@ void zero_size_rejected() {
 int main() {
     zero_initialized();
     byte_round_trip();
+    word16_round_trip();
     word32_round_trip();
     word64_round_trip();
     little_endian_layout();
