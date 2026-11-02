@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 namespace {
+constexpr std::size_t kWord16Width = 2;
 constexpr std::size_t kWord32Width = 4;
 constexpr std::size_t kWord64Width = 8;
 constexpr unsigned kBitsPerByte = 8;
@@ -33,6 +34,26 @@ std::uint8_t Memory::read_u8(std::size_t offset) const {
 void Memory::write_u8(std::size_t offset, std::uint8_t value) {
     require_range(offset, 1);
     bytes_[offset] = value;
+}
+
+std::uint16_t Memory::read_u16(std::size_t offset) const {
+    require_range(offset, kWord16Width);
+
+    std::uint16_t value = 0;
+    for (std::size_t i = 0; i < kWord16Width; ++i) {
+        value |= static_cast<std::uint16_t>(bytes_[offset + i])
+                 << static_cast<unsigned>(i * kBitsPerByte);
+    }
+    return value;
+}
+
+void Memory::write_u16(std::size_t offset, std::uint16_t value) {
+    require_range(offset, kWord16Width);
+
+    for (std::size_t i = 0; i < kWord16Width; ++i) {
+        bytes_[offset + i] = static_cast<std::uint8_t>(
+            value >> static_cast<unsigned>(i * kBitsPerByte));
+    }
 }
 
 std::uint32_t Memory::read_u32(std::size_t offset) const {
