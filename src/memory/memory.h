@@ -16,6 +16,9 @@ public:
     std::uint8_t read_u8(std::size_t offset) const;
     void write_u8(std::size_t offset, std::uint8_t value);
 
+    std::uint16_t read_u16(std::size_t offset) const;
+    void write_u16(std::size_t offset, std::uint16_t value);
+
     std::uint32_t read_u32(std::size_t offset) const;
     void write_u32(std::size_t offset, std::uint32_t value);
 
