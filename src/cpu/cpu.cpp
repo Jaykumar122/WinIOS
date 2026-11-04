@@ -1,5 +1,12 @@
 #include "cpu.h"
+#include "cpu/smp_cluster.h"
+#include "cpu/psci.h"
+#include "cpu/debug_exceptions.h"
 #include "memory/memory.h"
+#include "replay/replay_input_router.h"
+#include "sndl/sndl_source_hooks.h"
+#include "trace/trace_manager.h"
+#include "trace/trace_event.h"
 #include <atomic>
 #include <bit>
 #include <cmath>
@@ -17,10 +24,10 @@ namespace {
 // Phase 36: true while executing a guest instruction in architectural mode.
 // In that mode guest address arithmetic wraps modulo 2^64 (as the architecture
 // specifies); otherwise the historical checked-overflow behaviour is kept so
-// that earlier phases observe exactly the errors they always did. The
-// interpreter models one CPU and one flat RAM, so a file-local flag scoped to
-// CPU::step is sufficient.
-bool architectural_address_wrap = false;
+// that earlier phases observe exactly the errors they always did. Phase 43
+// makes the flag thread-local: each parallel worker thread owns one core's
+// execution, and two cores may have different architectural modes.
+thread_local bool architectural_address_wrap = false;
 struct ScopedArchitecturalAddressWrap {
     explicit ScopedArchitecturalAddressWrap(bool enabled)
         : previous(architectural_address_wrap) {
@@ -728,6 +735,16 @@ void write_access_value(MemoryT& memory, std::size_t offset,
     default: memory.write_u64(offset, value); break;
     }
 }
+template <typename MemoryT>
+std::uint64_t read_access_value_untraced(const MemoryT& memory, std::size_t offset,
+                                         std::uint32_t size_field) {
+    switch (size_field) {
+    case 0u: return memory.read_u8_untraced(offset);
+    case 1u: return memory.read_u16_untraced(offset);
+    case 2u: return memory.read_u32_untraced(offset);
+    default: return memory.read_u64_untraced(offset);
+    }
+}
 std::int64_t signed_access_value(std::uint64_t value, std::uint32_t size_field) {
     switch (size_field) {
     case 0u: return static_cast<std::int8_t>(value);
@@ -759,9 +776,13 @@ void require_memory_range(const MemoryT& memory, std::size_t offset,
 class CheckedGuestMemory {
 public:
     CheckedGuestMemory(Memory& memory, const CPU& cpu, bool architectural,
-                       std::uint64_t instruction_address)
+                       std::uint64_t instruction_address,
+                       std::uint32_t instruction = 0,
+                       bool is_atomic = false)
         : memory_(memory), cpu_(cpu), architectural_(architectural),
-          instruction_address_(instruction_address) {}
+          instruction_address_(instruction_address),
+          instruction_(instruction),
+          is_atomic_(is_atomic) {}
 
     std::size_t size() const noexcept { return memory_.size(); }
 
@@ -775,6 +796,18 @@ public:
         return static_cast<std::uint32_t>(read(offset, 4u));
     }
     std::uint64_t read_u64(std::size_t offset) const { return read(offset, 8u); }
+
+    // Untraced reads for internal reservation validity checks (STXR / STXP)
+    std::uint8_t read_u8_untraced(std::size_t offset) const {
+        return static_cast<std::uint8_t>(read(offset, 1u, false));
+    }
+    std::uint16_t read_u16_untraced(std::size_t offset) const {
+        return static_cast<std::uint16_t>(read(offset, 2u, false));
+    }
+    std::uint32_t read_u32_untraced(std::size_t offset) const {
+        return static_cast<std::uint32_t>(read(offset, 4u, false));
+    }
+    std::uint64_t read_u64_untraced(std::size_t offset) const { return read(offset, 8u, false); }
 
     void write_u8(std::size_t offset, std::uint8_t value) { write(offset, 1u, value); }
     void write_u16(std::size_t offset, std::uint16_t value) { write(offset, 2u, value); }
@@ -826,6 +859,40 @@ public:
         fault(address, access, FaultStatus::Alignment, width);
     }
 
+    // Phase 51 Stage 5/6: Hardware Data Watchpoints
+    void check_watchpoint(std::uint64_t address, unsigned width, AccessType access) const {
+        if (!architectural_) {
+            return;
+        }
+        const auto wp_event = cpu_.get_debug_arch().check_data_watchpoint(
+            address, static_cast<std::size_t>(width),
+            (access == AccessType::Write) ? winios::DebugAccessType::Write : winios::DebugAccessType::Read,
+            static_cast<unsigned>(cpu_.get_current_el()),
+            instruction_address_);
+        if (wp_event.has_value()) {
+            winios::DebugExceptionEvent dev;
+            dev.kind = winios::DebugExceptionKind::HardwareWatchpoint;
+            dev.source_el = static_cast<unsigned>(cpu_.get_current_el());
+            dev.instruction_address = instruction_address_;
+            dev.fault_address = address;
+            dev.is_write = (access == AccessType::Write);
+            dev.slot_index = wp_event->slot_index;
+            const unsigned target_el = winios::determine_debug_target_el(
+                dev.source_el, cpu_.get_mdcr_el2(), cpu_.get_mdcr_el3(), cpu_.get_hcr_el2());
+            SynchronousException ex = winios::create_debug_synchronous_exception(dev, target_el);
+            if (cpu_.get_trace_manager() && cpu_.get_trace_manager()->should_trace(winios::trace::TraceEventType::DebugEvent, static_cast<std::uint16_t>(cpu_.get_core_id()))) {
+                winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::IsWatchpoint | winios::trace::TraceEventFlags::IsSynchronous;
+                if (dev.is_write) {
+                    flags |= winios::trace::TraceEventFlags::IsWrite;
+                }
+                const_cast<CPU&>(cpu_).emit_debug_event(
+                    instruction_address_, address, ex.esr(), flags,
+                    static_cast<std::uint16_t>(width), static_cast<std::uint64_t>(dev.slot_index));
+            }
+            throw SynchronousExceptionSignal{ex};
+        }
+    }
+
 private:
     std::uint64_t translate_or_fault(std::uint64_t address, unsigned width, AccessType access) const {
         if (!architectural_) {
@@ -846,11 +913,13 @@ private:
         }
 
         mmu::TranslationFault mmu_fault;
+        bool is_device = false;
         auto pa_opt = const_cast<CPU&>(cpu_).get_mmu().translate(
             memory_, address,
             (access == AccessType::Write) ? mmu::AccessKind::Write : mmu::AccessKind::Read,
             static_cast<unsigned>(cpu_.get_current_el()),
-            &mmu_fault);
+            &mmu_fault,
+            &is_device);
         if (!pa_opt.has_value()) {
             if (mmu_fault.is_stage2) {
                 SynchronousException e = make_data_abort(
@@ -864,7 +933,13 @@ private:
             fault(address, access, static_cast<FaultStatus>(mmu_fault.fsc()), width);
         }
 
+        if (is_device && width > 1u && (address & (std::uint64_t{width} - 1u)) != 0u) {
+            fault(address, access, FaultStatus::Alignment, width);
+        }
         const std::uint64_t pa = pa_opt.value();
+        if (cpu_.get_gic().is_mmio_address(pa)) {
+            return pa;
+        }
         const std::uint64_t size = static_cast<std::uint64_t>(memory_.size());
         if (pa > size || static_cast<std::uint64_t>(width) > size - pa) {
             fault(address, access, FaultStatus::SynchronousExternal, width);
@@ -872,22 +947,55 @@ private:
         return pa;
     }
 
-    std::uint64_t read(std::size_t offset, unsigned width) const {
+    std::uint64_t read(std::size_t offset, unsigned width, bool emit_trace_event = true) const {
         const std::uint64_t pa = translate_or_fault(offset, width, AccessType::Read);
-        switch (width) {
-        case 1u: return memory_.read_u8(static_cast<std::size_t>(pa));
-        case 2u: return memory_.read_u16(static_cast<std::size_t>(pa));
-        case 4u: return memory_.read_u32(static_cast<std::size_t>(pa));
-        default: return memory_.read_u64(static_cast<std::size_t>(pa));
+        check_watchpoint(offset, width, AccessType::Read);
+        const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_MEM_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
+        const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_L1D_CACHE_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
+        std::uint64_t value = 0;
+        if (cpu_.get_gic().is_mmio_address(pa)) {
+            if (winios::replay::is_replay_active()) {
+                if (!winios::replay::hook_replay_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa, width, value)) {
+                    value = cpu_.get_gic().read_mmio(pa, width);
+                }
+            } else {
+                value = cpu_.get_gic().read_mmio(pa, width);
+                winios::sndl::hook_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa, value, width, 0);
+            }
+        } else {
+            switch (width) {
+            case 1u: value = memory_.read_u8(static_cast<std::size_t>(pa)); break;
+            case 2u: value = memory_.read_u16(static_cast<std::size_t>(pa)); break;
+            case 4u: value = memory_.read_u32(static_cast<std::size_t>(pa)); break;
+            default: value = memory_.read_u64(static_cast<std::size_t>(pa)); break;
+            }
         }
+        if (emit_trace_event && cpu_.get_trace_manager()) {
+            const_cast<CPU&>(cpu_).emit_memory_read_trace(
+                instruction_address_, offset, pa, value,
+                static_cast<std::uint16_t>(width), is_atomic_, instruction_);
+        }
+        return value;
     }
     void write(std::size_t offset, unsigned width, std::uint64_t value) {
         const std::uint64_t pa = translate_or_fault(offset, width, AccessType::Write);
-        switch (width) {
-        case 1u: memory_.write_u8(static_cast<std::size_t>(pa), static_cast<std::uint8_t>(value)); break;
-        case 2u: memory_.write_u16(static_cast<std::size_t>(pa), static_cast<std::uint16_t>(value)); break;
-        case 4u: memory_.write_u32(static_cast<std::size_t>(pa), static_cast<std::uint32_t>(value)); break;
-        default: memory_.write_u64(static_cast<std::size_t>(pa), value); break;
+        check_watchpoint(offset, width, AccessType::Write);
+        const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_MEM_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
+        const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_L1D_CACHE_WRITE, static_cast<unsigned>(cpu_.get_current_el()));
+        if (cpu_.get_gic().is_mmio_address(pa)) {
+            const_cast<CPU&>(cpu_).get_gic().write_mmio(pa, value, width);
+        } else {
+            switch (width) {
+            case 1u: memory_.write_u8(static_cast<std::size_t>(pa), static_cast<std::uint8_t>(value)); break;
+            case 2u: memory_.write_u16(static_cast<std::size_t>(pa), static_cast<std::uint16_t>(value)); break;
+            case 4u: memory_.write_u32(static_cast<std::size_t>(pa), static_cast<std::uint32_t>(value)); break;
+            default: memory_.write_u64(static_cast<std::size_t>(pa), value); break;
+            }
+        }
+        if (cpu_.get_trace_manager()) {
+            const_cast<CPU&>(cpu_).emit_memory_write_trace(
+                instruction_address_, offset, pa, value,
+                static_cast<std::uint16_t>(width), is_atomic_, instruction_);
         }
     }
     [[noreturn]] void fault(std::uint64_t address, AccessType access,
@@ -910,6 +1018,9 @@ private:
         if (address >= kPhysicalAddressLimit) {
             fault(address, access, FaultStatus::AddressSizeLevel0, width);
         }
+        if (cpu_.get_gic().is_mmio_address(address)) {
+            return;
+        }
         const std::uint64_t size = static_cast<std::uint64_t>(memory_.size());
         if (address > size || static_cast<std::uint64_t>(width) > size - address) {
             fault(address, access, FaultStatus::SynchronousExternal, width);
@@ -920,6 +1031,8 @@ private:
     const CPU& cpu_;
     bool architectural_;
     std::uint64_t instruction_address_;
+    std::uint32_t instruction_{0};
+    bool is_atomic_{false};
 };
 std::string access_register_name(std::uint32_t index, std::uint32_t size_field) {
     if (size_field >= 3u) {
@@ -1641,11 +1754,23 @@ std::string fp_reg(char prefix, std::uint32_t index) {
 //   bits[7:5]   = op2 (3 bits)
 // We pack into a 16-bit key: (o0<<14)|(op1<<11)|(CRn<<7)|(CRm<<3)|op2
 inline std::uint16_t sysreg_key(std::uint32_t instruction) noexcept {
-    const std::uint32_t o0   = (instruction >> 20u) & 0x1u;
     const std::uint32_t op1  = (instruction >> 16u) & 0x7u;
     const std::uint32_t crn  = (instruction >> 12u) & 0xFu;
     const std::uint32_t crm  = (instruction >>  8u) & 0xFu;
     const std::uint32_t op2  = (instruction >>  5u) & 0x7u;
+
+    // In ARMv8: bit 20 is always 1 for sysregs; bit 19 is op0[0] (0 for op0=2, 1 for op0=3).
+    // Debug registers use op0=2 (bit 19 == 0, op1 == 0, crn == 0).
+    // For compatibility with legacy test harnesses that omitted bit 19 for op0=3 sysregs,
+    // only treat as op0=2 (o0 = 0) if the register is in the debug encoding space.
+    std::uint32_t o0 = (instruction >> 19u) & 0x1u;
+    if (o0 == 0u) {
+        const bool is_debug_space = (op1 == 0u && crn == 0u && (op2 == 2u || (op2 >= 4u && op2 <= 7u)));
+        if (!is_debug_space) {
+            o0 = 1u; // legacy test encoding for op0=3 register
+        }
+    }
+
     return static_cast<std::uint16_t>(
         (o0 << 14u) | (op1 << 11u) | (crn << 7u) | (crm << 3u) | op2);
 }
@@ -1722,6 +1847,143 @@ constexpr std::uint16_t kSysregCNTV_TVAL   = (1u<<14)|(3u<<11)|(14u<<7)|(3u<<3)|
 constexpr std::uint16_t kSysregCNTV_CTL    = (1u<<14)|(3u<<11)|(14u<<7)|(3u<<3)|1u; // 0x5719
 constexpr std::uint16_t kSysregCNTV_CVAL   = (1u<<14)|(3u<<11)|(14u<<7)|(3u<<3)|2u; // 0x571A
 
+// Phase 42: Multiprocessor and SGI system registers
+constexpr std::uint16_t kSysregMPIDR_EL1      = (1u<<14)|(0u<<11)|(0u<<7)|(0u<<3)|5u;   // 0x4005
+constexpr std::uint16_t kSysregICC_SGI1R_EL1  = (1u<<14)|(0u<<11)|(12u<<7)|(11u<<3)|5u; // 0x465D
+
+// Phase 41: GICv3 system registers
+constexpr std::uint16_t kSysregICC_PMR_EL1    = (1u<<14)|(0u<<11)|(4u<<7)|(6u<<3)|0u;  // 0x4230
+constexpr std::uint16_t kSysregICC_IAR0_EL1   = (1u<<14)|(0u<<11)|(12u<<7)|(8u<<3)|0u; // 0x4640
+constexpr std::uint16_t kSysregICC_EOIR0_EL1  = (1u<<14)|(0u<<11)|(12u<<7)|(8u<<3)|1u; // 0x4641
+constexpr std::uint16_t kSysregICC_HPPIR0_EL1 = (1u<<14)|(0u<<11)|(12u<<7)|(8u<<3)|2u; // 0x4642
+constexpr std::uint16_t kSysregICC_BPR0_EL1   = (1u<<14)|(0u<<11)|(12u<<7)|(8u<<3)|3u; // 0x4643
+constexpr std::uint16_t kSysregICC_IAR1_EL1   = (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|0u;// 0x4660
+constexpr std::uint16_t kSysregICC_EOIR1_EL1  = (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|1u;// 0x4661
+constexpr std::uint16_t kSysregICC_HPPIR1_EL1 = (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|2u;// 0x4662
+constexpr std::uint16_t kSysregICC_BPR1_EL1   = (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|3u;// 0x4663
+constexpr std::uint16_t kSysregICC_SRE_EL1    = (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|5u;// 0x4665
+constexpr std::uint16_t kSysregICC_IGRPEN0_EL1= (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|6u;// 0x4666
+constexpr std::uint16_t kSysregICC_IGRPEN1_EL1= (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|7u;// 0x4667
+constexpr std::uint16_t kSysregICC_DIR_EL1   = (1u<<14)|(0u<<11)|(12u<<7)|(11u<<3)|1u; // 0x4659
+constexpr std::uint16_t kSysregICC_RPR_EL1   = (1u<<14)|(0u<<11)|(12u<<7)|(11u<<3)|3u; // 0x465B
+constexpr std::uint16_t kSysregICC_CTLR_EL1  = (1u<<14)|(0u<<11)|(12u<<7)|(12u<<3)|4u; // 0x4664
+constexpr std::uint16_t kSysregICC_SRE_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(9u<<3)|5u; // 0x664D
+
+constexpr std::uint16_t kSysregICH_HCR_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(11u<<3)|0u;// 0x6658
+constexpr std::uint16_t kSysregICH_VTR_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(11u<<3)|1u;// 0x6659
+constexpr std::uint16_t kSysregICH_MISR_EL2   = (1u<<14)|(4u<<11)|(12u<<7)|(11u<<3)|2u;// 0x665A
+constexpr std::uint16_t kSysregICH_EISR_EL2   = (1u<<14)|(4u<<11)|(12u<<7)|(11u<<3)|3u;// 0x665B
+constexpr std::uint16_t kSysregICH_ELRSR_EL2  = (1u<<14)|(4u<<11)|(12u<<7)|(11u<<3)|5u;// 0x665D
+constexpr std::uint16_t kSysregICH_VMCR_EL2   = (1u<<14)|(4u<<11)|(12u<<7)|(11u<<3)|7u;// 0x665F
+constexpr std::uint16_t kSysregICH_LR0_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(12u<<3)|0u;// 0x6660
+constexpr std::uint16_t kSysregICH_LR1_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(12u<<3)|1u;// 0x6661
+constexpr std::uint16_t kSysregICH_LR2_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(12u<<3)|2u;// 0x6662
+constexpr std::uint16_t kSysregICH_LR3_EL2    = (1u<<14)|(4u<<11)|(12u<<7)|(12u<<3)|3u;// 0x6663
+
+// Phase 47: EL3 system registers
+constexpr std::uint16_t kSysregSCR_EL3      = (1u<<14)|(6u<<11)|(1u<<7)|(1u<<3)|0u; // 0x7088
+constexpr std::uint16_t kSysregCPTR_EL3     = (1u<<14)|(6u<<11)|(1u<<7)|(1u<<3)|2u; // 0x708A
+constexpr std::uint16_t kSysregMDCR_EL3     = (1u<<14)|(6u<<11)|(1u<<7)|(3u<<3)|1u; // 0x7099
+constexpr std::uint16_t kSysregSPSR_EL3     = (1u<<14)|(6u<<11)|(4u<<7)|(0u<<3)|0u; // 0x7200
+constexpr std::uint16_t kSysregELR_EL3      = (1u<<14)|(6u<<11)|(4u<<7)|(0u<<3)|1u; // 0x7201
+constexpr std::uint16_t kSysregESR_EL3      = (1u<<14)|(6u<<11)|(5u<<7)|(2u<<3)|0u; // 0x7290
+constexpr std::uint16_t kSysregFAR_EL3      = (1u<<14)|(6u<<11)|(6u<<7)|(0u<<3)|0u; // 0x7300
+constexpr std::uint16_t kSysregVBAR_EL3     = (1u<<14)|(6u<<11)|(12u<<7)|(0u<<3)|0u; // 0x7600
+
+// Phase 49: PMU (Performance Monitoring Unit) system registers
+constexpr std::uint16_t kSysregPMCR_EL0      = (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|0u; // 0x5CE0
+constexpr std::uint16_t kSysregPMCNTENSET_EL0= (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|1u; // 0x5CE1
+constexpr std::uint16_t kSysregPMCNTENCLR_EL0= (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|2u; // 0x5CE2
+constexpr std::uint16_t kSysregPMOVSCLR_EL0  = (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|3u; // 0x5CE3
+constexpr std::uint16_t kSysregPMSWINC_EL0   = (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|4u; // 0x5CE4
+constexpr std::uint16_t kSysregPMSELR_EL0    = (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|5u; // 0x5CE5
+constexpr std::uint16_t kSysregPMCEID0_EL0  = (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|6u; // 0x5CE6
+constexpr std::uint16_t kSysregPMCEID1_EL0  = (1u<<14)|(3u<<11)|(9u<<7)|(12u<<3)|7u; // 0x5CE7
+constexpr std::uint16_t kSysregPMCCNTR_EL0   = (1u<<14)|(3u<<11)|(9u<<7)|(13u<<3)|0u; // 0x5CE8
+constexpr std::uint16_t kSysregPMXEVTYPER_EL0= (1u<<14)|(3u<<11)|(9u<<7)|(13u<<3)|1u; // 0x5CE9
+constexpr std::uint16_t kSysregPMXEVCNTR_EL0 = (1u<<14)|(3u<<11)|(9u<<7)|(13u<<3)|2u; // 0x5CEA
+constexpr std::uint16_t kSysregPMUSERENR_EL0 = (1u<<14)|(3u<<11)|(9u<<7)|(14u<<3)|0u; // 0x5CF0
+constexpr std::uint16_t kSysregPMINTENSET_EL1= (1u<<14)|(0u<<11)|(9u<<7)|(14u<<3)|1u; // 0x44F1
+constexpr std::uint16_t kSysregPMINTENCLR_EL1= (1u<<14)|(0u<<11)|(9u<<7)|(14u<<3)|2u; // 0x44F2
+constexpr std::uint16_t kSysregPMOVSSET_EL0  = (1u<<14)|(3u<<11)|(9u<<7)|(14u<<3)|3u; // 0x5CF3
+constexpr std::uint16_t kSysregPMCCFILTR_EL0 = (1u<<14)|(3u<<11)|(14u<<7)|(15u<<3)|7u;// 0x5F7F
+constexpr std::uint16_t kSysregMDCR_EL2      = (1u<<14)|(4u<<11)|(1u<<7)|(1u<<3)|1u;  // 0x6089
+
+// Phase 51: Debug Architecture system registers
+// MDSCR_EL1: op0=2, op1=0, CRn=0, CRm=2, op2=2 -> key = (0<<14)|(0<<11)|(0<<7)|(2<<3)|2
+constexpr std::uint16_t kSysregMDSCR_EL1     = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|2u;  // 0x0012
+// DBGBVR<n>_EL1: op0=2, op1=0, CRn=0, CRm=n, op2=4 (n=0..15, we support 0..3)
+constexpr std::uint16_t kSysregDBGBVR0_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(0u<<3)|4u;  // 0x0004
+constexpr std::uint16_t kSysregDBGBVR1_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(1u<<3)|4u;  // 0x000C
+constexpr std::uint16_t kSysregDBGBVR2_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|4u;  // 0x0014
+constexpr std::uint16_t kSysregDBGBVR3_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(3u<<3)|4u;  // 0x001C
+// DBGBCR<n>_EL1: op0=2, op1=0, CRn=0, CRm=n, op2=5
+constexpr std::uint16_t kSysregDBGBCR0_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(0u<<3)|5u;  // 0x0005
+constexpr std::uint16_t kSysregDBGBCR1_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(1u<<3)|5u;  // 0x000D
+constexpr std::uint16_t kSysregDBGBCR2_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|5u;  // 0x0015
+constexpr std::uint16_t kSysregDBGBCR3_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(3u<<3)|5u;  // 0x001D
+// DBGWVR<n>_EL1: op0=2, op1=0, CRn=0, CRm=n, op2=6
+constexpr std::uint16_t kSysregDBGWVR0_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(0u<<3)|6u;  // 0x0006
+constexpr std::uint16_t kSysregDBGWVR1_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(1u<<3)|6u;  // 0x000E
+constexpr std::uint16_t kSysregDBGWVR2_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|6u;  // 0x0016
+constexpr std::uint16_t kSysregDBGWVR3_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(3u<<3)|6u;  // 0x001E
+// DBGWCR<n>_EL1: op0=2, op1=0, CRn=0, CRm=n, op2=7
+constexpr std::uint16_t kSysregDBGWCR0_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(0u<<3)|7u;  // 0x0007
+constexpr std::uint16_t kSysregDBGWCR1_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(1u<<3)|7u;  // 0x000F
+constexpr std::uint16_t kSysregDBGWCR2_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|7u;  // 0x0017
+constexpr std::uint16_t kSysregDBGWCR3_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(3u<<3)|7u;  // 0x001F
+// ID_AA64DFR0_EL1: op0=3, op1=0, CRn=0, CRm=5, op2=0 -> key = (1<<14)|(0<<11)|(0<<7)|(5<<3)|0
+constexpr std::uint16_t kSysregID_AA64DFR0_EL1 = (1u<<14)|(0u<<11)|(0u<<7)|(5u<<3)|0u;  // 0x4028
+
+inline bool is_pmu_reg(std::uint16_t key) noexcept {
+    switch (key) {
+    case kSysregPMCR_EL0:
+    case kSysregPMCNTENSET_EL0:
+    case kSysregPMCNTENCLR_EL0:
+    case kSysregPMOVSCLR_EL0:
+    case kSysregPMSWINC_EL0:
+    case kSysregPMSELR_EL0:
+    case kSysregPMCEID0_EL0:
+    case kSysregPMCEID1_EL0:
+    case kSysregPMCCNTR_EL0:
+    case kSysregPMXEVTYPER_EL0:
+    case kSysregPMXEVCNTR_EL0:
+    case kSysregPMUSERENR_EL0:
+    case kSysregPMINTENSET_EL1:
+    case kSysregPMINTENCLR_EL1:
+    case kSysregPMOVSSET_EL0:
+    case kSysregPMCCFILTR_EL0:
+        return true;
+    default:
+        return (key >= 0x5F40 && key <= 0x5F7F);
+    }
+}
+
+inline bool is_debug_reg(std::uint16_t key) noexcept {
+    switch (key) {
+    case kSysregMDSCR_EL1:
+    case kSysregDBGBVR0_EL1:
+    case kSysregDBGBVR1_EL1:
+    case kSysregDBGBVR2_EL1:
+    case kSysregDBGBVR3_EL1:
+    case kSysregDBGBCR0_EL1:
+    case kSysregDBGBCR1_EL1:
+    case kSysregDBGBCR2_EL1:
+    case kSysregDBGBCR3_EL1:
+    case kSysregDBGWVR0_EL1:
+    case kSysregDBGWVR1_EL1:
+    case kSysregDBGWVR2_EL1:
+    case kSysregDBGWVR3_EL1:
+    case kSysregDBGWCR0_EL1:
+    case kSysregDBGWCR1_EL1:
+    case kSysregDBGWCR2_EL1:
+    case kSysregDBGWCR3_EL1:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // Returns the canonical name for a sysreg key (for disassembly).
 const char* sysreg_name(std::uint16_t key) noexcept {
     switch (key) {
@@ -1771,6 +2033,78 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     case kSysregCNTHP_TVAL: return "CNTHP_TVAL_EL2";
     case kSysregCNTHP_CTL:  return "CNTHP_CTL_EL2";
     case kSysregCNTHP_CVAL: return "CNTHP_CVAL_EL2";
+    case kSysregMPIDR_EL1:      return "MPIDR_EL1";
+    case kSysregICC_SGI1R_EL1:  return "ICC_SGI1R_EL1";
+    case kSysregICC_PMR_EL1:    return "ICC_PMR_EL1";
+    case kSysregICC_IAR0_EL1:   return "ICC_IAR0_EL1";
+    case kSysregICC_EOIR0_EL1:  return "ICC_EOIR0_EL1";
+    case kSysregICC_HPPIR0_EL1: return "ICC_HPPIR0_EL1";
+    case kSysregICC_BPR0_EL1:   return "ICC_BPR0_EL1";
+    case kSysregICC_IAR1_EL1:   return "ICC_IAR1_EL1";
+    case kSysregICC_EOIR1_EL1:  return "ICC_EOIR1_EL1";
+    case kSysregICC_HPPIR1_EL1: return "ICC_HPPIR1_EL1";
+    case kSysregICC_BPR1_EL1:   return "ICC_BPR1_EL1";
+    case kSysregICC_SRE_EL1:    return "ICC_SRE_EL1";
+    case kSysregICC_IGRPEN0_EL1:return "ICC_IGRPEN0_EL1";
+    case kSysregICC_IGRPEN1_EL1:return "ICC_IGRPEN1_EL1";
+    case kSysregICC_DIR_EL1:    return "ICC_DIR_EL1";
+    case kSysregICC_RPR_EL1:    return "ICC_RPR_EL1";
+    case kSysregICC_CTLR_EL1:   return "ICC_CTLR_EL1";
+    case kSysregICC_SRE_EL2:    return "ICC_SRE_EL2";
+    case kSysregICH_HCR_EL2:    return "ICH_HCR_EL2";
+    case kSysregICH_VTR_EL2:    return "ICH_VTR_EL2";
+    case kSysregICH_MISR_EL2:   return "ICH_MISR_EL2";
+    case kSysregICH_EISR_EL2:   return "ICH_EISR_EL2";
+    case kSysregICH_ELRSR_EL2:  return "ICH_ELRSR_EL2";
+    case kSysregICH_VMCR_EL2:   return "ICH_VMCR_EL2";
+    case kSysregICH_LR0_EL2:    return "ICH_LR0_EL2";
+    case kSysregICH_LR1_EL2:    return "ICH_LR1_EL2";
+    case kSysregICH_LR2_EL2:    return "ICH_LR2_EL2";
+    case kSysregICH_LR3_EL2:    return "ICH_LR3_EL2";
+    case kSysregSCR_EL3:        return "SCR_EL3";
+    case kSysregCPTR_EL3:       return "CPTR_EL3";
+    case kSysregMDCR_EL3:       return "MDCR_EL3";
+    case kSysregSPSR_EL3:       return "SPSR_EL3";
+    case kSysregELR_EL3:        return "ELR_EL3";
+    case kSysregESR_EL3:        return "ESR_EL3";
+    case kSysregFAR_EL3:        return "FAR_EL3";
+    case kSysregVBAR_EL3:       return "VBAR_EL3";
+    case kSysregPMCR_EL0:       return "PMCR_EL0";
+    case kSysregPMCNTENSET_EL0: return "PMCNTENSET_EL0";
+    case kSysregPMCNTENCLR_EL0: return "PMCNTENCLR_EL0";
+    case kSysregPMOVSCLR_EL0:   return "PMOVSCLR_EL0";
+    case kSysregPMSWINC_EL0:    return "PMSWINC_EL0";
+    case kSysregPMSELR_EL0:     return "PMSELR_EL0";
+    case kSysregPMCEID0_EL0:    return "PMCEID0_EL0";
+    case kSysregPMCEID1_EL0:    return "PMCEID1_EL0";
+    case kSysregPMCCNTR_EL0:    return "PMCCNTR_EL0";
+    case kSysregPMXEVTYPER_EL0: return "PMXEVTYPER_EL0";
+    case kSysregPMXEVCNTR_EL0:  return "PMXEVCNTR_EL0";
+    case kSysregPMUSERENR_EL0:  return "PMUSERENR_EL0";
+    case kSysregPMINTENSET_EL1: return "PMINTENSET_EL1";
+    case kSysregPMINTENCLR_EL1: return "PMINTENCLR_EL1";
+    case kSysregPMOVSSET_EL0:   return "PMOVSSET_EL0";
+    case kSysregPMCCFILTR_EL0:  return "PMCCFILTR_EL0";
+    case kSysregMDCR_EL2:       return "MDCR_EL2";
+    // Phase 51: Debug Architecture system registers
+    case kSysregMDSCR_EL1:      return "MDSCR_EL1";
+    case kSysregDBGBVR0_EL1:    return "DBGBVR0_EL1";
+    case kSysregDBGBVR1_EL1:    return "DBGBVR1_EL1";
+    case kSysregDBGBVR2_EL1:    return "DBGBVR2_EL1";
+    case kSysregDBGBVR3_EL1:    return "DBGBVR3_EL1";
+    case kSysregDBGBCR0_EL1:    return "DBGBCR0_EL1";
+    case kSysregDBGBCR1_EL1:    return "DBGBCR1_EL1";
+    case kSysregDBGBCR2_EL1:    return "DBGBCR2_EL1";
+    case kSysregDBGBCR3_EL1:    return "DBGBCR3_EL1";
+    case kSysregDBGWVR0_EL1:    return "DBGWVR0_EL1";
+    case kSysregDBGWVR1_EL1:    return "DBGWVR1_EL1";
+    case kSysregDBGWVR2_EL1:    return "DBGWVR2_EL1";
+    case kSysregDBGWVR3_EL1:    return "DBGWVR3_EL1";
+    case kSysregDBGWCR0_EL1:    return "DBGWCR0_EL1";
+    case kSysregDBGWCR1_EL1:    return "DBGWCR1_EL1";
+    case kSysregDBGWCR2_EL1:    return "DBGWCR2_EL1";
+    case kSysregDBGWCR3_EL1:    return "DBGWCR3_EL1";
+    case kSysregID_AA64DFR0_EL1:return "ID_AA64DFR0_EL1";
     default:              return nullptr;
     }
 }
@@ -1784,16 +2118,18 @@ inline bool is_sysreg_instr(std::uint32_t instr) noexcept {
 // Build SPSR_EL1 value from PSTATE.
 // SPSR format (AArch64):
 //   [31:28] = NZCV
+//   [21]    = SS (software step)
 //   [20]    = IL (illegal execution state)
 //   [9:6]   = DAIF
 //   [4:0]   = M (Mode): bit4=0 (AArch64), bits[3:2]=EL, bit0=SPSel
 inline std::uint32_t encode_spsr(std::uint8_t nzcv, std::uint8_t daif,
                                   std::uint64_t el, bool sp_sel,
-                                  bool il = false) noexcept {
+                                  bool il = false, bool ss = false) noexcept {
     const std::uint32_t m = (el == 0)
         ? 0u
         : static_cast<std::uint32_t>(((el & 0x3u) << 2u) | (sp_sel ? 0x1u : 0x0u));
     return (static_cast<std::uint32_t>(nzcv & 0xFu) << 28u)
+         | (ss ? (1u << 21u) : 0u)
          | (il ? (1u << 20u) : 0u)
          | (static_cast<std::uint32_t>(daif & 0xFu) << 6u)
          | m;
@@ -2015,6 +2351,20 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
     if ((instruction & kHvcMask) == kHvcPattern) {
         const std::uint32_t imm16 = (instruction >> 5u) & 0xFFFFu;
         text = "HVC #" + std::to_string(imm16);
+        return true;
+    }
+    constexpr std::uint32_t kSmcMask = 0xFFE0001Fu;
+    constexpr std::uint32_t kSmcPattern = 0xD4000003u;
+    if ((instruction & kSmcMask) == kSmcPattern) {
+        const std::uint32_t imm16 = (instruction >> 5u) & 0xFFFFu;
+        text = "SMC #" + std::to_string(imm16);
+        return true;
+    }
+    constexpr std::uint32_t kHltMask = 0xFFE0001Fu;
+    constexpr std::uint32_t kHltPattern = 0xD4400000u;
+    if ((instruction & kHltMask) == kHltPattern) {
+        const std::uint32_t imm16 = (instruction >> 5u) & 0xFFFFu;
+        text = "HLT #" + std::to_string(imm16);
         return true;
     }
     // MSR immediate (PSTATE fields): DAIFSet/DAIFClr/SPSel.
@@ -3438,6 +3788,136 @@ std::vector<std::string> changed_registers(const CPU& cpu,
 CPU::CPU() {
     reset();
 }
+winios::GICv3& CPU::get_gic() noexcept {
+    if (smp_cluster_) return smp_cluster_->get_gic();
+    return gic_;
+}
+const winios::GICv3& CPU::get_gic() const noexcept {
+    if (smp_cluster_) return smp_cluster_->get_gic();
+    return gic_;
+}
+
+void CPU::set_core_id(std::size_t id) noexcept {
+    core_id_ = id;
+    if (smp_cluster_) {
+        bind_virtual_time(&smp_cluster_->get_virtual_time(), id);
+    }
+}
+
+void CPU::set_smp_cluster(winios::SMPCluster* cluster) noexcept {
+    smp_cluster_ = cluster;
+    if (cluster) {
+        bind_virtual_time(&cluster->get_virtual_time(), core_id_);
+    } else {
+        bind_virtual_time(&local_virtual_time_, core_id_);
+    }
+}
+
+std::uint64_t CPU::get_cntvoff_el2() const noexcept {
+    return virtual_time_->get_cntvoff_el2(core_id_);
+}
+void CPU::set_cntvoff_el2(std::uint64_t value) noexcept {
+    virtual_time_->set_cntvoff_el2(core_id_, value);
+}
+std::uint64_t CPU::get_cnthctl_el2() const noexcept {
+    return virtual_time_->get_cnthctl_el2(core_id_);
+}
+void CPU::set_cnthctl_el2(std::uint64_t value) noexcept {
+    virtual_time_->set_cnthctl_el2(core_id_, value);
+}
+const CPU::TimerState& CPU::get_cnthp_timer() const noexcept {
+    return virtual_time_->get_cnthp_timer(core_id_);
+}
+CPU::TimerState& CPU::get_cnthp_timer() noexcept {
+    return virtual_time_->get_cnthp_timer(core_id_);
+}
+void CPU::set_cnthp_timer(const TimerState& s) noexcept {
+    const auto prev = virtual_time_->get_cnthp_timer(core_id_);
+    virtual_time_->set_cnthp_timer(core_id_, s);
+    if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+        if (s.cval != prev.cval) {
+            emit_timer_event_trace(winios::trace::TimerOp::CompareUpdate, winios::trace::TimerType::HypervisorPhysical,
+                                   s.cval, virtual_time_->get_physical_counter(), s.enable, s.imask, s.istatus);
+        }
+        if (s.enable != prev.enable || s.imask != prev.imask) {
+            emit_timer_event_trace(winios::trace::TimerOp::ControlUpdate, winios::trace::TimerType::HypervisorPhysical,
+                                   s.cval, virtual_time_->get_physical_counter(), s.enable, s.imask, s.istatus);
+        }
+    }
+    check_timer_status();
+}
+
+std::uint64_t CPU::get_cntfrq_el0() const noexcept {
+    return virtual_time_->get_frequency();
+}
+void CPU::set_cntfrq_el0(std::uint64_t v) noexcept {
+    virtual_time_->set_frequency(v);
+}
+std::uint64_t CPU::get_guest_counter() const noexcept {
+    return virtual_time_->get_physical_counter();
+}
+void CPU::set_guest_counter(std::uint64_t v) noexcept {
+    virtual_time_->set_physical_counter(v);
+}
+void CPU::increment_guest_counter() noexcept {
+    virtual_time_->increment_physical_counter();
+}
+std::uint64_t CPU::get_cntkctl_el1() const noexcept {
+    return virtual_time_->get_cntkctl_el1(core_id_);
+}
+void CPU::set_cntkctl_el1(std::uint64_t v) noexcept {
+    virtual_time_->set_cntkctl_el1(core_id_, v);
+}
+const CPU::TimerState& CPU::get_phys_timer() const noexcept {
+    return virtual_time_->get_phys_timer(core_id_);
+}
+CPU::TimerState& CPU::get_phys_timer() noexcept {
+    return virtual_time_->get_phys_timer(core_id_);
+}
+void CPU::set_phys_timer(const TimerState& s) noexcept {
+    const auto prev = virtual_time_->get_phys_timer(core_id_);
+    virtual_time_->set_phys_timer(core_id_, s);
+    if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+        if (s.cval != prev.cval) {
+            emit_timer_event_trace(winios::trace::TimerOp::CompareUpdate, winios::trace::TimerType::Physical,
+                                   s.cval, virtual_time_->get_physical_counter(), s.enable, s.imask, s.istatus);
+        }
+        if (s.enable != prev.enable || s.imask != prev.imask) {
+            emit_timer_event_trace(winios::trace::TimerOp::ControlUpdate, winios::trace::TimerType::Physical,
+                                   s.cval, virtual_time_->get_physical_counter(), s.enable, s.imask, s.istatus);
+        }
+    }
+    check_timer_status();
+}
+const CPU::TimerState& CPU::get_virt_timer() const noexcept {
+    return virtual_time_->get_virt_timer(core_id_);
+}
+CPU::TimerState& CPU::get_virt_timer() noexcept {
+    return virtual_time_->get_virt_timer(core_id_);
+}
+void CPU::set_virt_timer(const TimerState& s) noexcept {
+    const auto prev = virtual_time_->get_virt_timer(core_id_);
+    virtual_time_->set_virt_timer(core_id_, s);
+    if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+        if (s.cval != prev.cval) {
+            emit_timer_event_trace(winios::trace::TimerOp::CompareUpdate, winios::trace::TimerType::Virtual,
+                                   s.cval, virtual_time_->get_virtual_counter(core_id_), s.enable, s.imask, s.istatus);
+        }
+        if (s.enable != prev.enable || s.imask != prev.imask) {
+            emit_timer_event_trace(winios::trace::TimerOp::ControlUpdate, winios::trace::TimerType::Virtual,
+                                   s.cval, virtual_time_->get_virtual_counter(core_id_), s.enable, s.imask, s.istatus);
+        }
+    }
+    check_timer_status();
+}
+
+std::unique_lock<std::recursive_mutex> CPU::lock_store_serialization() {
+    if (smp_cluster_) {
+        return std::unique_lock<std::recursive_mutex>(smp_cluster_->store_mutex());
+    }
+    return std::unique_lock<std::recursive_mutex>();
+}
+
 void CPU::reset() {
     for (auto& reg : registers_) {
         reg = 0;
@@ -3462,6 +3942,9 @@ void CPU::reset() {
     far_el1_    = 0;
     vbar_el1_   = 0;
     daif_       = 0xFu; // all interrupts masked at reset
+    il_         = false;
+    pstate_ss_  = false;
+    exception_taken_in_step_ = false;
     // Phase 40: EL2 reset
     spsr_el2_   = 0;
     elr_el2_    = 0;
@@ -3470,11 +3953,33 @@ void CPU::reset() {
     hpfar_el2_  = 0;
     vbar_el2_   = 0;
     hcr_el2_    = 0;
-    cntvoff_el2_= 0;
-    cnthctl_el2_= 3;
-    cnthp_timer_= TimerState{};
+    mdcr_el2_   = 0;
+    mdcr_el3_   = 0;
+    // Phase 50: Virtual Time reset
+    virtual_time_->reset_core(core_id_);
+    // Phase 41: GICv3 reset
+    if (!smp_cluster_) {
+        gic_.reset();
+    } else {
+        smp_cluster_->clear_exclusive_reservation(core_id_);
+    }
+    // Phase 49: PMU reset
+    pmu_.reset();
+    // Phase 51: Debug Architecture reset
+    debug_arch_.reset();
+    is_halted_ = false;
+    waiting_for_interrupt_ = false;
+    waiting_for_event_ = false;
+    instruction_trace_sequence_ = 0;
+    instruction_retirement_count_ = 0;
+    is_started_ = false;
+    is_stopped_ = false;
+    timer_trace_state_ = CoreTimerTraceState{};
 }
 void CPU::note_normal_store(std::uint64_t address, std::size_t width) noexcept {
+    if (smp_cluster_) {
+        smp_cluster_->invalidate_exclusive_reservations(core_id_, address, width);
+    }
     if (!exclusive_monitor_.valid || width == 0) {
         return;
     }
@@ -3552,11 +4057,28 @@ void CPU::write_h_register(std::size_t index, std::uint16_t value) {
     write_vector_register(index, VectorRegister{value, 0});
 }
 void CPU::raise_synchronous_exception(const SynchronousException& exception) {
+    exception_taken_in_step_ = true;
+    if (exception.target_el == 3 || current_el_ == 3) {
+        raise_el3_exception(exception, current_el_ < 3);
+        return;
+    }
+    const bool is_external_abort =
+        (exception.ec == ExceptionClass::DataAbortLower || exception.ec == ExceptionClass::DataAbortSame ||
+         exception.ec == ExceptionClass::InstructionAbortLower || exception.ec == ExceptionClass::InstructionAbortSame)
+        && ((exception.iss & 0x3Fu) == 0x10u || ((exception.iss & 0x3Fu) >= 0x14u && (exception.iss & 0x3Fu) <= 0x17u));
+    if (is_external_abort && (scr_el3_ & (1ULL << 3u))) {
+        raise_el3_exception(exception, current_el_ < 3);
+        return;
+    }
     if (exception.target_el == 2 || current_el_ == 2 || (current_el_ == 0 && (hcr_el2_ & (1ULL << 27u)))) {
         raise_el2_exception(exception, current_el_ < 2);
         return;
     }
-    spsr_el1_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_);
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    spsr_el1_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
     std::uint32_t vector_offset;
     if (current_el_ == 0) {
         vector_offset = 0x400u;                       // lower EL, AArch64
@@ -3570,13 +4092,37 @@ void CPU::raise_synchronous_exception(const SynchronousException& exception) {
     esr_el1_ = exception.esr();
     daif_ = 0xFu;
     il_ = false;
+    pstate_ss_ = false;
     current_el_ = 1;
     sp_sel_ = true;
     program_counter_ = vbar_el1_ + vector_offset;
+
+
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
+                              exception.ec == ExceptionClass::HvcAArch64 ||
+                              exception.ec == ExceptionClass::SmcAArch64);
+        const std::uint64_t source_pc = (is_call && exception.preferred_return >= 4u)
+            ? (exception.preferred_return - 4u)
+            : exception.preferred_return;
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, esr_el1_,
+                                         exception.fault_address, exception.has_fault_address, true, 1);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, 1, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu);
+        }
+    }
 }
 
 void CPU::raise_el2_exception(const SynchronousException& exception, bool from_lower_el) {
-    spsr_el2_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_);
+    exception_taken_in_step_ = true;
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    spsr_el2_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
     std::uint32_t vector_offset;
     if (from_lower_el) {
         vector_offset = 0x400u; // lower EL, AArch64
@@ -3593,44 +4139,311 @@ void CPU::raise_el2_exception(const SynchronousException& exception, bool from_l
     esr_el2_ = exception.esr();
     daif_ = 0xFu;
     il_ = false;
+    pstate_ss_ = false;
     current_el_ = 2;
     sp_sel_ = true;
     program_counter_ = vbar_el2_ + vector_offset;
-}
 
-void CPU::check_timer_status() noexcept {
-    phys_timer_.istatus = phys_timer_.enable && (guest_counter_ >= phys_timer_.cval);
-    virt_timer_.istatus = virt_timer_.enable && ((guest_counter_ - cntvoff_el2_) >= virt_timer_.cval);
-    cnthp_timer_.istatus = cnthp_timer_.enable && (guest_counter_ >= cnthp_timer_.cval);
-}
 
-void CPU::check_pending_interrupts() {
-    check_timer_status();
-    const bool phys_irq = phys_timer_.enable && phys_timer_.istatus && !phys_timer_.imask;
-    const bool virt_irq = virt_timer_.enable && virt_timer_.istatus && !virt_timer_.imask;
-    const bool hp_irq   = cnthp_timer_.enable && cnthp_timer_.istatus && !cnthp_timer_.imask;
-    const bool any_irq  = phys_irq || virt_irq || hp_irq;
-    if (!any_irq) return;
-
-    const bool imo = (hcr_el2_ & (1ULL << 4u)) != 0;
-    const bool fmo = (hcr_el2_ & (1ULL << 3u)) != 0;
-    if (imo || fmo) {
-        const bool is_fiq = fmo && !imo;
-        const std::uint8_t mask = is_fiq ? 0x1u : 0x2u;
-        if (current_el_ < 2 || !(daif_ & mask)) {
-            raise_el2_asynchronous_exception(is_fiq, current_el_ < 2);
-            return;
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
+                              exception.ec == ExceptionClass::HvcAArch64 ||
+                              exception.ec == ExceptionClass::SmcAArch64);
+        const std::uint64_t source_pc = (is_call && exception.preferred_return >= 4u)
+            ? (exception.preferred_return - 4u)
+            : exception.preferred_return;
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, esr_el2_,
+                                         exception.fault_address, exception.has_fault_address, true, 2);
         }
-    } else {
-        if (current_el_ <= 1 && !(daif_ & 0x2u)) {
-            raise_asynchronous_exception(false);
-            return;
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, 2, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu);
         }
     }
 }
 
-void CPU::raise_asynchronous_exception(bool is_fiq) {
-    spsr_el1_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_);
+void CPU::raise_el3_exception(const SynchronousException& exception, bool from_lower_el) {
+    exception_taken_in_step_ = true;
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    spsr_el3_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
+    std::uint32_t vector_offset;
+    if (from_lower_el) {
+        vector_offset = 0x400u; // lower EL, AArch64
+    } else {
+        vector_offset = sp_sel_ ? 0x200u : 0x000u; // EL3h / EL3t
+    }
+    elr_el3_ = exception.preferred_return;
+    if (exception.has_fault_address) {
+        far_el3_ = exception.fault_address;
+    }
+    esr_el3_ = exception.esr();
+    daif_ = 0xFu;
+    il_ = false;
+    pstate_ss_ = false;
+    current_el_ = 3;
+    sp_sel_ = true;
+    program_counter_ = vbar_el3_ + vector_offset;
+
+
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
+                              exception.ec == ExceptionClass::HvcAArch64 ||
+                              exception.ec == ExceptionClass::SmcAArch64);
+        const std::uint64_t source_pc = (is_call && exception.preferred_return >= 4u)
+            ? (exception.preferred_return - 4u)
+            : exception.preferred_return;
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, esr_el3_,
+                                         exception.fault_address, exception.has_fault_address, true, 3);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, 3, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu);
+        }
+    }
+}
+
+void CPU::raise_el3_asynchronous_exception(bool is_fiq, bool from_lower_el, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
+    exception_taken_in_step_ = true;
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    spsr_el3_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
+    std::uint32_t vector_offset;
+    if (from_lower_el) {
+        vector_offset = is_fiq ? 0x500u : 0x480u; // lower EL, AArch64
+    } else {
+        if (sp_sel_) {
+            vector_offset = is_fiq ? 0x300u : 0x280u; // EL3h (SPx)
+        } else {
+            vector_offset = is_fiq ? 0x100u : 0x080u; // EL3t (SP0)
+        }
+    }
+    const std::uint64_t source_pc = program_counter_;
+    elr_el3_ = program_counter_;
+    esr_el3_ = 0;
+    daif_ = 0xFu;
+    il_ = false;
+    pstate_ss_ = false;
+    current_el_ = 3;
+    sp_sel_ = true;
+    program_counter_ = vbar_el3_ + vector_offset;
+
+    winios::sndl::hook_interrupt_delivery(static_cast<std::uint16_t>(core_id_), source_pc, instruction_retirement_count_, intid, priority, is_fiq, is_virtual, 3);
+
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
+            emit_interrupt_delivered_trace(source_pc, program_counter_, intid, is_fiq, is_virtual, 3, priority);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, 0, 0, false, false, 3);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, 3, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, true);
+        }
+    }
+}
+
+void CPU::check_timer_status() noexcept {
+    virtual_time_->evaluate_core_timers(core_id_);
+    const auto& phys = virtual_time_->get_phys_timer(core_id_);
+    const auto& virt = virtual_time_->get_virt_timer(core_id_);
+    const auto& cnthp = virtual_time_->get_cnthp_timer(core_id_);
+
+    const bool phys_irq = phys.enable && !phys.imask && phys.istatus;
+    const bool virt_irq = virt.enable && !virt.imask && virt.istatus;
+    const bool cnthp_irq = cnthp.enable && !cnthp.imask && cnthp.istatus;
+
+    if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+        if (phys.istatus && !timer_trace_state_.phys_prev_istatus) {
+            emit_timer_event_trace(winios::trace::TimerOp::Expired, winios::trace::TimerType::Physical,
+                                   phys.cval, virtual_time_->get_physical_counter(), phys.enable, phys.imask, phys.istatus);
+        }
+        if (phys_irq && !timer_trace_state_.phys_prev_irq) {
+            emit_timer_event_trace(winios::trace::TimerOp::InterruptAsserted, winios::trace::TimerType::Physical,
+                                   phys.cval, virtual_time_->get_physical_counter(), phys.enable, phys.imask, phys.istatus);
+        } else if (!phys_irq && timer_trace_state_.phys_prev_irq) {
+            emit_timer_event_trace(winios::trace::TimerOp::InterruptCleared, winios::trace::TimerType::Physical,
+                                   phys.cval, virtual_time_->get_physical_counter(), phys.enable, phys.imask, phys.istatus);
+        }
+
+        if (virt.istatus && !timer_trace_state_.virt_prev_istatus) {
+            emit_timer_event_trace(winios::trace::TimerOp::Expired, winios::trace::TimerType::Virtual,
+                                   virt.cval, virtual_time_->get_virtual_counter(core_id_), virt.enable, virt.imask, virt.istatus);
+        }
+        if (virt_irq && !timer_trace_state_.virt_prev_irq) {
+            emit_timer_event_trace(winios::trace::TimerOp::InterruptAsserted, winios::trace::TimerType::Virtual,
+                                   virt.cval, virtual_time_->get_virtual_counter(core_id_), virt.enable, virt.imask, virt.istatus);
+        } else if (!virt_irq && timer_trace_state_.virt_prev_irq) {
+            emit_timer_event_trace(winios::trace::TimerOp::InterruptCleared, winios::trace::TimerType::Virtual,
+                                   virt.cval, virtual_time_->get_virtual_counter(core_id_), virt.enable, virt.imask, virt.istatus);
+        }
+
+        if (cnthp.istatus && !timer_trace_state_.cnthp_prev_istatus) {
+            emit_timer_event_trace(winios::trace::TimerOp::Expired, winios::trace::TimerType::HypervisorPhysical,
+                                   cnthp.cval, virtual_time_->get_physical_counter(), cnthp.enable, cnthp.imask, cnthp.istatus);
+        }
+        if (cnthp_irq && !timer_trace_state_.cnthp_prev_irq) {
+            emit_timer_event_trace(winios::trace::TimerOp::InterruptAsserted, winios::trace::TimerType::HypervisorPhysical,
+                                   cnthp.cval, virtual_time_->get_physical_counter(), cnthp.enable, cnthp.imask, cnthp.istatus);
+        } else if (!cnthp_irq && timer_trace_state_.cnthp_prev_irq) {
+            emit_timer_event_trace(winios::trace::TimerOp::InterruptCleared, winios::trace::TimerType::HypervisorPhysical,
+                                   cnthp.cval, virtual_time_->get_physical_counter(), cnthp.enable, cnthp.imask, cnthp.istatus);
+        }
+    }
+
+    timer_trace_state_.phys_prev_istatus = phys.istatus;
+    timer_trace_state_.phys_prev_irq = phys_irq;
+    timer_trace_state_.virt_prev_istatus = virt.istatus;
+    timer_trace_state_.virt_prev_irq = virt_irq;
+    timer_trace_state_.cnthp_prev_istatus = cnthp.istatus;
+    timer_trace_state_.cnthp_prev_irq = cnthp_irq;
+}
+
+void CPU::wake_from_wfi() noexcept {
+    waiting_for_interrupt_.store(false, std::memory_order_release);
+    winios::PSCIService* psci = psci_service_;
+    if (!psci && smp_cluster_) {
+        psci = smp_cluster_->get_psci_service();
+    }
+    if (psci) {
+        psci->notify_core_wakeup(core_id_);
+    }
+}
+
+void CPU::poll_wait_wakeup() {
+    if (waiting_for_interrupt_.load(std::memory_order_acquire)) {
+        check_timer_status();
+        if (check_pending_interrupts()) {
+            wake_from_wfi();
+        }
+    }
+    if (waiting_for_event_.load(std::memory_order_acquire)) {
+        if (event_register_.exchange(false, std::memory_order_acq_rel)) {
+            waiting_for_event_.store(false, std::memory_order_release);
+        } else {
+            check_timer_status();
+            if (check_pending_interrupts()) {
+                waiting_for_event_.store(false, std::memory_order_release);
+            }
+        }
+    }
+}
+
+bool CPU::check_pending_interrupts() {
+    check_timer_status();
+    const bool phys_irq = virtual_time_->get_phys_timer_irq(core_id_);
+    const bool virt_irq = virtual_time_->get_virt_timer_irq(core_id_);
+    const bool hp_irq   = virtual_time_->get_cnthp_timer_irq(core_id_);
+
+    get_gic().set_ppi_level(30, phys_irq, core_id_);
+    get_gic().set_ppi_level(27, virt_irq, core_id_);
+    get_gic().set_ppi_level(26, hp_irq, core_id_);
+    const bool pmu_irq  = pmu_.has_pending_interrupt();
+    get_gic().set_ppi_level(23, pmu_irq, core_id_);
+
+    if (get_gic().is_enabled(core_id_)) {
+        const auto sig = get_gic().evaluate(current_el_, hcr_el2_, core_id_);
+        if (sig.has_interrupt) {
+            const bool scr_fiq = (scr_el3_ & (1ULL << 2u)) != 0;
+            const bool scr_irq = (scr_el3_ & (1ULL << 1u)) != 0;
+            const bool route_to_el3 = !sig.is_virtual && ((sig.is_fiq && scr_fiq) || (!sig.is_fiq && scr_irq));
+            if (route_to_el3) {
+                const std::uint8_t mask = sig.is_fiq ? 0x1u : 0x2u;
+                if (current_el_ < 3 || !(daif_ & mask)) {
+                    raise_el3_asynchronous_exception(sig.is_fiq, current_el_ < 3, sig.intid, sig.is_virtual, sig.priority);
+                    return true;
+                }
+            } else {
+                const bool imo = (hcr_el2_ & (1ULL << 4u)) != 0;
+                const bool fmo = (hcr_el2_ & (1ULL << 3u)) != 0;
+                const bool route_to_el2 = !sig.is_virtual && ((sig.is_fiq && fmo) || (!sig.is_fiq && imo));
+                if (route_to_el2) {
+                    const std::uint8_t mask = sig.is_fiq ? 0x1u : 0x2u;
+                    if (current_el_ < 2 || !(daif_ & mask)) {
+                        raise_el2_asynchronous_exception(sig.is_fiq, current_el_ < 2, sig.intid, sig.is_virtual, sig.priority);
+                        return true;
+                    }
+                } else {
+                    if (current_el_ <= 1) {
+                        const std::uint8_t mask = sig.is_fiq ? 0x1u : 0x2u;
+                        if (!(daif_ & mask)) {
+                            raise_asynchronous_exception(sig.is_fiq, sig.intid, sig.is_virtual, sig.priority);
+                            return true;
+                        }
+                    } else if (current_el_ == 2) {
+                        const std::uint8_t mask = sig.is_fiq ? 0x1u : 0x2u;
+                        if (!(daif_ & mask)) {
+                            raise_el2_asynchronous_exception(sig.is_fiq, false, sig.intid, sig.is_virtual, sig.priority);
+                            return true;
+                        }
+                    } else if (current_el_ == 3) {
+                        const std::uint8_t mask = sig.is_fiq ? 0x1u : 0x2u;
+                        if (!(daif_ & mask)) {
+                            raise_el3_asynchronous_exception(sig.is_fiq, false, sig.intid, sig.is_virtual, sig.priority);
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    const bool any_irq  = phys_irq || virt_irq || hp_irq;
+    if (!any_irq) return false;
+
+    std::uint32_t fallback_intid = 30u;
+    if (hp_irq) {
+        fallback_intid = 26u;
+    } else if (virt_irq) {
+        fallback_intid = 27u;
+    } else if (phys_irq) {
+        fallback_intid = 30u;
+    }
+
+    const bool scr_irq = (scr_el3_ & (1ULL << 1u)) != 0;
+    if (scr_irq) {
+        if (current_el_ < 3 || !(daif_ & 0x2u)) {
+            raise_el3_asynchronous_exception(false, current_el_ < 3, fallback_intid, false, 0);
+            return true;
+        }
+    } else {
+        const bool imo = (hcr_el2_ & (1ULL << 4u)) != 0;
+        const bool fmo = (hcr_el2_ & (1ULL << 3u)) != 0;
+        if (imo || fmo) {
+            const bool is_fiq = fmo && !imo;
+            const std::uint8_t mask = is_fiq ? 0x1u : 0x2u;
+            if (current_el_ < 2 || !(daif_ & mask)) {
+                raise_el2_asynchronous_exception(is_fiq, current_el_ < 2, fallback_intid, false, 0);
+                return true;
+            }
+        } else {
+            if (current_el_ <= 1 && !(daif_ & 0x2u)) {
+                raise_asynchronous_exception(false, fallback_intid, false, 0);
+                return true;
+            } else if (current_el_ == 3 && !(daif_ & 0x2u)) {
+                raise_el3_asynchronous_exception(false, false, fallback_intid, false, 0);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void CPU::raise_asynchronous_exception(bool is_fiq, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
+    exception_taken_in_step_ = true;
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    spsr_el1_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
     std::uint32_t vector_offset;
     if (current_el_ == 0) {
         vector_offset = is_fiq ? 0x500u : 0x480u; // lower EL, AArch64
@@ -3641,17 +4454,39 @@ void CPU::raise_asynchronous_exception(bool is_fiq) {
             vector_offset = is_fiq ? 0x100u : 0x080u; // EL1t (SP0)
         }
     }
+    const std::uint64_t source_pc = program_counter_;
     elr_el1_ = program_counter_;
     esr_el1_ = 0; // EC = 0 for IRQ/FIQ
     daif_ = 0xFu;
     il_ = false;
+    pstate_ss_ = false;
     current_el_ = 1;
     sp_sel_ = true;
     program_counter_ = vbar_el1_ + vector_offset;
+
+    winios::sndl::hook_interrupt_delivery(static_cast<std::uint16_t>(core_id_), source_pc, instruction_retirement_count_, intid, priority, is_fiq, is_virtual, 1);
+
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
+            emit_interrupt_delivered_trace(source_pc, program_counter_, intid, is_fiq, is_virtual, 1, priority);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, 0, 0, false, false, 1);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, 1, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, true);
+        }
+    }
 }
 
-void CPU::raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el) {
-    spsr_el2_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_);
+void CPU::raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
+    exception_taken_in_step_ = true;
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    spsr_el2_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
     std::uint32_t vector_offset;
     if (from_lower_el) {
         vector_offset = is_fiq ? 0x500u : 0x480u;
@@ -3662,45 +4497,612 @@ void CPU::raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el) {
             vector_offset = is_fiq ? 0x100u : 0x080u;
         }
     }
+    const std::uint64_t source_pc = program_counter_;
     elr_el2_ = program_counter_;
     esr_el2_ = 0;
     daif_ = 0xFu;
     il_ = false;
+    pstate_ss_ = false;
     current_el_ = 2;
     sp_sel_ = true;
     program_counter_ = vbar_el2_ + vector_offset;
+
+    winios::sndl::hook_interrupt_delivery(static_cast<std::uint16_t>(core_id_), source_pc, instruction_retirement_count_, intid, priority, is_fiq, is_virtual, 2);
+
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
+            emit_interrupt_delivered_trace(source_pc, program_counter_, intid, is_fiq, is_virtual, 2, priority);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, 0, 0, false, false, 2);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, 2, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, true);
+        }
+    }
+}
+
+bool CPU::is_software_step_active() const noexcept {
+    if (!debug_arch_.software_step_enabled()) {
+        return false;
+    }
+    if (!debug_arch_.monitor_debug_enabled()) {
+        return false;
+    }
+    const unsigned target_el = winios::determine_debug_target_el(
+        static_cast<unsigned>(current_el_), mdcr_el2_, mdcr_el3_, hcr_el2_);
+    if (target_el == current_el_) {
+        // Bit 3 of daif_ is D (Debug exception mask)
+        if ((daif_ & 0x8u) != 0u) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void CPU::on_instruction_retired_step(bool is_exclusive, std::uint64_t stepped_pc) {
+    pstate_ss_ = false;
+    winios::DebugExceptionEvent dev;
+    dev.kind = winios::DebugExceptionKind::SoftwareStep;
+    dev.source_el = static_cast<unsigned>(current_el_);
+    dev.instruction_address = program_counter_;
+    dev.is_exclusive = is_exclusive;
+    const unsigned target_el = winios::determine_debug_target_el(
+        dev.source_el, mdcr_el2_, mdcr_el3_, hcr_el2_);
+    SynchronousException ex = winios::create_debug_synchronous_exception(dev, target_el);
+    if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::DebugEvent, static_cast<std::uint16_t>(core_id_))) {
+        const std::uint64_t pc_to_record = stepped_pc != 0 ? stepped_pc : program_counter_;
+        emit_debug_event(pc_to_record, program_counter_, ex.esr(),
+                         winios::trace::TraceEventFlags::IsSingleStep | winios::trace::TraceEventFlags::IsSynchronous,
+                         4, is_exclusive ? 1 : 0);
+    }
+    raise_synchronous_exception(ex);
+}
+
+void CPU::emit_instruction_retired_trace(std::uint64_t instruction_address, std::uint32_t instruction) {
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = instruction_address;
+    ev.address = 0;
+    ev.data = 0;
+    ev.opcode_or_syndrome = instruction;
+    ev.flags = static_cast<std::uint32_t>(current_el_ > 0 ? winios::trace::TraceEventFlags::IsPrivileged : winios::trace::TraceEventFlags::None);
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::InstructionRetired);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(
+        (mmu_.is_stage1_enabled() || mmu_.is_stage2_enabled(static_cast<unsigned>(current_el_)))
+            ? winios::trace::TraceAddressSpace::Virtual
+            : winios::trace::TraceAddressSpace::Physical);
+    ev.access_size = 4;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_branch_taken_trace(std::uint64_t instruction_address, std::uint64_t target_address, std::uint32_t instruction) {
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = instruction_address;
+    ev.address = target_address;
+    ev.data = 0;
+    ev.opcode_or_syndrome = instruction;
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::IsTaken | winios::trace::TraceEventFlags::HasVirtualAddress;
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::BranchTaken);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 4;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_exception_entered_trace(std::uint64_t source_pc, std::uint64_t vector_address,
+                                      std::uint32_t syndrome, std::uint64_t far,
+                                      bool has_far, bool is_sync, unsigned target_el) {
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = source_pc;
+    ev.address = vector_address;
+    ev.data = has_far ? far : 0;
+    ev.opcode_or_syndrome = syndrome;
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasVirtualAddress;
+    if (is_sync) {
+        flags |= winios::trace::TraceEventFlags::IsSynchronous;
+    } else {
+        flags |= winios::trace::TraceEventFlags::IsInterrupt;
+    }
+    if (has_far) {
+        flags |= winios::trace::TraceEventFlags::HasData;
+    }
+    if (target_el > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::ExceptionEntered);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(target_el & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 0;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::start() {
+    if (is_started_) {
+        return;
+    }
+    is_started_ = true;
+    is_stopped_ = false;
+    is_halted_.store(false, std::memory_order_release);
+    emit_cpu_started_trace();
+}
+
+void CPU::stop(std::uint64_t stop_reason) {
+    if (is_stopped_) {
+        return;
+    }
+    is_stopped_ = true;
+    is_started_ = false;
+    is_halted_.store(true, std::memory_order_release);
+    emit_cpu_stopped_trace(stop_reason);
+}
+
+void CPU::emit_cpu_started_trace() {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::CPUStarted, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = program_counter_;
+    ev.address = program_counter_;
+    ev.data = 0;
+    ev.opcode_or_syndrome = 0;
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasVirtualAddress;
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::CPUStarted);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 0;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_cpu_stopped_trace(std::uint64_t stop_reason) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::CPUStopped, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = program_counter_;
+    ev.address = 0;
+    ev.data = stop_reason;
+    ev.opcode_or_syndrome = static_cast<std::uint32_t>(stop_reason & 0xFFFFFFFFu);
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasData;
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::CPUStopped);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 0;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_context_changed_trace(std::uint64_t prev_pc,
+                                    std::uint64_t new_pc,
+                                    unsigned prev_el,
+                                    unsigned new_el,
+                                    bool prev_spsel,
+                                    bool new_spsel,
+                                    winios::trace::ContextChangeReason reason,
+                                    std::uint8_t prev_daif,
+                                    std::uint8_t new_daif,
+                                    bool is_interrupt) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = prev_pc;
+    ev.address = new_pc;
+
+    const std::uint64_t data = (static_cast<std::uint64_t>(prev_el & 0x3u)) |
+                               (static_cast<std::uint64_t>(new_el & 0x3u) << 2u) |
+                               (static_cast<std::uint64_t>(prev_spsel ? 1u : 0u) << 4u) |
+                               (static_cast<std::uint64_t>(new_spsel ? 1u : 0u) << 5u) |
+                               (static_cast<std::uint64_t>(prev_daif & 0xFu) << 8u) |
+                               (static_cast<std::uint64_t>(new_daif & 0xFu) << 12u);
+    ev.data = data;
+    ev.opcode_or_syndrome = static_cast<std::uint32_t>(reason);
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasVirtualAddress |
+                                           winios::trace::TraceEventFlags::HasData;
+    if (new_el > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    if (reason == winios::trace::ContextChangeReason::ExceptionReturn) {
+        flags |= winios::trace::TraceEventFlags::IsExceptionReturn;
+    } else if (reason == winios::trace::ContextChangeReason::ExceptionEntry) {
+        if (is_interrupt) {
+            flags |= winios::trace::TraceEventFlags::IsInterrupt;
+        } else {
+            flags |= winios::trace::TraceEventFlags::IsSynchronous;
+        }
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::ContextChanged);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(new_el & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 0;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_exception_returned_trace(std::uint64_t eret_pc, std::uint64_t target_pc,
+                                       std::uint32_t spsr, unsigned target_el) {
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = eret_pc;
+    ev.address = target_pc;
+    ev.data = spsr;
+    ev.opcode_or_syndrome = kEretEncoding;
+
+    winios::trace::TraceEventFlags flags =
+        winios::trace::TraceEventFlags::IsExceptionReturn |
+        winios::trace::TraceEventFlags::HasVirtualAddress |
+        winios::trace::TraceEventFlags::HasData;
+    if (target_el > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::ExceptionReturned);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(target_el & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 4;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_system_register_access_trace(std::uint64_t instruction_address,
+                                            std::uint16_t reg_key,
+                                            std::uint64_t reg_value,
+                                            bool is_write,
+                                            std::uint32_t instruction) {
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = instruction_address;
+    ev.address = static_cast<std::uint64_t>(reg_key);
+    ev.data = reg_value;
+    ev.opcode_or_syndrome = instruction;
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasData;
+    if (is_write) {
+        flags |= winios::trace::TraceEventFlags::IsWrite;
+    }
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::SystemRegisterAccess);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::None);
+    ev.access_size = 8;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_memory_read_trace(std::uint64_t instruction_address,
+                                 std::uint64_t virtual_address,
+                                 std::uint64_t physical_address,
+                                 std::uint64_t value,
+                                 std::uint16_t access_size,
+                                 bool is_atomic,
+                                 std::uint32_t instruction) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::MemoryRead, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = instruction_address;
+    const bool mmu_on = mmu_.is_stage1_enabled() || mmu_.is_stage2_enabled(static_cast<unsigned>(current_el_));
+    ev.address = mmu_on ? virtual_address : physical_address;
+    ev.data = value;
+    ev.opcode_or_syndrome = instruction;
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasData;
+    if (mmu_on) {
+        flags |= winios::trace::TraceEventFlags::HasVirtualAddress;
+    } else {
+        flags |= winios::trace::TraceEventFlags::HasPhysicalAddress;
+    }
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    if (is_atomic) {
+        flags |= winios::trace::TraceEventFlags::IsAtomic;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::MemoryRead);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(mmu_on ? winios::trace::TraceAddressSpace::Virtual : winios::trace::TraceAddressSpace::Physical);
+    ev.access_size = access_size;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_memory_write_trace(std::uint64_t instruction_address,
+                                  std::uint64_t virtual_address,
+                                  std::uint64_t physical_address,
+                                  std::uint64_t value,
+                                  std::uint16_t access_size,
+                                  bool is_atomic,
+                                  std::uint32_t instruction) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::MemoryWrite, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = instruction_address;
+    const bool mmu_on = mmu_.is_stage1_enabled() || mmu_.is_stage2_enabled(static_cast<unsigned>(current_el_));
+    ev.address = mmu_on ? virtual_address : physical_address;
+    ev.data = value;
+    ev.opcode_or_syndrome = instruction;
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasData | winios::trace::TraceEventFlags::IsWrite;
+    if (mmu_on) {
+        flags |= winios::trace::TraceEventFlags::HasVirtualAddress;
+    } else {
+        flags |= winios::trace::TraceEventFlags::HasPhysicalAddress;
+    }
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    if (is_atomic) {
+        flags |= winios::trace::TraceEventFlags::IsAtomic;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::MemoryWrite);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(mmu_on ? winios::trace::TraceAddressSpace::Virtual : winios::trace::TraceAddressSpace::Physical);
+    ev.access_size = access_size;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_debug_event(std::uint64_t instruction_address,
+                          std::uint64_t debug_address,
+                          std::uint32_t syndrome,
+                          winios::trace::TraceEventFlags debug_flags,
+                          std::uint16_t access_size,
+                          std::uint64_t data_payload) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::DebugEvent, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = instruction_address;
+    ev.address = debug_address;
+    ev.data = data_payload;
+    ev.opcode_or_syndrome = syndrome;
+
+    winios::trace::TraceEventFlags flags = debug_flags;
+    const bool mmu_on = mmu_.is_stage1_enabled() || mmu_.is_stage2_enabled(static_cast<unsigned>(current_el_));
+    if (mmu_on) {
+        flags |= winios::trace::TraceEventFlags::HasVirtualAddress;
+    } else {
+        flags |= winios::trace::TraceEventFlags::HasPhysicalAddress;
+    }
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    if (data_payload != 0 || (debug_flags & (winios::trace::TraceEventFlags::IsBreakpoint | winios::trace::TraceEventFlags::IsWatchpoint)) != winios::trace::TraceEventFlags::None) {
+        flags |= winios::trace::TraceEventFlags::HasData;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::DebugEvent);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(mmu_on ? winios::trace::TraceAddressSpace::Virtual : winios::trace::TraceAddressSpace::Physical);
+    ev.access_size = access_size;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+void CPU::emit_interrupt_delivered_trace(std::uint64_t source_pc,
+                                        std::uint64_t vector_address,
+                                        std::uint32_t intid,
+                                        bool is_fiq,
+                                        bool is_virtual,
+                                        unsigned target_el,
+                                        std::uint8_t priority) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = source_pc;
+    ev.address = vector_address;
+    ev.data = intid;
+    ev.opcode_or_syndrome = (is_fiq ? 1u : 0u) | (is_virtual ? 2u : 0u) | (static_cast<std::uint32_t>(priority) << 8u);
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::IsInterrupt |
+                                           winios::trace::TraceEventFlags::HasVirtualAddress |
+                                           winios::trace::TraceEventFlags::HasData;
+    if (target_el > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    ev.flags = static_cast<std::uint32_t>(flags);
+
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::InterruptDelivered);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(target_el & 0x3);
+    ev.address_space = static_cast<std::uint8_t>(winios::trace::TraceAddressSpace::Virtual);
+    ev.access_size = 0;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+}
+
+
+void CPU::emit_timer_event_trace(winios::trace::TimerOp op,
+                                 winios::trace::TimerType type,
+                                 std::uint64_t cval,
+                                 std::uint64_t counter,
+                                 bool enable,
+                                 bool imask,
+                                 bool istatus,
+                                 std::uint64_t trigger_pc) {
+    if (!trace_manager_ || !trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+        return;
+    }
+
+    winios::trace::TraceEvent ev{};
+    ev.sequence_number = ++instruction_trace_sequence_;
+    ev.virtual_time = virtual_time_ ? virtual_time_->get_physical_counter() : 0;
+    ev.pc = (trigger_pc != 0) ? trigger_pc : program_counter_;
+    ev.address = cval;
+    ev.data = counter;
+
+    ev.opcode_or_syndrome = (static_cast<std::uint32_t>(op) & 0xFFu) |
+                            ((static_cast<std::uint32_t>(type) & 0xFFu) << 8u) |
+                            ((enable ? 1u : 0u) << 16u) |
+                            ((imask ? 1u : 0u) << 17u) |
+                            ((istatus ? 1u : 0u) << 18u);
+
+    winios::trace::TraceEventFlags flags = winios::trace::TraceEventFlags::HasData;
+    if (current_el_ > 0) {
+        flags |= winios::trace::TraceEventFlags::IsPrivileged;
+    }
+    if (op == winios::trace::TimerOp::CompareUpdate || op == winios::trace::TimerOp::ControlUpdate) {
+        flags |= winios::trace::TraceEventFlags::IsWrite;
+    }
+    if (op == winios::trace::TimerOp::InterruptAsserted) {
+        flags |= winios::trace::TraceEventFlags::IsInterrupt;
+    }
+
+    ev.flags = static_cast<std::uint32_t>(flags);
+    ev.event_type = static_cast<std::uint16_t>(winios::trace::TraceEventType::TimerEvent);
+    ev.core_id = static_cast<std::uint16_t>(core_id_);
+    ev.exception_level = static_cast<std::uint8_t>(current_el_ & 0x3);
+    const bool mmu_on = (current_el_ == 1 && mmu_.is_stage1_enabled()) ||
+                        (current_el_ == 2 && mmu_.is_stage2_enabled(static_cast<unsigned>(current_el_)));
+    ev.address_space = static_cast<std::uint8_t>(mmu_on ? winios::trace::TraceAddressSpace::Virtual
+                                                        : winios::trace::TraceAddressSpace::Physical);
+    ev.access_size = 8;
+    ev.reserved = 0;
+
+    trace_manager_->submit(ev);
+    if (op == winios::trace::TimerOp::Expired) {
+        winios::sndl::hook_timer_expiration(static_cast<std::uint16_t>(core_id_), ev.pc, instruction_retirement_count_, static_cast<std::uint8_t>(type), cval, counter);
+    }
 }
 
 void CPU::step(Memory& guest_memory) {
-    struct StepCounterGuard {
-        std::uint64_t& counter;
-        ~StepCounterGuard() {
-            ++counter;
+    if (is_halted_.load(std::memory_order_acquire)) {
+        if (!smp_cluster_) {
+            return;
         }
-    } counter_guard{guest_counter_};
+    }
+    exception_taken_in_step_ = false;
+    const bool ss_active_at_start = architectural_exceptions_ && is_software_step_active();
+    const bool was_pstate_ss = pstate_ss_;
 
-    if (architectural_exceptions_) {
-        check_timer_status();
-        const bool phys_irq = phys_timer_.enable && phys_timer_.istatus && !phys_timer_.imask;
-        const bool virt_irq = virt_timer_.enable && virt_timer_.istatus && !virt_timer_.imask;
-        const bool hp_irq   = cnthp_timer_.enable && cnthp_timer_.istatus && !cnthp_timer_.imask;
-        const bool any_irq  = phys_irq || virt_irq || hp_irq;
-        if (any_irq) {
-            const bool imo = (hcr_el2_ & (1ULL << 4u)) != 0;
-            const bool fmo = (hcr_el2_ & (1ULL << 3u)) != 0;
-            if (imo || fmo) {
-                const bool is_fiq = fmo && !imo;
-                const std::uint8_t mask = is_fiq ? 0x1u : 0x2u;
-                if (current_el_ < 2 || !(daif_ & mask)) {
-                    raise_el2_asynchronous_exception(is_fiq, current_el_ < 2);
-                    return;
-                }
-            } else {
-                if (current_el_ <= 1 && !(daif_ & 0x2u)) {
-                    raise_asynchronous_exception(false);
-                    return;
+    struct StepCounterGuard {
+        CPU& cpu;
+        bool retired{false};
+        bool is_exclusive{false};
+        bool ss_active{false};
+        bool was_ss{false};
+        std::uint64_t instruction_address{0};
+
+        ~StepCounterGuard() {
+            cpu.increment_guest_counter();
+            cpu.get_pmu().on_cycle(static_cast<unsigned>(cpu.get_current_el()));
+            if (retired && !cpu.exception_taken_in_step()) {
+                ++cpu.instruction_retirement_count_;
+                cpu.get_pmu().on_event(winios::ARMV8_EVENT_INST_RETIRED, static_cast<unsigned>(cpu.get_current_el()));
+                if (ss_active && was_ss) {
+                    cpu.on_instruction_retired_step(is_exclusive, instruction_address);
                 }
             }
+        }
+    } counter_guard{*this, false, false, ss_active_at_start, was_pstate_ss, program_counter_};
+
+    if (architectural_exceptions_) {
+        if (check_pending_interrupts()) {
+            return;
+        }
+
+        // Phase 51 Stage 8: Active-pending state at instruction boundary
+        if (ss_active_at_start && !was_pstate_ss) {
+            winios::DebugExceptionEvent dev;
+            dev.kind = winios::DebugExceptionKind::SoftwareStep;
+            dev.source_el = static_cast<unsigned>(current_el_);
+            dev.instruction_address = program_counter_;
+            const unsigned target_el = winios::determine_debug_target_el(
+                dev.source_el, mdcr_el2_, mdcr_el3_, hcr_el2_);
+            SynchronousException ex = winios::create_debug_synchronous_exception(dev, target_el);
+            if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::DebugEvent, static_cast<std::uint16_t>(core_id_))) {
+                emit_debug_event(program_counter_, program_counter_, ex.esr(),
+                                 winios::trace::TraceEventFlags::IsSingleStep | winios::trace::TraceEventFlags::IsSynchronous,
+                                 4, 0);
+            }
+            raise_synchronous_exception(ex);
+            return;
         }
     }
     const std::uint64_t instruction_address = program_counter_;
@@ -3713,6 +5115,28 @@ void CPU::step(Memory& guest_memory) {
             raise_synchronous_exception(make_pc_alignment(instruction_address));
             return;
         }
+
+        // Phase 51 Stage 4/6: Hardware Execution Breakpoints
+        const auto bp_event = debug_arch_.check_execution_breakpoint(
+            instruction_address, static_cast<unsigned>(current_el_));
+        if (bp_event.has_value()) {
+            winios::DebugExceptionEvent dev;
+            dev.kind = winios::DebugExceptionKind::HardwareBreakpoint;
+            dev.source_el = static_cast<unsigned>(current_el_);
+            dev.instruction_address = instruction_address;
+            dev.slot_index = bp_event->slot_index;
+            const unsigned target_el = winios::determine_debug_target_el(
+                dev.source_el, mdcr_el2_, mdcr_el3_, hcr_el2_);
+            SynchronousException ex = winios::create_debug_synchronous_exception(dev, target_el);
+            if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::DebugEvent, static_cast<std::uint16_t>(core_id_))) {
+                emit_debug_event(instruction_address, instruction_address, ex.esr(),
+                                 winios::trace::TraceEventFlags::IsBreakpoint | winios::trace::TraceEventFlags::IsSynchronous,
+                                 4, static_cast<std::uint64_t>(dev.slot_index));
+            }
+            raise_synchronous_exception(ex);
+            return;
+        }
+
         if (!s1_en && !s2_en) {
             if (instruction_address >= kPhysicalAddressLimit) {
                 raise_synchronous_exception(make_instruction_abort(
@@ -3769,6 +5193,7 @@ void CPU::step(Memory& guest_memory) {
     }
     const std::uint32_t instruction =
         guest_memory.read_u32(pc_as_memory_offset(phys_pc));
+    counter_guard.is_exclusive = ((instruction & 0x3F000000u) == 0x08000000u);
     // Phase 36: PSTATE.IL (set by an architecturally illegal ERET) turns the
     // next fetch into an Illegal Execution State exception. Instruction abort
     // and PC-alignment faults have priority, exactly as in the reference.
@@ -3779,8 +5204,11 @@ void CPU::step(Memory& guest_memory) {
     }
     // Phase 36: all data accesses made by the instruction go through this
     // checked view. In legacy mode it is a pure pass-through.
+    const bool is_exclusive_or_atomic =
+        ((instruction & kExclusiveGroupMask) == kExclusiveGroup) ||
+        ((instruction & kLseAtomicMask) == kLseAtomicPattern);
     CheckedGuestMemory memory(guest_memory, *this, architectural_exceptions_,
-                              instruction_address);
+                              instruction_address, instruction, is_exclusive_or_atomic);
     std::uint64_t before[kRegisterCount]{};
     for (std::size_t i = 0; i < kRegisterCount; ++i) {
         before[i] = registers_[i];
@@ -3792,7 +5220,10 @@ void CPU::step(Memory& guest_memory) {
     }
     const std::uint32_t before_fpcr = fpcr_;
     const std::uint32_t before_fpsr = fpsr_;
-    const auto emit_trace = [&] {
+    const auto emit_trace = [&](bool is_branch = false, bool branch_taken = false, std::uint64_t branch_target = 0,
+                                bool is_eret = false, std::uint64_t eret_target = 0, std::uint32_t eret_spsr = 0, unsigned eret_target_el = 0,
+                                bool is_sysreg = false, std::uint16_t reg_key = 0, std::uint64_t reg_value = 0, bool is_write = false) {
+        counter_guard.retired = true;
         if (trace_sink_) {
             trace_sink_(TraceRecord{instruction_address, instruction,
                                     decode_disassembly(instruction),
@@ -3800,6 +5231,26 @@ void CPU::step(Memory& guest_memory) {
                                     nzcv_,
                                     changed_registers(*this, before, before_sp,
                                                       before_v, before_fpcr, before_fpsr)});
+        }
+        if (!is_halted_.load(std::memory_order_acquire)) {
+            if (is_sysreg) {
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::SystemRegisterAccess, static_cast<std::uint16_t>(core_id_))) {
+                    emit_system_register_access_trace(instruction_address, reg_key, reg_value, is_write, instruction);
+                }
+            }
+            if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InstructionRetired, static_cast<std::uint16_t>(core_id_))) {
+                emit_instruction_retired_trace(instruction_address, instruction);
+            }
+            if (is_branch && branch_taken) {
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::BranchTaken, static_cast<std::uint16_t>(core_id_))) {
+                    emit_branch_taken_trace(instruction_address, branch_target, instruction);
+                }
+            }
+            if (is_eret) {
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionReturned, static_cast<std::uint16_t>(core_id_))) {
+                    emit_exception_returned_trace(instruction_address, eret_target, eret_spsr, eret_target_el);
+                }
+            }
         }
     };
     const std::uint32_t wide_opcode = instruction & 0x7F800000u;
@@ -4662,6 +6113,10 @@ void CPU::step(Memory& guest_memory) {
             memory.check_access(address, static_cast<unsigned>(width),
                                 AccessType::Write);
             require_memory_range(memory, memory_address, width);
+            // Phase 43: a single-register exclusive load/store is serialized
+            // against every other guest store so the load value, reservation
+            // registration and compare-and-swap form one atomic step.
+            auto store_guard = lock_store_serialization();
             if (load) {
                 const std::uint64_t value =
                     read_access_value(memory, memory_address,
@@ -4671,18 +6126,26 @@ void CPU::step(Memory& guest_memory) {
                 }
                 exclusive_monitor_ =
                     ExclusiveMonitor{true, address, width, value, 0};
+                if (smp_cluster_) {
+                    smp_cluster_->register_exclusive_reservation(core_id_, address, width);
+                }
                 write_zero_register_result(*this, target, value);
             } else {
                 const std::uint64_t value =
                     read_zero_register_operand(*this, target)
                     & access_value_mask(exclusive_size_field);
+                bool global_res_ok = true;
+                if (smp_cluster_) {
+                    global_res_ok = smp_cluster_->check_and_clear_exclusive_reservation(core_id_, address, width);
+                }
                 const bool success =
                     exclusive_monitor_.valid
+                    && global_res_ok
                     && exclusive_monitor_.address == address
                     && exclusive_monitor_.size == width
                     && exclusive_monitor_.low
-                           == read_access_value(memory, memory_address,
-                                                exclusive_size_field);
+                           == read_access_value_untraced(memory, memory_address,
+                                                         exclusive_size_field);
                 if (success) {
                     if (ordered) {
                         std::atomic_thread_fence(std::memory_order_release);
@@ -4695,6 +6158,9 @@ void CPU::step(Memory& guest_memory) {
                     write_zero_register_result(*this, status, 1);
                 }
                 clear_exclusive_monitor();
+                if (smp_cluster_) {
+                    smp_cluster_->clear_exclusive_reservation(core_id_);
+                }
             }
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");
@@ -4733,6 +6199,8 @@ void CPU::step(Memory& guest_memory) {
             }
             require_memory_range(memory, memory_address, pair_width);
             const std::size_t second_address = memory_address + element_width;
+            // Phase 43: exclusive pairs are serialized as one atomic step.
+            auto store_guard = lock_store_serialization();
             if (load) {
                 const std::uint64_t first = read_access_value(
                     memory, memory_address, element_size_field);
@@ -4743,6 +6211,9 @@ void CPU::step(Memory& guest_memory) {
                 }
                 exclusive_monitor_ =
                     ExclusiveMonitor{true, address, pair_width, first, second};
+                if (smp_cluster_) {
+                    smp_cluster_->register_exclusive_reservation(core_id_, address, pair_width);
+                }
                 write_zero_register_result(*this, target, first);
                 write_zero_register_result(*this, target2, second);
             } else {
@@ -4752,20 +6223,27 @@ void CPU::step(Memory& guest_memory) {
                     read_zero_register_operand(*this, target) & element_mask;
                 const std::uint64_t second =
                     read_zero_register_operand(*this, target2) & element_mask;
+                bool global_res_ok = true;
+                if (smp_cluster_) {
+                    global_res_ok = smp_cluster_->check_and_clear_exclusive_reservation(core_id_, address, pair_width);
+                }
                 const bool success =
                     exclusive_monitor_.valid
+                    && global_res_ok
                     && exclusive_monitor_.address == address
                     && exclusive_monitor_.size == pair_width
                     && exclusive_monitor_.low
-                           == read_access_value(memory, memory_address,
-                                                element_size_field)
+                           == read_access_value_untraced(memory, memory_address,
+                                                         element_size_field)
                     && exclusive_monitor_.high
-                           == read_access_value(memory, second_address,
-                                                element_size_field);
+                           == read_access_value_untraced(memory, second_address,
+                                                         element_size_field);
                 if (success) {
                     if (ordered) {
                         std::atomic_thread_fence(std::memory_order_release);
                     }
+                    memory.check_watchpoint(address, static_cast<unsigned>(element_width), AccessType::Write);
+                    memory.check_watchpoint(address + element_width, static_cast<unsigned>(element_width), AccessType::Write);
                     write_access_value(memory, memory_address,
                                        element_size_field, first);
                     write_access_value(memory, second_address,
@@ -4776,6 +6254,12 @@ void CPU::step(Memory& guest_memory) {
                     write_zero_register_result(*this, status, 1);
                 }
                 clear_exclusive_monitor();
+                // Phase 44: completing a pair store-exclusive always ends the
+                // reservation, matching the single-register path. Without this
+                // the cluster reservation could outlive the instruction.
+                if (smp_cluster_) {
+                    smp_cluster_->clear_exclusive_reservation(core_id_);
+                }
             }
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");
@@ -4806,6 +6290,9 @@ void CPU::step(Memory& guest_memory) {
             memory.check_access(address, static_cast<unsigned>(width),
                                 load ? AccessType::Read : AccessType::Write);
             require_memory_range(memory, memory_address, width);
+            // Phase 43: ordered load/store (LDAR/STLR) serialized with the
+            // store stream.
+            auto store_guard = lock_store_serialization();
             if (load) {
                 const std::uint64_t value =
                     read_access_value(memory, memory_address, exclusive_size_field);
@@ -4844,6 +6331,9 @@ void CPU::step(Memory& guest_memory) {
         memory.check_access(address, static_cast<unsigned>(width),
                             AccessType::Write);
         require_memory_range(memory, memory_address, width);
+        // Phase 43: LSE read-modify-write atomics execute as one serialized
+        // step with respect to every other guest store.
+        auto store_guard = lock_store_serialization();
         const std::uint64_t value_mask =
             access_value_mask(exclusive_size_field);
         const std::uint64_t old_value =
@@ -4951,6 +6441,10 @@ void CPU::step(Memory& guest_memory) {
                             load ? AccessType::Read : AccessType::Write);
         memory.check_access(ea2, static_cast<unsigned>(scale),
                             load ? AccessType::Read : AccessType::Write);
+        if (!load) {
+            memory.check_watchpoint(ea, static_cast<unsigned>(scale), AccessType::Write);
+            memory.check_watchpoint(ea2, static_cast<unsigned>(scale), AccessType::Write);
+        }
         if (mem_offset1 > memory.size() || (scale * 2u) > memory.size() - mem_offset1) {
             std::ostringstream message;
             message << "Memory access out of range: offset " << mem_offset1
@@ -5284,21 +6778,24 @@ void CPU::step(Memory& guest_memory) {
             offset -= (std::int64_t{1} << 19u);
         }
         const std::int64_t displacement = offset * 4;
-        if (condition_holds(condition, nzcv_)) {
+        const bool take = condition_holds(condition, nzcv_);
+        std::uint64_t target = 0;
+        if (take) {
             if (displacement >= 0) {
-                program_counter_ = checked_add_address(
+                target = checked_add_address(
                     instruction_address, static_cast<std::uint64_t>(displacement),
                     "Conditional branch target");
             } else {
-                program_counter_ = checked_sub_address(
+                target = checked_sub_address(
                     instruction_address, static_cast<std::uint64_t>(-displacement),
                     "Conditional branch target");
             }
+            program_counter_ = target;
         } else {
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");
         }
-        emit_trace();
+        emit_trace(true, take, target);
         return;
     }
     if ((instruction & kCompareBranchMask) == kCbz) {
@@ -5313,22 +6810,24 @@ void CPU::step(Memory& guest_memory) {
         const std::uint64_t value = read_width_operand(
             *this, source, is64, false);
         const bool take = nonzero ? value != 0 : value == 0;
+        std::uint64_t target = 0;
         if (take) {
             const std::int64_t displacement = offset * 4;
             if (displacement >= 0) {
-                program_counter_ = checked_add_address(
+                target = checked_add_address(
                     instruction_address, static_cast<std::uint64_t>(displacement),
                     "Compare branch target");
             } else {
-                program_counter_ = checked_sub_address(
+                target = checked_sub_address(
                     instruction_address, static_cast<std::uint64_t>(-displacement),
                     "Compare branch target");
             }
+            program_counter_ = target;
         } else {
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");
         }
-        emit_trace();
+        emit_trace(true, take, target);
         return;
     }
     if ((instruction & kTestBitBranchMask) == kTbz) {
@@ -5343,22 +6842,24 @@ void CPU::step(Memory& guest_memory) {
         const std::uint64_t val = (rt == 31u) ? 0ull : read_register(rt);
         const bool bit_set = ((val >> bitpos) & 1ull) != 0;
         const bool take = nonzero ? bit_set : !bit_set;
+        std::uint64_t target = 0;
         if (take) {
             const std::int64_t displacement = offset * 4;
             if (displacement >= 0) {
-                program_counter_ = checked_add_address(
+                target = checked_add_address(
                     instruction_address, static_cast<std::uint64_t>(displacement),
                     "Test bit and branch target");
             } else {
-                program_counter_ = checked_sub_address(
+                target = checked_sub_address(
                     instruction_address, static_cast<std::uint64_t>(-displacement),
                     "Test bit and branch target");
             }
+            program_counter_ = target;
         } else {
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");
         }
-        emit_trace();
+        emit_trace(true, take, target);
         return;
     }
     if ((instruction & kBranchRegisterMask) == kBranchRegister) {
@@ -5368,7 +6869,7 @@ void CPU::step(Memory& guest_memory) {
             throw std::runtime_error("Misaligned branch target address: " + hex_word64(target));
         }
         program_counter_ = target;
-        emit_trace();
+        emit_trace(true, true, target);
         return;
     }
     if ((instruction & kBranchRegisterMask) == kBranchLinkRegister) {
@@ -5381,7 +6882,7 @@ void CPU::step(Memory& guest_memory) {
             instruction_address, 4u, "Branch with link return address");
         write_register(30, return_address);
         program_counter_ = target;
-        emit_trace();
+        emit_trace(true, true, target);
         return;
     }
     if ((instruction & kBranchRegisterMask) == kReturnRegister) {
@@ -5391,7 +6892,7 @@ void CPU::step(Memory& guest_memory) {
             throw std::runtime_error("Misaligned branch target address: " + hex_word64(target));
         }
         program_counter_ = target;
-        emit_trace();
+        emit_trace(true, true, target);
         return;
     }
     if ((instruction & kBranchImmediateMask) == kBranch) {
@@ -5418,7 +6919,7 @@ void CPU::step(Memory& guest_memory) {
             write_register(30, return_address);
         }
         program_counter_ = target;
-        emit_trace();
+        emit_trace(true, true, target);
         return;
     }
     // Phase 32B: SIMD & Floating-Point Load/Store
@@ -5541,6 +7042,11 @@ void CPU::step(Memory& guest_memory) {
                     if (mem_offset + 16 > memory.size() || mem_offset + 16 < mem_offset) {
                         throw std::out_of_range("Memory access out of range");
                     }
+                    // Phase 44: a 128-bit SIMD/FP load is single-copy atomic
+                    // in the supported model. Holding the cluster store
+                    // serialization point across both 8-byte reads prevents a
+                    // concurrent pair/128-bit store from being observed torn.
+                    auto store_guard = lock_store_serialization();
                     const std::uint64_t low = memory.read_u64(mem_offset);
                     const std::uint64_t high = memory.read_u64(mem_offset + 8);
                     write_vector_register(rt, VectorRegister{low, high});
@@ -5562,6 +7068,7 @@ void CPU::step(Memory& guest_memory) {
                     if (mem_offset + 16 > memory.size() || mem_offset + 16 < mem_offset) {
                         throw std::out_of_range("Memory access out of range");
                     }
+                    memory.check_watchpoint(target_address, 16u, AccessType::Write);
                     const VectorRegister v = read_vector_register(rt);
                     memory.write_u64(mem_offset, v.low);
                     memory.write_u64(mem_offset + 8, v.high);
@@ -5818,18 +7325,24 @@ void CPU::step(Memory& guest_memory) {
             }
             throw std::runtime_error("Privilege violation: ERET at EL0");
         }
-        const std::uint32_t spsr = (current_el_ == 2) ? spsr_el2_ : spsr_el1_;
+        const unsigned prev_el = current_el_;
+        const bool prev_spsel = sp_sel_;
+        const std::uint8_t prev_daif = daif_;
+        const std::uint32_t spsr = (current_el_ == 3) ? spsr_el3_ : ((current_el_ == 2) ? spsr_el2_ : spsr_el1_);
         const std::uint32_t m    = spsr & 0x1Fu;
-        const std::uint64_t new_pc = (current_el_ == 2) ? elr_el2_ : elr_el1_;
+        const std::uint64_t new_pc = (current_el_ == 3) ? elr_el3_ : ((current_el_ == 2) ? elr_el2_ : elr_el1_);
         const std::uint32_t target_el = (m >> 2u) & 0x3u;
-        const bool valid_m = (current_el_ == 2)
-            ? (m == 0x00u || m == 0x04u || m == 0x05u || m == 0x08u || m == 0x09u)
-            : (m == 0x00u || m == 0x04u || m == 0x05u);
+        const bool valid_m = (current_el_ == 3)
+            ? (m == 0x00u || m == 0x04u || m == 0x05u || m == 0x08u || m == 0x09u || m == 0x0Cu || m == 0x0Du)
+            : ((current_el_ == 2)
+                ? (m == 0x00u || m == 0x04u || m == 0x05u || m == 0x08u || m == 0x09u)
+                : (m == 0x00u || m == 0x04u || m == 0x05u));
         if (!valid_m || target_el > current_el_) {
             if (architectural_exceptions_) {
                 nzcv_       = static_cast<std::uint8_t>((spsr >> 28u) & 0xFu);
                 daif_       = static_cast<std::uint8_t>((spsr >>  6u) & 0xFu);
                 il_         = true;
+                pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
                 program_counter_ = new_pc;
                 emit_trace();
                 return;
@@ -5839,10 +7352,18 @@ void CPU::step(Memory& guest_memory) {
         nzcv_       = static_cast<std::uint8_t>((spsr >> 28u) & 0xFu);
         daif_       = static_cast<std::uint8_t>((spsr >>  6u) & 0xFu);
         il_         = ((spsr >> 20u) & 0x1u) != 0u;
+        pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
+        pmu_.on_event(winios::ARMV8_EVENT_EXC_RETURN, static_cast<unsigned>(current_el_));
         current_el_ = target_el;
         sp_sel_     = (m & 0x1u) != 0u;
         program_counter_ = new_pc;
-        emit_trace();
+        emit_trace(false, false, 0, true, new_pc, spsr, target_el);
+        if (!is_halted_.load(std::memory_order_acquire)) {
+            if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+                emit_context_changed_trace(instruction_address, new_pc, prev_el, target_el, prev_spsel, (m & 0x1u) != 0u,
+                                           winios::trace::ContextChangeReason::ExceptionReturn, prev_daif, static_cast<std::uint8_t>((spsr >> 6u) & 0xFu));
+            }
+        }
         return;
     }
 
@@ -5852,8 +7373,8 @@ void CPU::step(Memory& guest_memory) {
         SynchronousException exception =
             make_svc(instruction_address, static_cast<std::uint16_t>(imm16));
         exception.instruction_length_4 = architectural_exceptions_;
-        raise_synchronous_exception(exception);
         emit_trace();
+        raise_synchronous_exception(exception);
         return;
     }
 
@@ -5862,16 +7383,72 @@ void CPU::step(Memory& guest_memory) {
     constexpr std::uint32_t kHvcPattern = 0xD4000002u;
     if ((instruction & kHvcMask) == kHvcPattern) {
         const std::uint32_t imm16 = (instruction >> 5u) & 0xFFFFu;
+        if (current_el_ == 0 || (current_el_ == 1 && !(scr_el3_ & (1ULL << 8u)))) {
+            if (architectural_exceptions_) {
+                raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                return;
+            }
+            throw std::runtime_error("Privilege violation: HVC at EL0 or disabled by SCR_EL3.HCE");
+        }
+        SynchronousException exception = make_hvc(instruction_address, static_cast<std::uint16_t>(imm16));
+        exception.instruction_length_4 = true;
+        emit_trace();
+        raise_el2_exception(exception, current_el_ < 2);
+        return;
+    }
+
+    // Phase 47: SMC - Secure Monitor Call
+    constexpr std::uint32_t kSmcMask = 0xFFE0001Fu;
+    constexpr std::uint32_t kSmcPattern = 0xD4000003u;
+    if ((instruction & kSmcMask) == kSmcPattern) {
+        const std::uint32_t imm16 = (instruction >> 5u) & 0xFFFFu;
         if (current_el_ == 0) {
             if (architectural_exceptions_) {
                 raise_synchronous_exception(make_undefined_instruction(instruction_address));
                 return;
             }
-            throw std::runtime_error("Privilege violation: HVC at EL0");
+            throw std::runtime_error("Privilege violation: SMC at EL0");
         }
-        SynchronousException exception = make_hvc(instruction_address, static_cast<std::uint16_t>(imm16));
+        if (scr_el3_ & (1ULL << 7u)) { // SCR_EL3.SMD == 1: SMC disabled
+            if (architectural_exceptions_) {
+                raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                return;
+            }
+            throw std::runtime_error("SMC disabled by SCR_EL3.SMD");
+        }
+        if (current_el_ == 1 && (hcr_el2_ & (1ULL << 19u))) { // HCR_EL2.TSC: Trap SMC to EL2
+            SynchronousException ex;
+            ex.ec = ExceptionClass::SmcAArch64;
+            ex.iss = imm16;
+            ex.preferred_return = instruction_address;
+            ex.target_el = 2;
+            emit_trace();
+            raise_el2_exception(ex, true);
+            return;
+        }
+        // Phase 48: Intercept PSCI calls before EL3 guest vector.
+        winios::PSCIService* psci = psci_service_;
+        if (!psci && smp_cluster_) {
+            psci = smp_cluster_->get_psci_service();
+        }
+        if (psci != nullptr) {
+            if (psci->handle_smc(*this, core_id_)) {
+                emit_trace();
+                return;
+            }
+        }
+        SynchronousException exception = make_smc(instruction_address, static_cast<std::uint16_t>(imm16));
         exception.instruction_length_4 = true;
-        raise_el2_exception(exception, current_el_ < 2);
+        emit_trace();
+        raise_el3_exception(exception, current_el_ < 3);
+        return;
+    }
+
+    // Phase 52 Stage 22: HLT - Halt execution
+    constexpr std::uint32_t kHltMask = 0xFFE0001Fu;
+    constexpr std::uint32_t kHltPattern = 0xD4400000u;
+    if ((instruction & kHltMask) == kHltPattern) {
+        set_halted(true);
         emit_trace();
         return;
     }
@@ -5892,10 +7469,16 @@ void CPU::step(Memory& guest_memory) {
             throw std::runtime_error("Privilege violation: MSR immediate at EL0");
         }
         bool handled = false;
+        bool spsel_changed = false;
+        const bool prev_spsel = sp_sel_;
         if (op1 == 0u && op2 == 5u) {
             // MSR SPSel, #imm1: set or clear SPSel bit.
             // Only architectural in EL1+ (trap at EL0 is optional; we allow it).
-            sp_sel_ = (crm & 0x1u) != 0u;
+            const bool new_spsel = (crm & 0x1u) != 0u;
+            if (new_spsel != sp_sel_) {
+                sp_sel_ = new_spsel;
+                spsel_changed = true;
+            }
             handled = true;
         } else if (op1 == 3u && op2 == 6u) {
             // MSR DAIFSet, #imm4: set (mask) DAIF bits.
@@ -5910,6 +7493,12 @@ void CPU::step(Memory& guest_memory) {
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");
             emit_trace();
+            if (spsel_changed && !is_halted_.load(std::memory_order_acquire)) {
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+                    emit_context_changed_trace(instruction_address, program_counter_, current_el_, current_el_, prev_spsel, sp_sel_,
+                                               winios::trace::ContextChangeReason::RegisterBankSelect, daif_, daif_);
+                }
+            }
             return;
         }
     }
@@ -5930,31 +7519,78 @@ void CPU::step(Memory& guest_memory) {
                     event_register_ = false;
                 } else if (architectural_exceptions_) {
                     check_timer_status();
-                    const bool irq = (phys_timer_.enable && phys_timer_.istatus && !phys_timer_.imask)
-                                  || (virt_timer_.enable && virt_timer_.istatus && !virt_timer_.imask);
+                    bool irq = false;
+                    std::uint32_t intid = 30u;
+                    bool is_fiq = false;
+                    bool is_virtual = false;
+                    std::uint8_t priority = 0;
+                    if (get_gic().is_enabled(core_id_)) {
+                        const auto sig = get_gic().evaluate(current_el_, hcr_el2_, core_id_);
+                        irq = sig.has_interrupt;
+                        intid = sig.intid;
+                        is_fiq = sig.is_fiq;
+                        is_virtual = sig.is_virtual;
+                        priority = sig.priority;
+                    } else {
+                        const bool phys_irq = virtual_time_->get_phys_timer_irq(core_id_);
+                        const bool virt_irq = virtual_time_->get_virt_timer_irq(core_id_);
+                        const bool hp_irq   = virtual_time_->get_cnthp_timer_irq(core_id_);
+                        irq = phys_irq || virt_irq || hp_irq;
+                        if (hp_irq) intid = 26u;
+                        else if (virt_irq) intid = 27u;
+                        else if (phys_irq) intid = 30u;
+                    }
                     if (irq && !(daif_ & 0x2u)) {
                         program_counter_ = checked_add_address(
                             instruction_address, 4u, "Instruction PC increment");
-                        raise_asynchronous_exception(false);
+                        raise_asynchronous_exception(is_fiq, intid, is_virtual, priority);
                         emit_trace();
                         return;
+                    }
+                    if (!irq) {
+                        waiting_for_event_ = true;
                     }
                 }
             } else if (imm7 == 3u) { // WFI
                 if (architectural_exceptions_) {
                     check_timer_status();
-                    const bool irq = (phys_timer_.enable && phys_timer_.istatus && !phys_timer_.imask)
-                                  || (virt_timer_.enable && virt_timer_.istatus && !virt_timer_.imask);
+                    bool irq = false;
+                    std::uint32_t intid = 30u;
+                    bool is_fiq = false;
+                    bool is_virtual = false;
+                    std::uint8_t priority = 0;
+                    if (get_gic().is_enabled(core_id_)) {
+                        const auto sig = get_gic().evaluate(current_el_, hcr_el2_, core_id_);
+                        irq = sig.has_interrupt;
+                        intid = sig.intid;
+                        is_fiq = sig.is_fiq;
+                        is_virtual = sig.is_virtual;
+                        priority = sig.priority;
+                    } else {
+                        const bool phys_irq = virtual_time_->get_phys_timer_irq(core_id_);
+                        const bool virt_irq = virtual_time_->get_virt_timer_irq(core_id_);
+                        const bool hp_irq   = virtual_time_->get_cnthp_timer_irq(core_id_);
+                        irq = phys_irq || virt_irq || hp_irq;
+                        if (hp_irq) intid = 26u;
+                        else if (virt_irq) intid = 27u;
+                        else if (phys_irq) intid = 30u;
+                    }
                     if (irq && !(daif_ & 0x2u)) {
                         program_counter_ = checked_add_address(
                             instruction_address, 4u, "Instruction PC increment");
-                        raise_asynchronous_exception(false);
+                        raise_asynchronous_exception(is_fiq, intid, is_virtual, priority);
                         emit_trace();
                         return;
+                    }
+                    if (!irq) {
+                        waiting_for_interrupt_ = true;
                     }
                 }
             } else if (imm7 == 4u) { // SEV
                 event_register_ = true;
+                if (smp_cluster_) {
+                    smp_cluster_->broadcast_sev(core_id_);
+                }
             } else if (imm7 == 5u) { // SEVL
                 event_register_ = true;
             }
@@ -5970,6 +7606,14 @@ void CPU::step(Memory& guest_memory) {
                 // CLREX (op2=2, CRm=15, Rt=31)
                 if (crm == 15u && rt == 31u) {
                     clear_exclusive_monitor();
+                    // Phase 44: CLREX clears the global (cluster) reservation
+                    // as well as the per-core one. Previously the cluster
+                    // reservation survived until an overlapping store, which
+                    // made a later STXR appear to succeed on a reservation
+                    // the guest had explicitly cleared.
+                    if (smp_cluster_) {
+                        smp_cluster_->clear_exclusive_reservation(core_id_);
+                    }
                     program_counter_ = checked_add_address(
                         instruction_address, 4u, "Instruction PC increment");
                     emit_trace();
@@ -6030,6 +7674,26 @@ void CPU::step(Memory& guest_memory) {
 
         // Cache Maintenance Instructions (CRn=7)
         if (crn == 7u) {
+            // Phase 44: EL0 access control.
+            //   DC ZVA             -> SCTLR_EL1.DZE (bit 14)
+            //   DC CVAC/CVAU/CIVAC,
+            //   DC IVAC, IC IVAU   -> SCTLR_EL1.UCI (bit 26)
+            //   IC IALLU/IALLUIS   -> always EL1-only
+            const auto el0_uci_enabled = [&]() {
+                return (mmu_.get_sctlr_el1() & (1ULL << 26u)) != 0;
+            };
+            const auto reject_el0_cache_op = [&](const char* text) {
+                if (current_el_ != 0) {
+                    return false;
+                }
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(
+                        make_undefined_instruction(instruction_address));
+                    return true;
+                }
+                throw std::runtime_error(text);
+            };
+
             // DC ZVA, Xt: op1=3, CRn=7, CRm=4, op2=1
             if (op1 == 3u && crm == 4u && op2 == 1u) {
                 if (current_el_ == 0 && ((mmu_.get_sctlr_el1() & (1ULL << 14u)) == 0)) {
@@ -6042,6 +7706,11 @@ void CPU::step(Memory& guest_memory) {
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
                 const std::uint64_t block_va = va & ~63ULL;
                 memory.check_range(block_va, 64u, AccessType::Write);
+                // Phase 44: the 64-byte block clear is serialized against every
+                // other guest store. It is still emitted as eight 8-byte
+                // stores, so a concurrent *reader* may observe a partially
+                // cleared block; this is documented as a model limitation.
+                auto store_guard = lock_store_serialization();
                 for (std::size_t offset = 0; offset < 64u; offset += 8u) {
                     memory.write_u64(static_cast<std::size_t>(block_va + offset), 0ULL);
                 }
@@ -6052,18 +7721,16 @@ void CPU::step(Memory& guest_memory) {
                 return;
             }
 
-            if (op1 == 0u && current_el_ == 0) {
-                if (architectural_exceptions_) {
-                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
-                    return;
-                }
-                throw std::runtime_error("Privilege violation: EL1 cache instruction executed at EL0");
-            }
-
             if ((op1 == 3u && crm == 10u && op2 == 1u) || // DC CVAC
                 (op1 == 3u && crm == 11u && op2 == 1u) || // DC CVAU
                 (op1 == 3u && crm == 14u && op2 == 1u) || // DC CIVAC
                 (op1 == 3u && crm == 5u  && op2 == 1u)) {  // IC IVAU
+                if (current_el_ == 0 && !el0_uci_enabled()) {
+                    if (reject_el0_cache_op(
+                            "Privilege violation: EL1 cache instruction executed at EL0")) {
+                        return;
+                    }
+                }
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
                 memory.check_range(va & ~63ULL, 64u, AccessType::Read);
                 program_counter_ = checked_add_address(
@@ -6072,6 +7739,12 @@ void CPU::step(Memory& guest_memory) {
                 return;
             }
             if (op1 == 0u && crm == 6u && op2 == 1u) { // DC IVAC
+                if (current_el_ == 0 && !el0_uci_enabled()) {
+                    if (reject_el0_cache_op(
+                            "Privilege violation: EL1 cache instruction executed at EL0")) {
+                        return;
+                    }
+                }
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
                 memory.check_range(va & ~63ULL, 64u, AccessType::Write);
                 program_counter_ = checked_add_address(
@@ -6080,6 +7753,12 @@ void CPU::step(Memory& guest_memory) {
                 return;
             }
             if (op1 == 0u && op2 == 0u && rt == 31u && (crm == 5u || crm == 1u)) { // IC IALLU, IC IALLUIS
+                // IC IALLU/IALLUIS are never available to EL0, regardless of
+                // SCTLR_EL1.UCI.
+                if (current_el_ == 0 && reject_el0_cache_op(
+                        "Privilege violation: IC IALLU/IALLUIS executed at EL0")) {
+                    return;
+                }
                 program_counter_ = checked_add_address(
                     instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
@@ -6102,32 +7781,50 @@ void CPU::step(Memory& guest_memory) {
                 switch (op2) {
                 case 0: // TLBI VMALLE1 / VMALLE1IS
                     mmu_.invalidate_tlb_all();
+                    if (crm == 3 && smp_cluster_) {
+                        smp_cluster_->broadcast_tlbi_all(core_id_);
+                    }
                     break;
                 case 1: { // TLBI VAE1 / VAE1IS, Xt
                     const std::uint16_t asid = static_cast<std::uint16_t>((reg_val >> 48u) & 0xFFFFu);
                     const std::uint64_t va = (reg_val & 0x0000FFFFFFFFFFFFULL) << 12u;
                     mmu_.invalidate_tlb_va(va, asid, false);
+                    if (crm == 3 && smp_cluster_) {
+                        smp_cluster_->broadcast_tlbi_va(core_id_, va, asid, false);
+                    }
                     break;
                 }
                 case 2: { // TLBI ASIDE1 / ASIDE1IS, Xt
                     const std::uint16_t asid = static_cast<std::uint16_t>((reg_val >> 48u) & 0xFFFFu);
                     mmu_.invalidate_tlb_asid(asid);
+                    if (crm == 3 && smp_cluster_) {
+                        smp_cluster_->broadcast_tlbi_asid(core_id_, asid);
+                    }
                     break;
                 }
                 case 3: { // TLBI VAAE1 / VAAE1IS, Xt
                     const std::uint64_t va = (reg_val & 0x0000FFFFFFFFFFFFULL) << 12u;
                     mmu_.invalidate_tlb_vaa(va, false);
+                    if (crm == 3 && smp_cluster_) {
+                        smp_cluster_->broadcast_tlbi_vaa(core_id_, va, false);
+                    }
                     break;
                 }
                 case 5: { // TLBI VALE1 / VALE1IS, Xt
                     const std::uint16_t asid = static_cast<std::uint16_t>((reg_val >> 48u) & 0xFFFFu);
                     const std::uint64_t va = (reg_val & 0x0000FFFFFFFFFFFFULL) << 12u;
                     mmu_.invalidate_tlb_va(va, asid, true);
+                    if (crm == 3 && smp_cluster_) {
+                        smp_cluster_->broadcast_tlbi_va(core_id_, va, asid, true);
+                    }
                     break;
                 }
                 case 7: { // TLBI VAALE1 / VAALE1IS, Xt
                     const std::uint64_t va = (reg_val & 0x0000FFFFFFFFFFFFULL) << 12u;
                     mmu_.invalidate_tlb_vaa(va, true);
+                    if (crm == 3 && smp_cluster_) {
+                        smp_cluster_->broadcast_tlbi_vaa(core_id_, va, true);
+                    }
                     break;
                 }
                 default:
@@ -6165,6 +7862,9 @@ void CPU::step(Memory& guest_memory) {
         const bool is_read = (instruction & (1u << 21u)) != 0u;
         const std::uint32_t rt = instruction & 0x1Fu;
         const std::uint16_t key = sysreg_key(instruction);
+        std::uint64_t sysreg_trace_val = 0;
+        bool spsel_changed = false;
+        const bool prev_spsel = sp_sel_;
         auto can_access_el0 = [&](std::uint16_t reg_key, bool is_mrs) noexcept -> bool {
             if (reg_key == kSysregNZCV || reg_key == kSysregFPCR || reg_key == kSysregFPSR) {
                 return true;
@@ -6173,24 +7873,64 @@ void CPU::step(Memory& guest_memory) {
                 return is_mrs; // read-only
             }
             if (reg_key == kSysregCNTFRQ_EL0) {
-                return is_mrs && ((cntkctl_el1_ & 0x3u) != 0u);
+                return is_mrs && ((get_cntkctl_el1() & 0x3u) != 0u);
             }
             if (reg_key == kSysregCNTPCT_EL0) {
-                return is_mrs && ((cntkctl_el1_ & (1u << 0)) != 0u);
+                return is_mrs && ((get_cntkctl_el1() & (1u << 0)) != 0u);
             }
             if (reg_key == kSysregCNTVCT_EL0) {
-                return is_mrs && ((cntkctl_el1_ & (1u << 1)) != 0u);
+                return is_mrs && ((get_cntkctl_el1() & (1u << 1)) != 0u);
             }
             if (reg_key == kSysregCNTP_CTL || reg_key == kSysregCNTP_CVAL || reg_key == kSysregCNTP_TVAL) {
-                return (cntkctl_el1_ & (1u << 9)) != 0u;
+                return (get_cntkctl_el1() & (1u << 8)) != 0u;
             }
             if (reg_key == kSysregCNTV_CTL || reg_key == kSysregCNTV_CVAL || reg_key == kSysregCNTV_TVAL) {
-                return (cntkctl_el1_ & (1u << 8)) != 0u;
+                return (get_cntkctl_el1() & (1u << 9)) != 0u;
+            }
+            // Phase 49: PMU EL0 access rules via PMUSERENR_EL0
+            const std::uint32_t userenr = pmu_.read_pmuserenr();
+            const bool el0_en = (userenr & winios::kPMUserEnable) != 0u;
+            if (reg_key == kSysregPMCCNTR_EL0) {
+                if (is_mrs) {
+                    return el0_en || ((userenr & winios::kPMUserCycleRead) != 0u);
+                }
+                return el0_en;
+            }
+            if (reg_key == kSysregPMXEVCNTR_EL0 || (reg_key >= 0x5F40 && reg_key <= 0x5F5F)) {
+                if (is_mrs) {
+                    return el0_en || ((userenr & winios::kPMUserEventRead) != 0u);
+                }
+                return el0_en;
+            }
+            if (reg_key == kSysregPMSWINC_EL0) {
+                if (!is_mrs) {
+                    return el0_en || ((userenr & winios::kPMUserSoftwareIncr) != 0u);
+                }
+                return false;
+            }
+            if (reg_key == kSysregPMUSERENR_EL0) {
+                return is_mrs && el0_en;
+            }
+            if (reg_key == kSysregPMINTENSET_EL1 || reg_key == kSysregPMINTENCLR_EL1) {
+                return false;
+            }
+            if (is_pmu_reg(reg_key)) {
+                return el0_en;
             }
             return false;
         };
         const std::uint32_t op1 = (instruction >> 16u) & 0x7u;
-        const bool is_el2_reg = (op1 == 4u || op1 == 5u) || (key == kSysregSP_EL2);
+        const bool is_el3_reg = (op1 == 6u || op1 == 7u);
+        if (is_el3_reg && current_el_ < 3) {
+            if (architectural_exceptions_) {
+                raise_synchronous_exception(
+                    make_undefined_instruction(instruction_address));
+                return;
+            }
+            throw std::runtime_error("Privilege violation: EL3 system register accessed below EL3");
+        }
+
+        const bool is_el2_reg = (op1 == 4u || op1 == 5u);
         if (is_el2_reg && current_el_ < 2) {
             if (architectural_exceptions_) {
                 raise_synchronous_exception(
@@ -6198,6 +7938,66 @@ void CPU::step(Memory& guest_memory) {
                 return;
             }
             throw std::runtime_error("Privilege violation: EL2 system register accessed below EL2");
+        }
+
+        // Phase 49: PMU traps to EL3 via MDCR_EL3.TPM (bit 6)
+        if (current_el_ < 3 && is_pmu_reg(key) && ((mdcr_el3_ & (1ULL << 6u)) != 0u)) {
+            if (architectural_exceptions_) {
+                SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
+                raise_el3_exception(ex, current_el_ < 3);
+                return;
+            }
+            throw std::runtime_error("Trap to EL3: PMU access trapped by MDCR_EL3.TPM");
+        }
+
+        // Phase 49: PMU traps to EL2 via MDCR_EL2.TPM (bit 6) or MDCR_EL2.TPMCR (bit 5)
+        if (current_el_ < 2) {
+            const bool trap_tpm = is_pmu_reg(key) && ((mdcr_el2_ & (1ULL << 6u)) != 0u);
+            const bool trap_tpmcr = (key == kSysregPMCR_EL0) && ((mdcr_el2_ & (1ULL << 5u)) != 0u);
+            if (trap_tpm || trap_tpmcr) {
+                if (architectural_exceptions_) {
+                    SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
+                    raise_el2_exception(ex, current_el_ < 2);
+                    return;
+                }
+                throw std::runtime_error("Trap to EL2: PMU access trapped by MDCR_EL2");
+            }
+        }
+
+        // Phase 50: Generic Timer traps via CNTKCTL_EL1 and CNTHCTL_EL2 (both read and write)
+        const auto timer_trap = virtual_time_->check_trap(core_id_, static_cast<unsigned>(current_el_), key, is_read);
+        if (timer_trap.trapped) {
+            if (architectural_exceptions_) {
+                SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
+                if (timer_trap.target_el == 2) {
+                    raise_el2_exception(ex, current_el_ < 2);
+                } else {
+                    ex.target_el = 1;
+                    raise_synchronous_exception(ex);
+                }
+                return;
+            }
+            throw std::runtime_error("Trap: Generic Timer access trapped to EL" + std::to_string(timer_trap.target_el));
+        }
+
+        // Phase 51: Debug register traps to EL3 via MDCR_EL3.TDA (bit 9)
+        if (current_el_ < 3 && is_debug_reg(key) && ((mdcr_el3_ & (1ULL << 9u)) != 0u)) {
+            if (architectural_exceptions_) {
+                SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
+                raise_el3_exception(ex, current_el_ < 3);
+                return;
+            }
+            throw std::runtime_error("Trap to EL3: Debug register access trapped by MDCR_EL3.TDA");
+        }
+
+        // Phase 51: Debug register traps to EL2 via MDCR_EL2.TDA (bit 9)
+        if (current_el_ < 2 && is_debug_reg(key) && ((mdcr_el2_ & (1ULL << 9u)) != 0u)) {
+            if (architectural_exceptions_) {
+                SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
+                raise_el2_exception(ex, current_el_ < 2);
+                return;
+            }
+            throw std::runtime_error("Trap to EL2: Debug register access trapped by MDCR_EL2.TDA");
         }
 
         if (current_el_ == 0 && !can_access_el0(key, is_read)) {
@@ -6210,21 +8010,9 @@ void CPU::step(Memory& guest_memory) {
         }
 
         if (is_read) {
-            // Phase 40: Timer traps at EL1 via CNTHCTL_EL2 (reads only)
-            if (current_el_ == 1 && architectural_exceptions_) {
-                if (key == kSysregCNTPCT_EL0 && !(cnthctl_el2_ & 1ULL)) {
-                    SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
-                    raise_el2_exception(ex, true);
-                    return;
-                }
-                if ((key == kSysregCNTP_CTL || key == kSysregCNTP_CVAL || key == kSysregCNTP_TVAL) && !(cnthctl_el2_ & 2ULL)) {
-                    SynchronousException ex = make_trapped_sysreg(instruction_address, 0x1800000u | (instruction & 0x1FFFFFFu));
-                    raise_el2_exception(ex, true);
-                    return;
-                }
-            }
             // MRS: read system register → Xt
             std::uint64_t value = 0;
+            const std::uint64_t guest_now = get_guest_counter();
             switch (key) {
             case kSysregNZCV:
                 value = static_cast<std::uint64_t>(nzcv_) << 28u;
@@ -6281,6 +8069,15 @@ void CPU::step(Memory& guest_memory) {
             case kSysregID_AA64MMFR0:
                 value = mmu_.get_id_aa64mmfr0_el1();
                 break;
+            case kSysregID_AA64DFR0_EL1:
+                // Debug Feature Register 0: reports breakpoint and watchpoint counts
+                // Bits [15:12] = BRPs (number of breakpoints - 1) = 3 (4 breakpoints)
+                // Bits [23:20] = WRPs (number of watchpoints - 1) = 3 (4 watchpoints)
+                // Bits [3:0] = DebugVer = 0x6 (ARMv8 debug architecture)
+                value = (winios::DebugArchitecture::breakpoint_count_minus_one() << 12u)
+                      | (winios::DebugArchitecture::watchpoint_count_minus_one() << 20u)
+                      | 0x6u; // DebugVer
+                break;
             case kSysregPAR_EL1:
                 value = mmu_.get_par_el1();
                 break;
@@ -6288,39 +8085,51 @@ void CPU::step(Memory& guest_memory) {
                 value = 0x00000004ULL;
                 break;
             case kSysregCNTFRQ_EL0:
-                value = cntfrq_el0_;
+                value = virtual_time_->get_frequency();
                 break;
             case kSysregCNTPCT_EL0:
-                value = guest_counter_;
+                if (winios::replay::is_replay_active()) {
+                    if (!winios::replay::hook_replay_counter_read(static_cast<std::uint16_t>(core_id_), instruction_address, instruction_retirement_count_, kSysregCNTPCT_EL0, value)) {
+                        value = guest_now;
+                    }
+                } else {
+                    value = guest_now;
+                    winios::sndl::hook_counter_read(static_cast<std::uint16_t>(core_id_), instruction_address, instruction_retirement_count_, kSysregCNTPCT_EL0, value, virtual_time_->get_frequency());
+                }
                 break;
             case kSysregCNTVCT_EL0:
-                value = guest_counter_ - cntvoff_el2_;
+                if (winios::replay::is_replay_active()) {
+                    if (!winios::replay::hook_replay_counter_read(static_cast<std::uint16_t>(core_id_), instruction_address, instruction_retirement_count_, kSysregCNTVCT_EL0, value)) {
+                        value = virtual_time_->get_virtual_counter(core_id_);
+                    }
+                } else {
+                    value = virtual_time_->get_virtual_counter(core_id_);
+                    winios::sndl::hook_counter_read(static_cast<std::uint16_t>(core_id_), instruction_address, instruction_retirement_count_, kSysregCNTVCT_EL0, value, virtual_time_->get_frequency());
+                }
                 break;
             case kSysregCNTKCTL_EL1:
-                value = cntkctl_el1_;
+                value = virtual_time_->get_cntkctl_el1(core_id_);
                 break;
             case kSysregCNTP_CTL:
                 check_timer_status();
-                value = (phys_timer_.enable ? 1ULL : 0ULL)
-                      | (phys_timer_.imask ? 2ULL : 0ULL)
-                      | (phys_timer_.istatus ? 4ULL : 0ULL);
+                value = (get_phys_timer().enable ? 1ULL : 0ULL)
+                      | (get_phys_timer().imask ? 2ULL : 0ULL)
+                      | (get_phys_timer().istatus ? 4ULL : 0ULL);
                 break;
             case kSysregCNTP_CVAL:
-                value = phys_timer_.cval;
+                value = get_phys_timer().cval;
                 break;
-            case kSysregCNTP_TVAL: {
-                std::int64_t diff = static_cast<std::int64_t>(phys_timer_.cval) - static_cast<std::int64_t>(guest_counter_);
-                value = static_cast<std::uint32_t>(diff & 0xFFFFFFFFLL);
+            case kSysregCNTP_TVAL:
+                value = virtual_time_->read_phys_tval(core_id_);
                 break;
-            }
             case kSysregCNTV_CTL:
                 check_timer_status();
-                value = (virt_timer_.enable ? 1ULL : 0ULL)
-                      | (virt_timer_.imask ? 2ULL : 0ULL)
-                      | (virt_timer_.istatus ? 4ULL : 0ULL);
+                value = (get_virt_timer().enable ? 1ULL : 0ULL)
+                      | (get_virt_timer().imask ? 2ULL : 0ULL)
+                      | (get_virt_timer().istatus ? 4ULL : 0ULL);
                 break;
             case kSysregCNTV_CVAL:
-                value = virt_timer_.cval;
+                value = get_virt_timer().cval;
                 break;
             case kSysregSP_EL1:
                 value = (current_el_ == 1 && sp_sel_) ? get_stack_pointer() : sp_el1_;
@@ -6356,39 +8165,271 @@ void CPU::step(Memory& guest_memory) {
                 value = mmu_.get_vtcr_el2();
                 break;
             case kSysregCNTVOFF_EL2:
-                value = cntvoff_el2_;
+                value = virtual_time_->get_cntvoff_el2(core_id_);
                 break;
             case kSysregCNTHCTL_EL2:
-                value = cnthctl_el2_;
+                value = virtual_time_->get_cnthctl_el2(core_id_);
+                break;
+            // Phase 47: EL3 system registers (MRS)
+            case kSysregSCR_EL3:
+                value = scr_el3_;
+                break;
+            case kSysregCPTR_EL3:
+                value = cptr_el3_;
+                break;
+            case kSysregMDCR_EL3:
+                value = mdcr_el3_;
+                break;
+            case kSysregSPSR_EL3:
+                value = spsr_el3_;
+                break;
+            case kSysregELR_EL3:
+                value = elr_el3_;
+                break;
+            case kSysregESR_EL3:
+                value = esr_el3_;
+                break;
+            case kSysregFAR_EL3:
+                value = far_el3_;
+                break;
+            case kSysregVBAR_EL3:
+                value = vbar_el3_;
                 break;
             case kSysregCNTHP_CTL:
                 check_timer_status();
-                value = (cnthp_timer_.enable ? 1ULL : 0ULL)
-                      | (cnthp_timer_.imask ? 2ULL : 0ULL)
-                      | (cnthp_timer_.istatus ? 4ULL : 0ULL);
+                value = (get_cnthp_timer().enable ? 1ULL : 0ULL)
+                      | (get_cnthp_timer().imask ? 2ULL : 0ULL)
+                      | (get_cnthp_timer().istatus ? 4ULL : 0ULL);
                 break;
             case kSysregCNTHP_CVAL:
-                value = cnthp_timer_.cval;
+                value = get_cnthp_timer().cval;
                 break;
-            case kSysregCNTHP_TVAL: {
-                std::int64_t diff = static_cast<std::int64_t>(cnthp_timer_.cval) - static_cast<std::int64_t>(guest_counter_);
-                value = static_cast<std::uint32_t>(diff & 0xFFFFFFFFLL);
+            case kSysregCNTHP_TVAL:
+                value = virtual_time_->read_cnthp_tval(core_id_);
                 break;
-            }
-            case kSysregCNTV_TVAL: {
-                std::int64_t diff = static_cast<std::int64_t>(virt_timer_.cval) - static_cast<std::int64_t>(guest_counter_);
-                value = static_cast<std::uint32_t>(diff & 0xFFFFFFFFLL);
+            case kSysregCNTV_TVAL:
+                value = virtual_time_->read_virt_tval(core_id_);
                 break;
-            }
+            // Phase 42: Multiprocessor and SGI system registers (MRS)
+            case kSysregMPIDR_EL1:
+                value = get_mpidr_el1();
+                break;
+            case kSysregICC_SGI1R_EL1:
+                // Write-only register
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("ICC_SGI1R_EL1 is write-only");
+
+            // Phase 41: GICv3 system registers (MRS)
+            case kSysregICC_PMR_EL1:
+                value = get_gic().read_icc_pmr(core_id_);
+                break;
+            case kSysregICC_IAR0_EL1:
+                value = get_gic().acknowledge_group0(current_el_, core_id_);
+                break;
+            case kSysregICC_EOIR0_EL1:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("MRS to write-only ICC_EOIR0_EL1 is unallocated");
+            case kSysregICC_HPPIR0_EL1:
+                value = get_gic().read_hppir0(current_el_, core_id_);
+                break;
+            case kSysregICC_BPR0_EL1:
+                value = get_gic().read_icc_bpr0(core_id_);
+                break;
+            case kSysregICC_IAR1_EL1:
+                value = get_gic().acknowledge_group1(current_el_, core_id_);
+                break;
+            case kSysregICC_EOIR1_EL1:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("MRS to write-only ICC_EOIR1_EL1 is unallocated");
+            case kSysregICC_HPPIR1_EL1:
+                value = get_gic().read_hppir1(current_el_, core_id_);
+                break;
+            case kSysregICC_BPR1_EL1:
+                value = get_gic().read_icc_bpr1(core_id_);
+                break;
+            case kSysregICC_SRE_EL1:
+                value = get_gic().read_icc_sre_el1(core_id_);
+                break;
+            case kSysregICC_IGRPEN0_EL1:
+                value = get_gic().read_icc_igrpen0(core_id_);
+                break;
+            case kSysregICC_IGRPEN1_EL1:
+                value = get_gic().read_icc_igrpen1(core_id_);
+                break;
+            case kSysregICC_RPR_EL1:
+                value = get_gic().read_icc_rpr(core_id_);
+                break;
+            case kSysregICC_CTLR_EL1:
+                value = get_gic().read_icc_ctlr(core_id_);
+                break;
+            case kSysregICC_DIR_EL1:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("ICC_DIR_EL1 is write-only");
+            case kSysregICC_SRE_EL2:
+                value = get_gic().read_icc_sre_el2(core_id_);
+                break;
+            case kSysregICH_HCR_EL2:
+                value = get_gic().read_ich_hcr(core_id_);
+                break;
+            case kSysregICH_VTR_EL2:
+                value = get_gic().read_ich_vtr(core_id_);
+                break;
+            case kSysregICH_MISR_EL2:
+                value = get_gic().read_ich_misr(core_id_);
+                break;
+            case kSysregICH_EISR_EL2:
+                value = get_gic().read_ich_eisr(core_id_);
+                break;
+            case kSysregICH_ELRSR_EL2:
+                value = get_gic().read_ich_elrsr(core_id_);
+                break;
+            case kSysregICH_VMCR_EL2:
+                value = get_gic().read_ich_vmcr(core_id_);
+                break;
+            case kSysregICH_LR0_EL2:
+                value = get_gic().read_ich_lr(0, core_id_);
+                break;
+            case kSysregICH_LR1_EL2:
+                value = get_gic().read_ich_lr(1, core_id_);
+                break;
+            case kSysregICH_LR2_EL2:
+                value = get_gic().read_ich_lr(2, core_id_);
+                break;
+            case kSysregICH_LR3_EL2:
+                value = get_gic().read_ich_lr(3, core_id_);
+                break;
+            case kSysregPMCR_EL0:
+                value = pmu_.read_pmcr();
+                break;
+            case kSysregPMCNTENSET_EL0:
+            case kSysregPMCNTENCLR_EL0:
+                value = pmu_.read_pmcntenset();
+                break;
+            case kSysregPMOVSCLR_EL0:
+            case kSysregPMOVSSET_EL0:
+                value = pmu_.read_pmovsset();
+                break;
+            case kSysregPMSWINC_EL0:
+                value = 0;
+                break;
+            case kSysregPMSELR_EL0:
+                value = pmu_.read_pmselr();
+                break;
+            case kSysregPMCEID0_EL0:
+                value = pmu_.read_pmceid0();
+                break;
+            case kSysregPMCEID1_EL0:
+                value = pmu_.read_pmceid1();
+                break;
+            case kSysregPMCCNTR_EL0:
+                value = pmu_.read_pmccntr();
+                break;
+            case kSysregPMXEVTYPER_EL0:
+                value = pmu_.read_pmxevtyper();
+                break;
+            case kSysregPMXEVCNTR_EL0:
+                value = pmu_.read_pmxevcntr();
+                break;
+            case kSysregPMUSERENR_EL0:
+                value = pmu_.read_pmuserenr();
+                break;
+            case kSysregPMINTENSET_EL1:
+            case kSysregPMINTENCLR_EL1:
+                value = pmu_.read_pmintenset();
+                break;
+            case kSysregPMCCFILTR_EL0:
+                value = pmu_.read_pmccfiltr();
+                break;
+            case kSysregMDCR_EL2:
+                value = mdcr_el2_;
+                break;
+            // Phase 51: Debug Architecture system registers (MRS)
+            case kSysregMDSCR_EL1:
+                value = debug_arch_.get_mdscr_el1();
+                break;
+            case kSysregDBGBVR0_EL1:
+                value = debug_arch_.get_dbgbvr(0);
+                break;
+            case kSysregDBGBVR1_EL1:
+                value = debug_arch_.get_dbgbvr(1);
+                break;
+            case kSysregDBGBVR2_EL1:
+                value = debug_arch_.get_dbgbvr(2);
+                break;
+            case kSysregDBGBVR3_EL1:
+                value = debug_arch_.get_dbgbvr(3);
+                break;
+            case kSysregDBGBCR0_EL1:
+                value = debug_arch_.get_dbgbcr(0);
+                break;
+            case kSysregDBGBCR1_EL1:
+                value = debug_arch_.get_dbgbcr(1);
+                break;
+            case kSysregDBGBCR2_EL1:
+                value = debug_arch_.get_dbgbcr(2);
+                break;
+            case kSysregDBGBCR3_EL1:
+                value = debug_arch_.get_dbgbcr(3);
+                break;
+            case kSysregDBGWVR0_EL1:
+                value = debug_arch_.get_dbgwvr(0);
+                break;
+            case kSysregDBGWVR1_EL1:
+                value = debug_arch_.get_dbgwvr(1);
+                break;
+            case kSysregDBGWVR2_EL1:
+                value = debug_arch_.get_dbgwvr(2);
+                break;
+            case kSysregDBGWVR3_EL1:
+                value = debug_arch_.get_dbgwvr(3);
+                break;
+            case kSysregDBGWCR0_EL1:
+                value = debug_arch_.get_dbgwcr(0);
+                break;
+            case kSysregDBGWCR1_EL1:
+                value = debug_arch_.get_dbgwcr(1);
+                break;
+            case kSysregDBGWCR2_EL1:
+                value = debug_arch_.get_dbgwcr(2);
+                break;
+            case kSysregDBGWCR3_EL1:
+                value = debug_arch_.get_dbgwcr(3);
+                break;
             default:
+                if (key >= 0x5F40 && key <= 0x5F5F) {
+                    value = pmu_.read_pmevcntr(key - 0x5F40);
+                    break;
+                }
+                if (key >= 0x5F60 && key <= 0x5F7E) {
+                    value = pmu_.read_pmevtyper(key - 0x5F60);
+                    break;
+                }
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
                 throw std::runtime_error(
                     "Unsupported MRS system register encoding: 0x"
                     + std::to_string(instruction));
             }
             write_zero_register_result(*this, rt, value);
+            sysreg_trace_val = value;
         } else {
             // MSR: write system register ← Xt
             const std::uint64_t val = read_zero_register_operand(*this, rt);
+            sysreg_trace_val = val;
             switch (key) {
             case kSysregNZCV:
                 // Only NZCV [31:28] bits are architecturally significant.
@@ -6407,9 +8448,14 @@ void CPU::step(Memory& guest_memory) {
             case kSysregSP_EL0:
                 sp_el0_ = val;
                 break;
-            case kSysregSPSel:
-                sp_sel_ = (val & 0x1u) != 0u;
+            case kSysregSPSel: {
+                const bool new_spsel = (val & 0x1u) != 0u;
+                if (new_spsel != sp_sel_) {
+                    sp_sel_ = new_spsel;
+                    spsel_changed = true;
+                }
                 break;
+            }
             case kSysregESR_EL1:
                 esr_el1_ = static_cast<std::uint32_t>(val & 0xFFFFFFFFu);
                 break;
@@ -6451,7 +8497,7 @@ void CPU::step(Memory& guest_memory) {
                 }
                 throw std::runtime_error("MSR to read-only DCZID_EL0 is unallocated");
             case kSysregCNTFRQ_EL0:
-                cntfrq_el0_ = val;
+                virtual_time_->set_frequency(val);
                 break;
             case kSysregCNTPCT_EL0:
                 if (architectural_exceptions_) {
@@ -6468,35 +8514,51 @@ void CPU::step(Memory& guest_memory) {
                 }
                 throw std::runtime_error("MSR to read-only CNTVCT_EL0 is unallocated");
             case kSysregCNTKCTL_EL1:
-                cntkctl_el1_ = val;
+                virtual_time_->set_cntkctl_el1(core_id_, val);
                 break;
-            case kSysregCNTP_CTL:
-                phys_timer_.enable = (val & 1u) != 0;
-                phys_timer_.imask  = (val & 2u) != 0;
-                check_timer_status();
+            case kSysregCNTP_CTL: {
+                auto t = get_phys_timer();
+                t.enable = (val & 1u) != 0;
+                t.imask  = (val & 2u) != 0;
+                set_phys_timer(t);
                 break;
-            case kSysregCNTP_CVAL:
-                phys_timer_.cval = val;
-                check_timer_status();
+            }
+            case kSysregCNTP_CVAL: {
+                auto t = get_phys_timer();
+                t.cval = val;
+                set_phys_timer(t);
                 break;
+            }
             case kSysregCNTP_TVAL: {
-                std::int64_t offset = static_cast<std::int64_t>(static_cast<std::int32_t>(val & 0xFFFFFFFFu));
-                phys_timer_.cval = static_cast<std::uint64_t>(static_cast<std::int64_t>(guest_counter_) + offset);
+                virtual_time_->write_phys_tval(core_id_, static_cast<std::uint32_t>(val & 0xFFFFFFFFu));
+                const auto t = get_phys_timer();
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+                    emit_timer_event_trace(winios::trace::TimerOp::CompareUpdate, winios::trace::TimerType::Physical,
+                                           t.cval, virtual_time_->get_physical_counter(), t.enable, t.imask, t.istatus);
+                }
                 check_timer_status();
                 break;
             }
-            case kSysregCNTV_CTL:
-                virt_timer_.enable = (val & 1u) != 0;
-                virt_timer_.imask  = (val & 2u) != 0;
-                check_timer_status();
+            case kSysregCNTV_CTL: {
+                auto t = get_virt_timer();
+                t.enable = (val & 1u) != 0;
+                t.imask  = (val & 2u) != 0;
+                set_virt_timer(t);
                 break;
-            case kSysregCNTV_CVAL:
-                virt_timer_.cval = val;
-                check_timer_status();
+            }
+            case kSysregCNTV_CVAL: {
+                auto t = get_virt_timer();
+                t.cval = val;
+                set_virt_timer(t);
                 break;
+            }
             case kSysregCNTV_TVAL: {
-                std::int64_t offset = static_cast<std::int64_t>(static_cast<std::int32_t>(val & 0xFFFFFFFFu));
-                virt_timer_.cval = static_cast<std::uint64_t>(static_cast<std::int64_t>(guest_counter_ - cntvoff_el2_) + offset);
+                virtual_time_->write_virt_tval(core_id_, static_cast<std::uint32_t>(val & 0xFFFFFFFFu));
+                const auto t = get_virt_timer();
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+                    emit_timer_event_trace(winios::trace::TimerOp::CompareUpdate, winios::trace::TimerType::Virtual,
+                                           t.cval, virtual_time_->get_virtual_counter(core_id_), t.enable, t.imask, t.istatus);
+                }
                 check_timer_status();
                 break;
             }
@@ -6543,26 +8605,143 @@ void CPU::step(Memory& guest_memory) {
                 mmu_.set_vtcr_el2(val);
                 break;
             case kSysregCNTVOFF_EL2:
-                cntvoff_el2_ = val;
+                virtual_time_->set_cntvoff_el2(core_id_, val);
                 break;
             case kSysregCNTHCTL_EL2:
-                cnthctl_el2_ = val;
+                virtual_time_->set_cnthctl_el2(core_id_, val);
                 break;
-            case kSysregCNTHP_CTL:
-                cnthp_timer_.enable = (val & 1u) != 0;
-                cnthp_timer_.imask  = (val & 2u) != 0;
-                check_timer_status();
+            // Phase 47: EL3 system registers (MSR)
+            case kSysregSCR_EL3:
+                // Bit 10 (RW) is RES1 in AArch64-only execution
+                scr_el3_ = val | (1ULL << 10u);
                 break;
-            case kSysregCNTHP_CVAL:
-                cnthp_timer_.cval = val;
-                check_timer_status();
+            case kSysregCPTR_EL3:
+                cptr_el3_ = val;
                 break;
+            case kSysregMDCR_EL3:
+                mdcr_el3_ = val;
+                break;
+            case kSysregSPSR_EL3:
+                spsr_el3_ = static_cast<std::uint32_t>(val & 0xFFFFFFFFu);
+                break;
+            case kSysregELR_EL3:
+                elr_el3_ = val;
+                break;
+            case kSysregESR_EL3:
+                esr_el3_ = static_cast<std::uint32_t>(val & 0xFFFFFFFFu);
+                break;
+            case kSysregFAR_EL3:
+                far_el3_ = val;
+                break;
+            case kSysregVBAR_EL3:
+                vbar_el3_ = val;
+                break;
+            case kSysregCNTHP_CTL: {
+                auto t = get_cnthp_timer();
+                t.enable = (val & 1u) != 0;
+                t.imask  = (val & 2u) != 0;
+                set_cnthp_timer(t);
+                break;
+            }
+            case kSysregCNTHP_CVAL: {
+                auto t = get_cnthp_timer();
+                t.cval = val;
+                set_cnthp_timer(t);
+                break;
+            }
             case kSysregCNTHP_TVAL: {
-                std::int64_t offset = static_cast<std::int64_t>(static_cast<std::int32_t>(val & 0xFFFFFFFFu));
-                cnthp_timer_.cval = static_cast<std::uint64_t>(static_cast<std::int64_t>(guest_counter_) + offset);
+                virtual_time_->write_cnthp_tval(core_id_, static_cast<std::uint32_t>(val & 0xFFFFFFFFu));
+                const auto t = get_cnthp_timer();
+                if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::TimerEvent, static_cast<std::uint16_t>(core_id_))) {
+                    emit_timer_event_trace(winios::trace::TimerOp::CompareUpdate, winios::trace::TimerType::HypervisorPhysical,
+                                           t.cval, virtual_time_->get_physical_counter(), t.enable, t.imask, t.istatus);
+                }
                 check_timer_status();
                 break;
             }
+            // Phase 42: Multiprocessor and SGI system registers (MSR)
+            case kSysregMPIDR_EL1:
+                // Read-only register
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("MPIDR_EL1 is read-only");
+            case kSysregICC_SGI1R_EL1:
+                get_gic().send_sgi(core_id_, val);
+                break;
+
+            // Phase 41: GICv3 system registers (MSR)
+            case kSysregICC_PMR_EL1:
+                get_gic().write_icc_pmr(static_cast<std::uint8_t>(val & 0xFFu), core_id_);
+                break;
+            case kSysregICC_IAR0_EL1:
+            case kSysregICC_HPPIR0_EL1:
+            case kSysregICC_IAR1_EL1:
+            case kSysregICC_HPPIR1_EL1:
+            case kSysregICH_VTR_EL2:
+            case kSysregICH_MISR_EL2:
+            case kSysregICH_EISR_EL2:
+            case kSysregICH_ELRSR_EL2:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("MSR to read-only GICv3 register is unallocated");
+            case kSysregICC_EOIR0_EL1:
+                get_gic().end_of_interrupt_group0(static_cast<std::uint32_t>(val & 0xFFFFFFu), current_el_, core_id_);
+                break;
+            case kSysregICC_EOIR1_EL1:
+                get_gic().end_of_interrupt_group1(static_cast<std::uint32_t>(val & 0xFFFFFFu), current_el_, core_id_);
+                break;
+            case kSysregICC_BPR0_EL1:
+                get_gic().write_icc_bpr0(static_cast<std::uint32_t>(val & 0x7u), core_id_);
+                break;
+            case kSysregICC_BPR1_EL1:
+                get_gic().write_icc_bpr1(static_cast<std::uint32_t>(val & 0x7u), core_id_);
+                break;
+            case kSysregICC_SRE_EL1:
+                get_gic().write_icc_sre_el1(static_cast<std::uint32_t>(val), core_id_);
+                break;
+            case kSysregICC_IGRPEN0_EL1:
+                get_gic().write_icc_igrpen0(static_cast<std::uint32_t>(val & 0x1u), core_id_);
+                break;
+            case kSysregICC_IGRPEN1_EL1:
+                get_gic().write_icc_igrpen1(static_cast<std::uint32_t>(val & 0x1u), core_id_);
+                break;
+            case kSysregICC_DIR_EL1:
+                get_gic().write_icc_dir(static_cast<std::uint32_t>(val & 0xFFFFFFFFu), current_el_, core_id_);
+                break;
+            case kSysregICC_CTLR_EL1:
+                get_gic().write_icc_ctlr(static_cast<std::uint32_t>(val), core_id_);
+                break;
+            case kSysregICC_RPR_EL1:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("ICC_RPR_EL1 is read-only");
+            case kSysregICC_SRE_EL2:
+                get_gic().write_icc_sre_el2(static_cast<std::uint32_t>(val), core_id_);
+                break;
+            case kSysregICH_HCR_EL2:
+                get_gic().write_ich_hcr(static_cast<std::uint32_t>(val), core_id_);
+                break;
+            case kSysregICH_VMCR_EL2:
+                get_gic().write_ich_vmcr(val, core_id_);
+                break;
+            case kSysregICH_LR0_EL2:
+                get_gic().write_ich_lr(0, val, core_id_);
+                break;
+            case kSysregICH_LR1_EL2:
+                get_gic().write_ich_lr(1, val, core_id_);
+                break;
+            case kSysregICH_LR2_EL2:
+                get_gic().write_ich_lr(2, val, core_id_);
+                break;
+            case kSysregICH_LR3_EL2:
+                get_gic().write_ich_lr(3, val, core_id_);
+                break;
             case kSysregID_AA64MMFR0:
                 if (architectural_exceptions_) {
                     raise_synchronous_exception(
@@ -6579,7 +8758,137 @@ void CPU::step(Memory& guest_memory) {
                 }
                 throw std::runtime_error(
                     "MSR to read-only CurrentEL is unallocated");
+            case kSysregPMCR_EL0:
+                pmu_.write_pmcr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMCNTENSET_EL0:
+                pmu_.write_pmcntenset(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMCNTENCLR_EL0:
+                pmu_.write_pmcntenclr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMOVSCLR_EL0:
+                pmu_.write_pmovsclr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMOVSSET_EL0:
+                pmu_.write_pmovsset(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMSWINC_EL0:
+                pmu_.write_pmswinc(static_cast<std::uint32_t>(val), static_cast<unsigned>(current_el_));
+                break;
+            case kSysregPMSELR_EL0:
+                pmu_.write_pmselr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMCEID0_EL0:
+            case kSysregPMCEID1_EL0:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("MSR to read-only PMCEID is unallocated");
+            case kSysregPMCCNTR_EL0:
+                pmu_.write_pmccntr(val);
+                break;
+            case kSysregPMXEVTYPER_EL0:
+                pmu_.write_pmxevtyper(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMXEVCNTR_EL0:
+                pmu_.write_pmxevcntr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMUSERENR_EL0:
+                if (current_el_ == 0) {
+                    if (architectural_exceptions_) {
+                        raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                        return;
+                    }
+                    throw std::runtime_error("Privilege violation: PMUSERENR_EL0 write at EL0");
+                }
+                pmu_.write_pmuserenr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMINTENSET_EL1:
+                pmu_.write_pmintenset(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMINTENCLR_EL1:
+                pmu_.write_pmintenclr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregPMCCFILTR_EL0:
+                pmu_.write_pmccfiltr(static_cast<std::uint32_t>(val));
+                break;
+            case kSysregMDCR_EL2:
+                mdcr_el2_ = val;
+                break;
+            // Phase 51: Debug Architecture system registers (MSR)
+            case kSysregMDSCR_EL1:
+                debug_arch_.set_mdscr_el1(val);
+                break;
+            case kSysregDBGBVR0_EL1:
+                debug_arch_.set_dbgbvr(0, val);
+                break;
+            case kSysregDBGBVR1_EL1:
+                debug_arch_.set_dbgbvr(1, val);
+                break;
+            case kSysregDBGBVR2_EL1:
+                debug_arch_.set_dbgbvr(2, val);
+                break;
+            case kSysregDBGBVR3_EL1:
+                debug_arch_.set_dbgbvr(3, val);
+                break;
+            case kSysregDBGBCR0_EL1:
+                debug_arch_.set_dbgbcr(0, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGBCR1_EL1:
+                debug_arch_.set_dbgbcr(1, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGBCR2_EL1:
+                debug_arch_.set_dbgbcr(2, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGBCR3_EL1:
+                debug_arch_.set_dbgbcr(3, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGWVR0_EL1:
+                debug_arch_.set_dbgwvr(0, val);
+                break;
+            case kSysregDBGWVR1_EL1:
+                debug_arch_.set_dbgwvr(1, val);
+                break;
+            case kSysregDBGWVR2_EL1:
+                debug_arch_.set_dbgwvr(2, val);
+                break;
+            case kSysregDBGWVR3_EL1:
+                debug_arch_.set_dbgwvr(3, val);
+                break;
+            case kSysregDBGWCR0_EL1:
+                debug_arch_.set_dbgwcr(0, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGWCR1_EL1:
+                debug_arch_.set_dbgwcr(1, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGWCR2_EL1:
+                debug_arch_.set_dbgwcr(2, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregDBGWCR3_EL1:
+                debug_arch_.set_dbgwcr(3, static_cast<std::uint32_t>(val));
+                break;
+            case kSysregID_AA64DFR0_EL1:
+                // Read-only register
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("ID_AA64DFR0_EL1 is read-only");
             default:
+                if (key >= 0x5F40 && key <= 0x5F5F) {
+                    pmu_.write_pmevcntr(key - 0x5F40, static_cast<std::uint32_t>(val));
+                    break;
+                }
+                if (key >= 0x5F60 && key <= 0x5F7E) {
+                    pmu_.write_pmevtyper(key - 0x5F60, static_cast<std::uint32_t>(val));
+                    break;
+                }
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
                 throw std::runtime_error(
                     "Unsupported MSR system register encoding: 0x"
                     + std::to_string(instruction));
@@ -6588,7 +8897,13 @@ void CPU::step(Memory& guest_memory) {
 
         program_counter_ = checked_add_address(
             instruction_address, 4u, "Instruction PC increment");
-        emit_trace();
+        emit_trace(false, false, 0, false, 0, 0, 0, true, key, sysreg_trace_val, !is_read);
+        if (spsel_changed && !is_halted_.load(std::memory_order_acquire)) {
+            if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+                emit_context_changed_trace(instruction_address, program_counter_, current_el_, current_el_, prev_spsel, sp_sel_,
+                                           winios::trace::ContextChangeReason::RegisterBankSelect, daif_, daif_);
+            }
+        }
         return;
     }
 

@@ -21,17 +21,75 @@ endfunction()
 # Emulator core, shared by the demo executable and the unit tests.
 add_library(winios_core STATIC
     src/cpu/cpu.cpp
+    src/cpu/debug_architecture.cpp
+    src/cpu/debug_exceptions.cpp
+    src/cpu/gicv3.cpp
     src/cpu/mmu.cpp
+    src/cpu/pmu.cpp
+    src/cpu/psci.cpp
+    src/cpu/smp_cluster.cpp
+    src/cpu/smp_core_state.cpp
+    src/cpu/smp_exclusive_monitor.cpp
+    src/cpu/smp_shared_memory.cpp
+    src/cpu/smp_interrupt_router.cpp
+    src/cpu/smp_scheduler.cpp
+    src/cpu/virtual_time.cpp
     src/debugger/debugger.cpp
     src/inferno/inferno_launcher.cpp
     src/loader/binary_loader.cpp
     src/memory/memory.cpp
     src/runtime/guest_runtime.cpp
+    src/trace/trace_ring_buffer.cpp
+    src/trace/trace_serializer.cpp
+    src/trace/trace_file_writer.cpp
+    src/trace/trace_file_reader.cpp
+    src/trace/trace_manager.cpp
+    src/trace/trace_analyzer.cpp
+    src/trace/trace_analysis_report.cpp
+    src/snapshot/wsnap_format.cpp
+    src/snapshot/snapshot_serializer.cpp
+    src/snapshot/snapshot_validation.cpp
+    src/snapshot/snapshot_restore.cpp
+    src/snapshot/snapshot_manager.cpp
+    src/snapshot/smp_snapshot_format.cpp
+    src/snapshot/smp_snapshot_validation.cpp
+    src/snapshot/smp_snapshot_manager.cpp
+    src/sndl/sndl_format.cpp
+    src/sndl/sndl_event_encoder.cpp
+    src/sndl/sndl_writer.cpp
+    src/sndl/sndl_recorder.cpp
+    src/sndl/sndl_source_hooks.cpp
+    src/sndl/sndl_validation.cpp
+    src/sndl/sndl_v2_format.cpp
+    src/sndl/sndl_v2_writer.cpp
+    src/sndl/sndl_v2_recorder.cpp
+    src/sndl/sndl_v2_validator.cpp
+    src/replay/replay_checkpoint.cpp
+    src/replay/replay_diagnostics.cpp
+    src/replay/replay_divergence.cpp
+    src/replay/replay_engine.cpp
+    src/replay/replay_event_cursor.cpp
+    src/replay/replay_input_router.cpp
+    src/replay/replay_memory_report.cpp
+    src/replay/replay_profiler.cpp
+    src/replay/replay_report.cpp
+    src/replay/replay_scheduler.cpp
+    src/replay/replay_session.cpp
+    src/replay/replay_state_hash.cpp
+    src/replay/replay_workload.cpp
+    src/replay/smp_replay_reader.cpp
+    src/replay/smp_replay_cursor.cpp
+    src/replay/smp_replay_coordinator.cpp
 )
 
 target_include_directories(winios_core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
+
+if(WIN32)
+    # GetProcessMemoryInfo / PROCESS_MEMORY_COUNTERS_EX for Stage 21 memory probes.
+    target_link_libraries(winios_core PUBLIC psapi)
+endif()
 
 winios_set_warnings(winios_core)
 
@@ -80,6 +138,363 @@ if(BUILD_TESTING)
     winios_set_warnings(runtime_tests)
     add_test(NAME runtime_tests COMMAND runtime_tests)
 
+    add_executable(threading_tests
+        tests/unit/threading_tests.cpp
+    )
+    target_link_libraries(threading_tests PRIVATE winios_core)
+    winios_set_warnings(threading_tests)
+    add_test(NAME threading_tests COMMAND threading_tests)
+
+    add_executable(memory_ordering_tests
+        tests/unit/memory_ordering_tests.cpp
+    )
+    target_link_libraries(memory_ordering_tests PRIVATE winios_core)
+    winios_set_warnings(memory_ordering_tests)
+    add_test(NAME memory_ordering_tests COMMAND memory_ordering_tests)
+
+    add_executable(advanced_mmu_tests
+        tests/unit/advanced_mmu_tests.cpp
+    )
+    target_link_libraries(advanced_mmu_tests PRIVATE winios_core)
+    winios_set_warnings(advanced_mmu_tests)
+    add_test(NAME advanced_mmu_tests COMMAND advanced_mmu_tests)
+
+    add_executable(gicv3_tests
+        tests/unit/gicv3_tests.cpp
+    )
+    target_link_libraries(gicv3_tests PRIVATE winios_core)
+    winios_set_warnings(gicv3_tests)
+    add_test(NAME gicv3_tests COMMAND gicv3_tests)
+
+    add_executable(el3_tests
+        tests/unit/el3_tests.cpp
+    )
+    target_link_libraries(el3_tests PRIVATE winios_core)
+    winios_set_warnings(el3_tests)
+    add_test(NAME el3_tests COMMAND el3_tests)
+
+    add_executable(psci_tests
+        tests/unit/psci_tests.cpp
+    )
+    target_link_libraries(psci_tests PRIVATE winios_core)
+    winios_set_warnings(psci_tests)
+    add_test(NAME psci_tests COMMAND psci_tests)
+
+    add_executable(pmu_tests
+        tests/unit/pmu_tests.cpp
+    )
+    target_link_libraries(pmu_tests PRIVATE winios_core)
+    winios_set_warnings(pmu_tests)
+    add_test(NAME pmu_tests COMMAND pmu_tests)
+
+    add_executable(timer_tests
+        tests/unit/timer_tests.cpp
+    )
+    target_link_libraries(timer_tests PRIVATE winios_core)
+    winios_set_warnings(timer_tests)
+    add_test(NAME timer_tests COMMAND timer_tests)
+
+    add_executable(debug_architecture_tests
+        tests/unit/debug_architecture_tests.cpp
+    )
+    target_link_libraries(debug_architecture_tests PRIVATE winios_core)
+    winios_set_warnings(debug_architecture_tests)
+    add_test(NAME debug_architecture_tests COMMAND debug_architecture_tests)
+
+    add_executable(debug_sysreg_tests
+        tests/unit/debug_sysreg_tests.cpp
+    )
+    target_link_libraries(debug_sysreg_tests PRIVATE winios_core)
+    winios_set_warnings(debug_sysreg_tests)
+    add_test(NAME debug_sysreg_tests COMMAND debug_sysreg_tests)
+
+    add_executable(breakpoint_tests
+        tests/unit/breakpoint_tests.cpp
+    )
+    target_link_libraries(breakpoint_tests PRIVATE winios_core)
+    winios_set_warnings(breakpoint_tests)
+    add_test(NAME breakpoint_tests COMMAND breakpoint_tests)
+
+    add_executable(watchpoint_tests
+        tests/unit/watchpoint_tests.cpp
+    )
+    target_link_libraries(watchpoint_tests PRIVATE winios_core)
+    winios_set_warnings(watchpoint_tests)
+    add_test(NAME watchpoint_tests COMMAND watchpoint_tests)
+
+    add_executable(debug_exception_tests
+        tests/unit/debug_exception_tests.cpp
+    )
+    target_link_libraries(debug_exception_tests PRIVATE winios_core)
+    winios_set_warnings(debug_exception_tests)
+    add_test(NAME debug_exception_tests COMMAND debug_exception_tests)
+
+    add_executable(linked_debug_tests
+        tests/unit/linked_debug_tests.cpp
+    )
+    target_link_libraries(linked_debug_tests PRIVATE winios_core)
+    winios_set_warnings(linked_debug_tests)
+    add_test(NAME linked_debug_tests COMMAND linked_debug_tests)
+
+    add_executable(single_step_tests
+        tests/unit/single_step_tests.cpp
+    )
+    target_link_libraries(single_step_tests PRIVATE winios_core)
+    winios_set_warnings(single_step_tests)
+    add_test(NAME single_step_tests COMMAND single_step_tests)
+
+    add_executable(debug_integration_tests
+        tests/unit/debug_integration_tests.cpp
+    )
+    target_link_libraries(debug_integration_tests PRIVATE winios_core)
+    winios_set_warnings(debug_integration_tests)
+    add_test(NAME debug_integration_tests COMMAND debug_integration_tests)
+
+    add_executable(trace_schema_tests
+        tests/unit/trace_schema_tests.cpp
+    )
+    target_link_libraries(trace_schema_tests PRIVATE winios_core)
+    winios_set_warnings(trace_schema_tests)
+    add_test(NAME trace_schema_tests COMMAND trace_schema_tests)
+
+    add_executable(trace_ring_buffer_tests
+        tests/unit/trace_ring_buffer_tests.cpp
+    )
+    target_link_libraries(trace_ring_buffer_tests PRIVATE winios_core)
+    winios_set_warnings(trace_ring_buffer_tests)
+    add_test(NAME trace_ring_buffer_tests COMMAND trace_ring_buffer_tests)
+
+    add_executable(trace_ring_buffer_benchmark
+        tools/trace_ring_buffer_benchmark.cpp
+    )
+    target_link_libraries(trace_ring_buffer_benchmark PRIVATE winios_core)
+    winios_set_warnings(trace_ring_buffer_benchmark)
+
+    add_executable(trace_serializer_tests
+        tests/unit/trace_serializer_tests.cpp
+    )
+    target_link_libraries(trace_serializer_tests PRIVATE winios_core)
+    winios_set_warnings(trace_serializer_tests)
+    add_test(NAME trace_serializer_tests COMMAND trace_serializer_tests)
+
+    add_executable(trace_file_writer_tests
+        tests/unit/trace_file_writer_tests.cpp
+    )
+    target_link_libraries(trace_file_writer_tests PRIVATE winios_core)
+    winios_set_warnings(trace_file_writer_tests)
+    add_test(NAME trace_file_writer_tests COMMAND trace_file_writer_tests)
+
+    add_executable(trace_file_reader_tests
+        tests/unit/trace_file_reader_tests.cpp
+    )
+    target_link_libraries(trace_file_reader_tests PRIVATE winios_core)
+    winios_set_warnings(trace_file_reader_tests)
+    add_test(NAME trace_file_reader_tests COMMAND trace_file_reader_tests)
+
+    add_executable(trace_file_sink_benchmark
+        tools/trace_file_sink_benchmark.cpp
+    )
+    target_link_libraries(trace_file_sink_benchmark PRIVATE winios_core)
+    winios_set_warnings(trace_file_sink_benchmark)
+
+    add_executable(trace_config_tests
+        tests/unit/trace_config_tests.cpp
+    )
+    target_link_libraries(trace_config_tests PRIVATE winios_core)
+    winios_set_warnings(trace_config_tests)
+    add_test(NAME trace_config_tests COMMAND trace_config_tests)
+
+    add_executable(trace_manager_tests
+        tests/unit/trace_manager_tests.cpp
+    )
+    target_link_libraries(trace_manager_tests PRIVATE winios_core)
+    winios_set_warnings(trace_manager_tests)
+    add_test(NAME trace_manager_tests COMMAND trace_manager_tests)
+
+    add_executable(trace_pipeline_tests
+        tests/integration/trace_pipeline_tests.cpp
+    )
+    target_link_libraries(trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(trace_pipeline_tests)
+    add_test(NAME trace_pipeline_tests COMMAND trace_pipeline_tests)
+
+    add_executable(trace_manager_benchmark
+        tools/trace_manager_benchmark.cpp
+    )
+    target_link_libraries(trace_manager_benchmark PRIVATE winios_core)
+    winios_set_warnings(trace_manager_benchmark)
+
+    add_executable(cpu_trace_tests
+        tests/unit/cpu_trace_tests.cpp
+    )
+    target_link_libraries(cpu_trace_tests PRIVATE winios_core)
+    winios_set_warnings(cpu_trace_tests)
+    add_test(NAME cpu_trace_tests COMMAND cpu_trace_tests)
+
+    add_executable(cpu_trace_pipeline_tests
+        tests/integration/cpu_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(cpu_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(cpu_trace_pipeline_tests)
+    add_test(NAME cpu_trace_pipeline_tests COMMAND cpu_trace_pipeline_tests)
+
+    add_executable(branch_trace_tests
+        tests/unit/branch_trace_tests.cpp
+    )
+    target_link_libraries(branch_trace_tests PRIVATE winios_core)
+    winios_set_warnings(branch_trace_tests)
+    add_test(NAME branch_trace_tests COMMAND branch_trace_tests)
+
+    add_executable(branch_trace_pipeline_tests
+        tests/integration/branch_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(branch_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(branch_trace_pipeline_tests)
+    add_test(NAME branch_trace_pipeline_tests COMMAND branch_trace_pipeline_tests)
+
+    add_executable(exception_trace_tests
+        tests/unit/exception_trace_tests.cpp
+    )
+    target_link_libraries(exception_trace_tests PRIVATE winios_core)
+    winios_set_warnings(exception_trace_tests)
+    add_test(NAME exception_trace_tests COMMAND exception_trace_tests)
+
+    add_executable(exception_trace_pipeline_tests
+        tests/integration/exception_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(exception_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(exception_trace_pipeline_tests)
+    add_test(NAME exception_trace_pipeline_tests COMMAND exception_trace_pipeline_tests)
+
+    add_executable(sysreg_trace_tests
+        tests/unit/sysreg_trace_tests.cpp
+    )
+    target_link_libraries(sysreg_trace_tests PRIVATE winios_core)
+    winios_set_warnings(sysreg_trace_tests)
+    add_test(NAME sysreg_trace_tests COMMAND sysreg_trace_tests)
+
+    add_executable(sysreg_trace_pipeline_tests
+        tests/integration/sysreg_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(sysreg_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(sysreg_trace_pipeline_tests)
+    add_test(NAME sysreg_trace_pipeline_tests COMMAND sysreg_trace_pipeline_tests)
+
+    add_executable(memory_trace_tests
+        tests/unit/memory_trace_tests.cpp
+    )
+    target_link_libraries(memory_trace_tests PRIVATE winios_core)
+    winios_set_warnings(memory_trace_tests)
+    add_test(NAME memory_trace_tests COMMAND memory_trace_tests)
+
+    add_executable(memory_trace_pipeline_tests
+        tests/integration/memory_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(memory_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(memory_trace_pipeline_tests)
+    add_test(NAME memory_trace_pipeline_tests COMMAND memory_trace_pipeline_tests)
+
+    add_executable(debug_trace_tests
+        tests/unit/debug_trace_tests.cpp
+    )
+    target_link_libraries(debug_trace_tests PRIVATE winios_core)
+    winios_set_warnings(debug_trace_tests)
+    add_test(NAME debug_trace_tests COMMAND debug_trace_tests)
+
+    add_executable(debug_trace_pipeline_tests
+        tests/integration/debug_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(debug_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(debug_trace_pipeline_tests)
+    add_test(NAME debug_trace_pipeline_tests COMMAND debug_trace_pipeline_tests)
+
+    add_executable(interrupt_trace_tests
+        tests/unit/interrupt_trace_tests.cpp
+    )
+    target_link_libraries(interrupt_trace_tests PRIVATE winios_core)
+    winios_set_warnings(interrupt_trace_tests)
+    add_test(NAME interrupt_trace_tests COMMAND interrupt_trace_tests)
+
+    add_executable(interrupt_trace_pipeline_tests
+        tests/integration/interrupt_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(interrupt_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(interrupt_trace_pipeline_tests)
+    add_test(NAME interrupt_trace_pipeline_tests COMMAND interrupt_trace_pipeline_tests)
+
+    add_executable(cpu_lifecycle_trace_tests
+        tests/unit/cpu_lifecycle_trace_tests.cpp
+    )
+    target_link_libraries(cpu_lifecycle_trace_tests PRIVATE winios_core)
+    winios_set_warnings(cpu_lifecycle_trace_tests)
+    add_test(NAME cpu_lifecycle_trace_tests COMMAND cpu_lifecycle_trace_tests)
+
+    add_executable(context_change_trace_tests
+        tests/unit/context_change_trace_tests.cpp
+    )
+    target_link_libraries(context_change_trace_tests PRIVATE winios_core)
+    winios_set_warnings(context_change_trace_tests)
+    add_test(NAME context_change_trace_tests COMMAND context_change_trace_tests)
+
+    add_executable(lifecycle_trace_pipeline_tests
+        tests/integration/lifecycle_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(lifecycle_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(lifecycle_trace_pipeline_tests)
+    add_test(NAME lifecycle_trace_pipeline_tests COMMAND lifecycle_trace_pipeline_tests)
+
+    add_executable(timer_trace_tests
+        tests/unit/timer_trace_tests.cpp
+    )
+    target_link_libraries(timer_trace_tests PRIVATE winios_core)
+    winios_set_warnings(timer_trace_tests)
+    add_test(NAME timer_trace_tests COMMAND timer_trace_tests)
+
+    add_executable(timer_trace_pipeline_tests
+        tests/integration/timer_trace_pipeline_tests.cpp
+    )
+    target_link_libraries(timer_trace_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(timer_trace_pipeline_tests)
+    add_test(NAME timer_trace_pipeline_tests COMMAND timer_trace_pipeline_tests)
+
+    add_executable(trace_analyzer_tests
+        tests/unit/trace_analyzer_tests.cpp
+    )
+    target_link_libraries(trace_analyzer_tests PRIVATE winios_core)
+    winios_set_warnings(trace_analyzer_tests)
+    add_test(NAME trace_analyzer_tests COMMAND trace_analyzer_tests)
+
+    add_executable(trace_analysis_pipeline_tests
+        tests/integration/trace_analysis_pipeline_tests.cpp
+    )
+    target_link_libraries(trace_analysis_pipeline_tests PRIVATE winios_core)
+    winios_set_warnings(trace_analysis_pipeline_tests)
+    add_test(NAME trace_analysis_pipeline_tests COMMAND trace_analysis_pipeline_tests)
+
+    add_executable(cpu_trace_benchmark
+        tools/cpu_trace_benchmark.cpp
+    )
+    target_link_libraries(cpu_trace_benchmark PRIVATE winios_core)
+    winios_set_warnings(cpu_trace_benchmark)
+
+    add_executable(trace_analysis_benchmark
+        tools/trace_analysis_benchmark.cpp
+    )
+    target_link_libraries(trace_analysis_benchmark PRIVATE winios_core)
+    winios_set_warnings(trace_analysis_benchmark)
+
+    add_executable(concurrency_benchmark
+        tools/concurrency_benchmark.cpp
+    )
+    target_link_libraries(concurrency_benchmark PRIVATE winios_core)
+    winios_set_warnings(concurrency_benchmark)
+
+    add_executable(debug_benchmark
+        tools/debug_benchmark.cpp
+    )
+    target_link_libraries(debug_benchmark PRIVATE winios_core)
+    winios_set_warnings(debug_benchmark)
+
     # Deterministic child process used only by inferno_launcher_tests. It is a
     # fixture, not a test: the launcher's process handling must be covered even
     # when no local Inferno build exists.
@@ -101,6 +516,149 @@ if(BUILD_TESTING)
     # Opt-in integration checks against a separately built ChefKiss Inferno.
     # Returns 77 (CTest SKIP_RETURN_CODE) when no local build is configured, so
     # the default test run stays independent of an Inferno checkout.
+    add_executable(snapshot_tests
+        tests/unit/snapshot_tests.cpp
+    )
+    target_link_libraries(snapshot_tests PRIVATE winios_core)
+    winios_set_warnings(snapshot_tests)
+    add_test(NAME snapshot_tests COMMAND snapshot_tests)
+
+    add_executable(snapshot_benchmark
+        tests/unit/snapshot_benchmark.cpp
+    )
+    target_link_libraries(snapshot_benchmark PRIVATE winios_core)
+    winios_set_warnings(snapshot_benchmark)
+
+    add_executable(sndl_tests
+        tests/unit/sndl_tests.cpp
+    )
+    target_link_libraries(sndl_tests PRIVATE winios_core)
+    winios_set_warnings(sndl_tests)
+    add_test(NAME sndl_tests COMMAND sndl_tests)
+
+    add_executable(sndl_benchmark
+        tests/unit/sndl_benchmark.cpp
+    )
+    target_link_libraries(sndl_benchmark PRIVATE winios_core)
+    winios_set_warnings(sndl_benchmark)
+
+    add_executable(replay_tests
+        tests/unit/replay_tests.cpp
+    )
+    target_link_libraries(replay_tests PRIVATE winios_core)
+    winios_set_warnings(replay_tests)
+    add_test(NAME replay_tests COMMAND replay_tests)
+
+    add_executable(replay_benchmark
+        tests/unit/replay_benchmark.cpp
+    )
+    target_link_libraries(replay_benchmark PRIVATE winios_core)
+    winios_set_warnings(replay_benchmark)
+
+    add_executable(replay_hardening_tests
+        tests/unit/replay_hardening_tests.cpp
+    )
+    target_link_libraries(replay_hardening_tests PRIVATE winios_core)
+    winios_set_warnings(replay_hardening_tests)
+    add_test(NAME replay_hardening_tests COMMAND replay_hardening_tests)
+
+    add_executable(replay_hardening_benchmark
+        tests/unit/replay_hardening_benchmark.cpp
+    )
+    target_link_libraries(replay_hardening_benchmark PRIVATE winios_core)
+    winios_set_warnings(replay_hardening_benchmark)
+
+    add_executable(replay_scalability_tests
+        tests/unit/replay_scalability_tests.cpp
+    )
+    target_link_libraries(replay_scalability_tests PRIVATE winios_core)
+    winios_set_warnings(replay_scalability_tests)
+    add_test(NAME replay_scalability_tests COMMAND replay_scalability_tests)
+
+    add_executable(replay_scalability_benchmark
+        tests/unit/replay_scalability_benchmark.cpp
+    )
+    target_link_libraries(replay_scalability_benchmark PRIVATE winios_core)
+    winios_set_warnings(replay_scalability_benchmark)
+
+    add_executable(smp_foundation_tests
+        tests/unit/smp_foundation_tests.cpp
+    )
+    target_link_libraries(smp_foundation_tests PRIVATE winios_core)
+    winios_set_warnings(smp_foundation_tests)
+    add_test(NAME smp_foundation_tests COMMAND smp_foundation_tests)
+
+    add_executable(smp_foundation_benchmark
+        tests/unit/smp_foundation_benchmark.cpp
+    )
+    target_link_libraries(smp_foundation_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_foundation_benchmark)
+
+    add_executable(smp_snapshot_tests
+        tests/unit/smp_snapshot_tests.cpp
+    )
+    target_link_libraries(smp_snapshot_tests PRIVATE winios_core)
+    winios_set_warnings(smp_snapshot_tests)
+    add_test(NAME smp_snapshot_tests COMMAND smp_snapshot_tests)
+
+    add_executable(smp_snapshot_benchmark
+        tests/unit/smp_snapshot_benchmark.cpp
+    )
+    target_link_libraries(smp_snapshot_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_snapshot_benchmark)
+
+    add_executable(smp_sndl_v2_tests
+        tests/unit/smp_sndl_v2_tests.cpp
+    )
+    target_link_libraries(smp_sndl_v2_tests PRIVATE winios_core)
+    winios_set_warnings(smp_sndl_v2_tests)
+    add_test(NAME smp_sndl_v2_tests COMMAND smp_sndl_v2_tests)
+
+    add_executable(smp_sndl_v2_benchmark
+        tests/unit/smp_sndl_v2_benchmark.cpp
+    )
+    target_link_libraries(smp_sndl_v2_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_sndl_v2_benchmark)
+
+    add_executable(sndl_v2_hardening_tests
+        tests/unit/sndl_v2_hardening_tests.cpp
+    )
+    target_link_libraries(sndl_v2_hardening_tests PRIVATE winios_core)
+    winios_set_warnings(sndl_v2_hardening_tests)
+    add_test(NAME sndl_v2_hardening_tests COMMAND sndl_v2_hardening_tests)
+
+    add_executable(sndl_v2_hardening_benchmark
+        tests/unit/sndl_v2_hardening_benchmark.cpp
+    )
+    target_link_libraries(sndl_v2_hardening_benchmark PRIVATE winios_core)
+    winios_set_warnings(sndl_v2_hardening_benchmark)
+
+    add_executable(smp_replay_tests
+        tests/unit/smp_replay_tests.cpp
+    )
+    target_link_libraries(smp_replay_tests PRIVATE winios_core)
+    winios_set_warnings(smp_replay_tests)
+    add_test(NAME smp_replay_tests COMMAND smp_replay_tests)
+
+    add_executable(smp_replay_benchmark
+        tests/unit/smp_replay_benchmark.cpp
+    )
+    target_link_libraries(smp_replay_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_replay_benchmark)
+
+    add_executable(smp_four_core_replay_tests
+        tests/unit/smp_four_core_replay_tests.cpp
+    )
+    target_link_libraries(smp_four_core_replay_tests PRIVATE winios_core)
+    winios_set_warnings(smp_four_core_replay_tests)
+    add_test(NAME smp_four_core_replay_tests COMMAND smp_four_core_replay_tests)
+
+    add_executable(smp_four_core_replay_benchmark
+        tests/unit/smp_four_core_replay_benchmark.cpp
+    )
+    target_link_libraries(smp_four_core_replay_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_four_core_replay_benchmark)
+
     add_executable(inferno_integration_tests
         tests/integration/inferno_integration_tests.cpp
     )
@@ -115,6 +673,23 @@ if(BUILD_TESTING)
         TIMEOUT 300)
 
     set_tests_properties(memory_tests cpu_tests debugger_tests loader_tests runtime_tests
-                         PROPERTIES TIMEOUT 30)
+                         trace_schema_tests trace_ring_buffer_tests
+                         trace_serializer_tests trace_file_writer_tests trace_file_reader_tests
+                         trace_config_tests trace_manager_tests trace_pipeline_tests
+                         cpu_trace_tests cpu_trace_pipeline_tests
+                         branch_trace_tests branch_trace_pipeline_tests
+                         exception_trace_tests exception_trace_pipeline_tests
+                         sysreg_trace_tests sysreg_trace_pipeline_tests
+                         memory_trace_tests memory_trace_pipeline_tests
+                         debug_trace_tests debug_trace_pipeline_tests
+                         interrupt_trace_tests interrupt_trace_pipeline_tests
+                         cpu_lifecycle_trace_tests context_change_trace_tests lifecycle_trace_pipeline_tests
+                         timer_trace_tests timer_trace_pipeline_tests
+                         trace_analyzer_tests trace_analysis_pipeline_tests
+                         snapshot_tests sndl_tests replay_tests replay_hardening_tests
+                         replay_scalability_tests smp_foundation_tests smp_snapshot_tests smp_sndl_v2_tests sndl_v2_hardening_tests
+                         smp_replay_tests smp_four_core_replay_tests
+                         PROPERTIES TIMEOUT 120)
+    set_tests_properties(threading_tests PROPERTIES TIMEOUT 120)
     set_tests_properties(inferno_launcher_tests PROPERTIES TIMEOUT 120)
 endif()

@@ -34,3 +34,12 @@ desktop.ini
 *.p12
 credentials.json
 secrets.json
+
+# Test and benchmark binary data
+*.wsnap
+*.sndl
+*.wtr
+artifacts/
+stage21_benchmark/
+divergence_report.json
+

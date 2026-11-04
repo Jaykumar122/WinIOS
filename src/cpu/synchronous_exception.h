@@ -17,12 +17,19 @@ enum class ExceptionClass : std::uint32_t {
     IllegalExecutionState = 0x0E, // EC 0b001110
     SvcAArch64            = 0x15, // EC 0b010101
     HvcAArch64            = 0x16, // EC 0b010110
+    SmcAArch64            = 0x17, // EC 0b010111
     TrappedMsrMrs         = 0x18, // EC 0b011000
     InstructionAbortLower = 0x20, // instruction abort from a lower EL
     InstructionAbortSame  = 0x21, // instruction abort from the same EL
     PcAlignment           = 0x22, // PC alignment fault
     DataAbortLower        = 0x24, // data abort from a lower EL
     DataAbortSame         = 0x25, // data abort from the same EL
+    BreakpointLower       = 0x30, // breakpoint from a lower EL
+    BreakpointSame        = 0x31, // breakpoint from the same EL
+    SoftwareStepLower     = 0x32, // software step from a lower EL
+    SoftwareStepSame      = 0x33, // software step from the same EL
+    WatchpointLower       = 0x34, // watchpoint from a lower EL
+    WatchpointSame        = 0x35, // watchpoint from the same EL
 };
 
 // Fault status code, ESR_EL1.ISS[5:0] for abort exceptions.
@@ -112,6 +119,16 @@ inline SynchronousException make_hvc(std::uint64_t address, std::uint16_t imm16)
     return e;
 }
 
+inline SynchronousException make_smc(std::uint64_t address, std::uint16_t imm16) {
+    SynchronousException e;
+    e.ec = ExceptionClass::SmcAArch64;
+    e.iss = imm16;
+    // SMC's preferred return address is the following instruction.
+    e.preferred_return = address + 4u;
+    e.target_el = 3;
+    return e;
+}
+
 inline SynchronousException make_trapped_sysreg(std::uint64_t address, std::uint32_t iss) {
     SynchronousException e;
     e.ec = ExceptionClass::TrappedMsrMrs;
@@ -173,6 +190,40 @@ inline SynchronousException make_data_abort(bool same_el, AccessType access,
     e.access = access;
     e.access_size = access_size;
     e.same_el = same_el;
+    return e;
+}
+
+// Hardware breakpoint exception: ELR holds the instruction address.
+// ISS is 0 for hardware breakpoints. In Armv8-A DDI 0487, FAR is UNKNOWN.
+inline SynchronousException make_breakpoint_exception(bool same_el,
+                                                      std::uint64_t /*fault_address*/,
+                                                      std::uint64_t instruction_address) {
+    SynchronousException e;
+    e.ec = same_el ? ExceptionClass::BreakpointSame
+                   : ExceptionClass::BreakpointLower;
+    e.iss = 0u;  // ISS is zero for hardware breakpoints
+    e.preferred_return = instruction_address;
+    e.has_fault_address = false;
+    e.fault_address = 0;
+    return e;
+}
+
+// Phase 51 Stage 5: Hardware data watchpoint exception
+// FAR holds the faulting data virtual address, ELR holds the instruction address.
+// ISS: WnR (bit 6) = 1 for Write/Store, 0 for Read/Load.
+//      DFSC (bits [5:0]) = 0b100010 (0x22: Synchronous Watchpoint).
+inline SynchronousException make_watchpoint_exception(bool same_el,
+                                                      bool is_write,
+                                                      std::uint64_t fault_address,
+                                                      std::uint64_t instruction_address) {
+    SynchronousException e;
+    e.ec = same_el ? ExceptionClass::WatchpointSame
+                   : ExceptionClass::WatchpointLower;
+    e.iss = (is_write ? (1u << 6u) : 0u) | 0x22u;
+    e.preferred_return = instruction_address;
+    e.has_fault_address = true;
+    e.fault_address = fault_address;
+    e.access = is_write ? AccessType::Write : AccessType::Read;
     return e;
 }
 

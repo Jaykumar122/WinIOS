@@ -1,15 +1,53 @@
 #pragma once
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "cpu/debug_architecture.h"
+#include "cpu/gicv3.h"
 #include "cpu/synchronous_exception.h"
 #include "cpu/mmu.h"
+#include "cpu/pmu.h"
+#include "cpu/virtual_time.h"
 
 class Memory;
+
+namespace winios {
+class SMPCluster;
+class PSCIService;
+namespace trace {
+class TraceManager;
+enum class TraceEventFlags : std::uint32_t;
+enum class ContextChangeReason : std::uint32_t {
+    Unknown             = 0,
+    ExceptionEntry      = 1,
+    ExceptionReturn     = 2,
+    RegisterBankSelect  = 3,
+    ContextSwitch       = 4
+};
+
+// Phase 52 Stage 14: Timer Trace Operations and Types
+enum class TimerType : std::uint8_t {
+    Physical           = 0, // EL1 Physical Timer (CNTP, PPI 30)
+    Virtual            = 1, // EL1 Virtual Timer (CNTV, PPI 27)
+    HypervisorPhysical = 2  // EL2 Hypervisor Physical Timer (CNTHP, PPI 26)
+};
+
+enum class TimerOp : std::uint8_t {
+    CompareUpdate      = 1, // CVAL / TVAL modified
+    ControlUpdate      = 2, // CTL register modified (ENABLE / IMASK)
+    Expired            = 3, // Counter >= CVAL condition met (istatus = 1)
+    InterruptAsserted  = 4, // IRQ asserted to GIC PPI
+    InterruptCleared   = 5, // IRQ deasserted (masked, disabled, or CVAL updated)
+    Reset              = 6  // Timer state reset to initial defaults
+};
+}
+}
 
 // Small, deliberately bounded model of the AArch64 general-purpose register
 // file, stack pointer, and program counter.
@@ -118,13 +156,8 @@ public:
     std::uint64_t get_vbar_el1() const noexcept { return vbar_el1_; }
     void set_vbar_el1(std::uint64_t value) noexcept { vbar_el1_ = value; }
 
-    // Phase 39: Timer and interrupt state.
-    struct TimerState {
-        bool enable{false};
-        bool imask{false};
-        bool istatus{false};
-        std::uint64_t cval{0xFFFFFFFFFFFFFFFFULL};
-    };
+    // Phase 39/50: Timer and interrupt state.
+    using TimerState = winios::TimerState;
 
     // Phase 40: EL2 Hypervisor & Virtualization Architectural State.
     std::uint32_t get_spsr_el2() const noexcept { return spsr_el2_; }
@@ -148,37 +181,137 @@ public:
     void set_vttbr_el2(std::uint64_t value) noexcept { mmu_.set_vttbr_el2(value); }
     std::uint64_t get_vtcr_el2() const noexcept { return mmu_.get_vtcr_el2(); }
     void set_vtcr_el2(std::uint64_t value) noexcept { mmu_.set_vtcr_el2(value); }
-    std::uint64_t get_cntvoff_el2() const noexcept { return cntvoff_el2_; }
-    void set_cntvoff_el2(std::uint64_t value) noexcept { cntvoff_el2_ = value; }
-    std::uint64_t get_cnthctl_el2() const noexcept { return cnthctl_el2_; }
-    void set_cnthctl_el2(std::uint64_t value) noexcept { cnthctl_el2_ = value; }
-    const TimerState& get_cnthp_timer() const noexcept { return cnthp_timer_; }
-    void set_cnthp_timer(const TimerState& s) noexcept { cnthp_timer_ = s; }
+    std::uint64_t get_cntvoff_el2() const noexcept;
+    void set_cntvoff_el2(std::uint64_t value) noexcept;
+    std::uint64_t get_cnthctl_el2() const noexcept;
+    void set_cnthctl_el2(std::uint64_t value) noexcept;
+    const TimerState& get_cnthp_timer() const noexcept;
+    TimerState& get_cnthp_timer() noexcept;
+    void set_cnthp_timer(const TimerState& s) noexcept;
+    std::uint64_t get_mdcr_el2() const noexcept { return mdcr_el2_; }
+    void set_mdcr_el2(std::uint64_t value) noexcept { mdcr_el2_ = value; }
 
-    // Phase 39: Timer register accessors.
-    std::uint64_t get_cntfrq_el0() const noexcept { return cntfrq_el0_; }
-    void set_cntfrq_el0(std::uint64_t v) noexcept { cntfrq_el0_ = v; }
-    std::uint64_t get_guest_counter() const noexcept { return guest_counter_; }
-    void set_guest_counter(std::uint64_t v) noexcept { guest_counter_ = v; }
-    std::uint64_t get_cntkctl_el1() const noexcept { return cntkctl_el1_; }
-    void set_cntkctl_el1(std::uint64_t v) noexcept { cntkctl_el1_ = v; }
-    const TimerState& get_phys_timer() const noexcept { return phys_timer_; }
-    void set_phys_timer(const TimerState& s) noexcept { phys_timer_ = s; }
-    const TimerState& get_virt_timer() const noexcept { return virt_timer_; }
-    void set_virt_timer(const TimerState& s) noexcept { virt_timer_ = s; }
-    bool get_event_register() const noexcept { return event_register_; }
-    void set_event_register(bool v) noexcept { event_register_ = v; }
+    // Phase 49: PMU accessors
+    winios::PMU& get_pmu() noexcept { return pmu_; }
+    const winios::PMU& get_pmu() const noexcept { return pmu_; }
+
+    // Phase 51: Debug Architecture accessors
+    winios::DebugArchitecture& get_debug_arch() noexcept { return debug_arch_; }
+    const winios::DebugArchitecture& get_debug_arch() const noexcept { return debug_arch_; }
+
+    // Phase 39/50: Timer register accessors.
+    std::uint64_t get_cntfrq_el0() const noexcept;
+    void set_cntfrq_el0(std::uint64_t v) noexcept;
+    std::uint64_t get_guest_counter() const noexcept;
+    void set_guest_counter(std::uint64_t v) noexcept;
+    void increment_guest_counter() noexcept;
+    std::uint64_t get_cntkctl_el1() const noexcept;
+    void set_cntkctl_el1(std::uint64_t v) noexcept;
+    const TimerState& get_phys_timer() const noexcept;
+    TimerState& get_phys_timer() noexcept;
+    void set_phys_timer(const TimerState& s) noexcept;
+    const TimerState& get_virt_timer() const noexcept;
+    TimerState& get_virt_timer() noexcept;
+    void set_virt_timer(const TimerState& s) noexcept;
+    bool get_event_register() const noexcept {
+        return event_register_.load(std::memory_order_acquire);
+    }
+    void set_event_register(bool v) noexcept {
+        event_register_.store(v, std::memory_order_release);
+    }
+
+    // Phase 50: Authoritative Virtual-Time Accessors
+    winios::VirtualTime& get_virtual_time() noexcept { return *virtual_time_; }
+    const winios::VirtualTime& get_virtual_time() const noexcept { return *virtual_time_; }
+    void bind_virtual_time(winios::VirtualTime* vt, std::size_t core_id) noexcept {
+        virtual_time_ = vt ? vt : &local_virtual_time_;
+        core_id_ = core_id;
+    }
+
+    // Phase 43: owner-thread re-evaluation of WFI/WFE wake conditions. Called
+    // by the parallel worker while a core is idle so timer expiry can wake the
+    // core without any cross-thread access to its timer state.
+    void poll_wait_wakeup();
 
     // Phase 39: Check timer fire status and pending interrupts.
     void check_timer_status() noexcept;
-    void check_pending_interrupts();
+    bool check_pending_interrupts();
 
-    // Phase 39: Deliver an asynchronous exception (IRQ or FIQ) to EL1.
-    void raise_asynchronous_exception(bool is_fiq);
+    // Phase 39 / Phase 52 Stage 12: Deliver an asynchronous exception (IRQ or FIQ) to EL1.
+    void raise_asynchronous_exception(bool is_fiq, std::uint32_t intid = 0, bool is_virtual = false, std::uint8_t priority = 0);
 
-    // Phase 40: EL2 exception handling
+    // Phase 40 / Phase 52 Stage 12: EL2 exception handling
     void raise_el2_exception(const SynchronousException& exception, bool from_lower_el);
-    void raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el);
+    void raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el, std::uint32_t intid = 0, bool is_virtual = false, std::uint8_t priority = 0);
+
+    // Phase 47: EL3 Secure Monitor & Exception Architecture
+    std::uint64_t get_sp_el3() const noexcept { return sp_el3_; }
+    void set_sp_el3(std::uint64_t value) noexcept { sp_el3_ = value; }
+    std::uint32_t get_spsr_el3() const noexcept { return spsr_el3_; }
+    void set_spsr_el3(std::uint32_t value) noexcept { spsr_el3_ = value; }
+    std::uint64_t get_elr_el3() const noexcept { return elr_el3_; }
+    void set_elr_el3(std::uint64_t value) noexcept { elr_el3_ = value; }
+    std::uint32_t get_esr_el3() const noexcept { return esr_el3_; }
+    void set_esr_el3(std::uint32_t value) noexcept { esr_el3_ = value; }
+    std::uint64_t get_far_el3() const noexcept { return far_el3_; }
+    void set_far_el3(std::uint64_t value) noexcept { far_el3_ = value; }
+    std::uint64_t get_vbar_el3() const noexcept { return vbar_el3_; }
+    void set_vbar_el3(std::uint64_t value) noexcept { vbar_el3_ = value; }
+    std::uint64_t get_scr_el3() const noexcept { return scr_el3_; }
+    void set_scr_el3(std::uint64_t value) noexcept { scr_el3_ = value; }
+    std::uint64_t get_cptr_el3() const noexcept { return cptr_el3_; }
+    void set_cptr_el3(std::uint64_t value) noexcept { cptr_el3_ = value; }
+    std::uint64_t get_mdcr_el3() const noexcept { return mdcr_el3_; }
+    void set_mdcr_el3(std::uint64_t value) noexcept { mdcr_el3_ = value; }
+    bool is_secure_state() const noexcept { return current_el_ == 3 || !(scr_el3_ & 1ULL); }
+    void raise_el3_exception(const SynchronousException& exception, bool from_lower_el);
+    void raise_el3_asynchronous_exception(bool is_fiq, bool from_lower_el, std::uint32_t intid = 0, bool is_virtual = false, std::uint8_t priority = 0);
+
+    // Phase 41/42: GICv3 interrupt controller and virtual interface
+    winios::GICv3& get_gic() noexcept;
+    const winios::GICv3& get_gic() const noexcept;
+
+    // Phase 42: Multicore SMP state accessors
+    std::size_t get_core_id() const noexcept { return core_id_; }
+    void set_core_id(std::size_t id) noexcept;
+    std::uint64_t get_mpidr_el1() const noexcept {
+        return 0x80000000ULL | static_cast<std::uint64_t>(core_id_);
+    }
+    winios::SMPCluster* get_smp_cluster() noexcept { return smp_cluster_; }
+    const winios::SMPCluster* get_smp_cluster() const noexcept { return smp_cluster_; }
+    void set_smp_cluster(winios::SMPCluster* cluster) noexcept;
+
+    // Phase 48: PSCI service accessors
+    winios::PSCIService* get_psci_service() noexcept { return psci_service_; }
+    const winios::PSCIService* get_psci_service() const noexcept { return psci_service_; }
+    void set_psci_service(winios::PSCIService* svc) noexcept { psci_service_ = svc; }
+
+    bool is_halted() const noexcept {
+        return is_halted_.load(std::memory_order_acquire);
+    }
+    void set_halted(bool h) noexcept {
+        is_halted_.store(h, std::memory_order_release);
+    }
+    bool is_waiting() const noexcept {
+        return waiting_for_interrupt_.load(std::memory_order_acquire)
+            || waiting_for_event_.load(std::memory_order_acquire);
+    }
+    bool is_waiting_for_interrupt() const noexcept {
+        return waiting_for_interrupt_.load(std::memory_order_acquire);
+    }
+    bool is_waiting_for_event() const noexcept {
+        return waiting_for_event_.load(std::memory_order_acquire);
+    }
+    void wake_from_wfe() noexcept {
+        waiting_for_event_.store(false, std::memory_order_release);
+    }
+    void wake_from_wfi() noexcept;
+    void set_waiting_for_interrupt(bool w) noexcept {
+        waiting_for_interrupt_.store(w, std::memory_order_release);
+    }
+    void set_waiting_for_event(bool w) noexcept {
+        waiting_for_event_.store(w, std::memory_order_release);
+    }
 
     // Phase 37: MMU system registers and translation subsystem
     mmu::MMU& get_mmu() noexcept { return mmu_; }
@@ -213,6 +346,14 @@ public:
     bool get_il() const noexcept { return il_; }
     void set_il(bool value) noexcept { il_ = value; }
 
+    // Phase 51 Stage 8: PSTATE.SS (bit 21). Software Step process state bit.
+    bool get_pstate_ss() const noexcept { return pstate_ss_; }
+    void set_pstate_ss(bool ss) noexcept { pstate_ss_ = ss; }
+
+    // Evaluates whether Software Step is active in the current execution state.
+    bool is_software_step_active() const noexcept;
+    void on_instruction_retired_step(bool is_exclusive, std::uint64_t stepped_pc = 0);
+
     // Phase 36: architectural synchronous-exception mode.
     // Disabled by default so that the historical host-throw semantics (and the
     // historical differential corpus) are unchanged. When enabled, guest
@@ -231,18 +372,24 @@ public:
     // this exactly once.
     void raise_synchronous_exception(const SynchronousException& exception);
 
+    bool exception_taken_in_step() const noexcept { return exception_taken_in_step_; }
+    void set_exception_taken_in_step(bool v) noexcept { exception_taken_in_step_ = v; }
+
     std::uint64_t get_program_counter() const noexcept { return program_counter_; }
     void set_program_counter(std::uint64_t address) noexcept { program_counter_ = address; }
 
     bool uses_sp_el0() const noexcept { return current_el_ == 0 || !sp_sel_; }
     std::uint64_t get_stack_pointer() const noexcept {
         if (uses_sp_el0()) return sp_el0_;
+        if (current_el_ == 3) return sp_el3_;
         if (current_el_ == 2) return sp_el2_;
         return sp_el1_;
     }
     void set_stack_pointer(std::uint64_t value) noexcept {
         if (uses_sp_el0()) {
             sp_el0_ = value;
+        } else if (current_el_ == 3) {
+            sp_el3_ = value;
         } else if (current_el_ == 2) {
             sp_el2_ = value;
         } else {
@@ -255,6 +402,16 @@ public:
     // A null sink disables tracing. Tracing is disabled by default.
     void set_trace_sink(TraceSink sink) { trace_sink_ = std::move(sink); }
     void clear_trace_sink() { trace_sink_ = {}; }
+
+    // Phase 52 Stage 6: Trace Manager integration
+    void bind_trace_manager(winios::trace::TraceManager* tm) noexcept { trace_manager_ = tm; }
+    void set_trace_manager(winios::trace::TraceManager* tm) noexcept { bind_trace_manager(tm); }
+    winios::trace::TraceManager* get_trace_manager() noexcept { return trace_manager_; }
+    const winios::trace::TraceManager* get_trace_manager() const noexcept { return trace_manager_; }
+    std::uint64_t get_instruction_trace_sequence() const noexcept { return instruction_trace_sequence_; }
+    void reset_instruction_trace_sequence() noexcept { instruction_trace_sequence_ = 0; }
+    std::uint64_t get_instruction_retirement_count() const noexcept { return instruction_retirement_count_; }
+    void set_instruction_retirement_count(std::uint64_t cnt) noexcept { instruction_retirement_count_ = cnt; }
 
     // Local exclusive monitor. This interpreter models exactly one CPU and one
     // flat RAM, so the monitor is private per-CPU state and only ever observes
@@ -280,6 +437,95 @@ public:
     // disjoint store leaves it intact. Called by every normal store path.
     void note_normal_store(std::uint64_t address, std::size_t width) noexcept;
 
+    // Phase 52 Stage 6: Instruction-retirement trace emission
+    void emit_instruction_retired_trace(std::uint64_t instruction_address, std::uint32_t instruction);
+
+    // Phase 52 Stage 7: Branch-taken trace emission
+    void emit_branch_taken_trace(std::uint64_t instruction_address, std::uint64_t target_address, std::uint32_t instruction);
+
+    // Phase 52 Stage 8: Exception-entered trace emission
+    void emit_exception_entered_trace(std::uint64_t source_pc, std::uint64_t vector_address,
+                                      std::uint32_t syndrome, std::uint64_t far,
+                                      bool has_far, bool is_sync, unsigned target_el);
+
+    // Phase 52 Stage 8: Exception-returned trace emission
+    void emit_exception_returned_trace(std::uint64_t eret_pc, std::uint64_t target_pc,
+                                       std::uint32_t spsr, unsigned target_el);
+
+    // Phase 52 Stage 9: System-register access trace emission
+    void emit_system_register_access_trace(std::uint64_t instruction_address,
+                                          std::uint16_t reg_key,
+                                          std::uint64_t reg_value,
+                                          bool is_write,
+                                          std::uint32_t instruction);
+
+    // Phase 52 Stage 10: Memory read trace emission
+    void emit_memory_read_trace(std::uint64_t instruction_address,
+                                std::uint64_t virtual_address,
+                                std::uint64_t physical_address,
+                                std::uint64_t value,
+                                std::uint16_t access_size,
+                                bool is_atomic,
+                                std::uint32_t instruction);
+
+    // Phase 52 Stage 10: Memory write trace emission
+    void emit_memory_write_trace(std::uint64_t instruction_address,
+                                 std::uint64_t virtual_address,
+                                 std::uint64_t physical_address,
+                                 std::uint64_t value,
+                                 std::uint16_t access_size,
+                                 bool is_atomic,
+                                 std::uint32_t instruction);
+
+    // Phase 52 Stage 11: Debug event trace emission
+    void emit_debug_event(std::uint64_t instruction_address,
+                          std::uint64_t debug_address,
+                          std::uint32_t syndrome,
+                          winios::trace::TraceEventFlags debug_flags,
+                          std::uint16_t access_size = 0,
+                          std::uint64_t data_payload = 0);
+
+    // Phase 52 Stage 12: Interrupt delivery trace emission
+    void emit_interrupt_delivered_trace(std::uint64_t source_pc,
+                                        std::uint64_t vector_address,
+                                        std::uint32_t intid,
+                                        bool is_fiq,
+                                        bool is_virtual,
+                                        unsigned target_el,
+                                        std::uint8_t priority = 0);
+
+    // Phase 52 Stage 13: CPU Lifecycle and Context Change Tracing
+    bool is_started() const noexcept { return is_started_; }
+    bool is_stopped() const noexcept { return is_stopped_; }
+    void set_started(bool s) noexcept { is_started_ = s; }
+    void set_stopped(bool s) noexcept { is_stopped_ = s; }
+    void set_instruction_trace_sequence(std::uint64_t seq) noexcept { instruction_trace_sequence_ = seq; }
+    void start();
+    void stop(std::uint64_t stop_reason = 0);
+
+    void emit_cpu_started_trace();
+    void emit_cpu_stopped_trace(std::uint64_t stop_reason = 0);
+    void emit_context_changed_trace(std::uint64_t prev_pc,
+                                    std::uint64_t new_pc,
+                                    unsigned prev_el,
+                                    unsigned new_el,
+                                    bool prev_spsel,
+                                    bool new_spsel,
+                                    winios::trace::ContextChangeReason reason,
+                                    std::uint8_t prev_daif = 0,
+                                    std::uint8_t new_daif = 0,
+                                    bool is_interrupt = false);
+
+    // Phase 52 Stage 14: Timer event trace emission
+    void emit_timer_event_trace(winios::trace::TimerOp op,
+                                winios::trace::TimerType type,
+                                std::uint64_t cval,
+                                std::uint64_t counter,
+                                bool enable,
+                                bool imask,
+                                bool istatus,
+                                std::uint64_t trigger_pc = 0);
+
     // Fetches and executes one 32-bit instruction at the current PC.
     // Unsupported encodings throw std::runtime_error and memory errors from
     // the fetch are propagated.
@@ -303,6 +549,12 @@ private:
         std::uint64_t low{};
         std::uint64_t high{};
     };
+
+    // Phase 43: acquires the cluster store-serialization mutex when attached to
+    // a cluster. A default-constructed (unlocked) lock is returned otherwise.
+    // Recursive, because exclusive/LSE paths call note_normal_store and the
+    // Memory store observer while the guard is still held.
+    std::unique_lock<std::recursive_mutex> lock_store_serialization();
 
     std::uint64_t registers_[kRegisterCount]{};
     VectorRegister v_registers_[kVectorRegisterCount]{};
@@ -332,17 +584,14 @@ private:
     std::uint8_t daif_{0xFu};
     // il_: PSTATE.IL (illegal execution state), set by an illegal ERET.
     bool il_{false};
+    // pstate_ss_: PSTATE.SS (Software Step process state bit, bit 21).
+    bool pstate_ss_{false};
     // Phase 36: see architectural_exceptions().
     bool architectural_exceptions_{false};
     // Phase 37: MMU translation subsystem
     mmu::MMU mmu_{};
-    // Phase 39: Timer and interrupt state.
-    std::uint64_t cntfrq_el0_{24000000ULL};  // 24 MHz architectural default
-    std::uint64_t guest_counter_{0};          // deterministic per-instruction counter
-    TimerState phys_timer_{};                 // CNTP_*
-    TimerState virt_timer_{};                 // CNTV_*
-    std::uint64_t cntkctl_el1_{0};
-    bool event_register_{false};              // WFE event register
+    // Phase 39/50: Timer and interrupt state.
+    std::atomic<bool> event_register_{false}; // WFE event register
 
     // Phase 40: EL2 Hypervisor & Virtualization state
     std::uint64_t sp_el2_{0};
@@ -353,7 +602,54 @@ private:
     std::uint64_t hpfar_el2_{0};
     std::uint64_t vbar_el2_{0};
     std::uint64_t hcr_el2_{0};
-    std::uint64_t cntvoff_el2_{0};
-    std::uint64_t cnthctl_el2_{3};
-    TimerState cnthp_timer_{};
+    std::uint64_t mdcr_el2_{0};
+    winios::GICv3 gic_{};
+
+    // Phase 47: EL3 Secure Monitor state
+    std::uint64_t sp_el3_{0};
+    std::uint32_t spsr_el3_{0};
+    std::uint64_t elr_el3_{0};
+    std::uint32_t esr_el3_{0};
+    std::uint64_t far_el3_{0};
+    std::uint64_t vbar_el3_{0};
+    std::uint64_t scr_el3_{0x501ULL}; // Default RW=1, HCE=1, NS=1 (matches non-secure OS boot default)
+    std::uint64_t cptr_el3_{0};
+    std::uint64_t mdcr_el3_{0};
+
+    // Phase 49: PMU state
+    winios::PMU pmu_{};
+
+    // Phase 51: Debug Architecture state
+    winios::DebugArchitecture debug_arch_{};
+
+    // Phase 50: Authoritative Virtual-Time Architecture
+    winios::VirtualTime local_virtual_time_{};
+    winios::VirtualTime* virtual_time_{&local_virtual_time_};
+
+    // Phase 42: Multicore SMP state
+    std::size_t core_id_{0};
+    winios::SMPCluster* smp_cluster_{nullptr};
+    winios::PSCIService* psci_service_{nullptr}; // Phase 48: PSCI service
+    std::atomic<bool> is_halted_{false};
+    std::atomic<bool> waiting_for_interrupt_{false};
+    std::atomic<bool> waiting_for_event_{false};
+    bool exception_taken_in_step_{false};
+
+    // Phase 52 Stage 6: Trace Manager
+    winios::trace::TraceManager* trace_manager_{nullptr};
+    std::uint64_t instruction_trace_sequence_{0};
+    std::uint64_t instruction_retirement_count_{0};
+    bool is_started_{false};
+    bool is_stopped_{false};
+
+    // Phase 52 Stage 14: Timer Trace State Tracking
+    struct CoreTimerTraceState {
+        bool phys_prev_istatus{false};
+        bool phys_prev_irq{false};
+        bool virt_prev_istatus{false};
+        bool virt_prev_irq{false};
+        bool cnthp_prev_istatus{false};
+        bool cnthp_prev_irq{false};
+    };
+    CoreTimerTraceState timer_trace_state_{};
 };

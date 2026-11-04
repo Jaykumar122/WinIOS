@@ -1,4 +1,5 @@
 #include "cpu/cpu.h"
+#include "cpu/smp_cluster.h"
 
 #include "memory/memory.h"
 
@@ -12612,6 +12613,751 @@ void phase40_disassembly_names() {
     }
 }
 
+
+void phase41_gicd_mmio_registers() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+    cpu.set_current_el(1);
+
+    // X0 = 0x08000000 (GICD_CTLR)
+    cpu.write_register(0, 0x08000000ULL);
+
+    // Read initial GICD_CTLR: 0x50 (ARE_NS=1, DS=1)
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK(cpu.read_register(1) == 0x50u);
+
+    // Enable Grp0 and Grp1NS: write 0x53 to GICD_CTLR
+    cpu.write_register(2, 0x53u);
+    phase31_run_one(cpu, memory, 0xB9000002u); // STR W2, [X0]
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK(cpu.read_register(1) == 0x53u);
+
+    // GICD_TYPER at 0x08000004
+    cpu.write_register(0, 0x08000004ULL);
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK(cpu.read_register(1) == 0x03780003u);
+
+    // GICD_IIDR at 0x08000008
+    cpu.write_register(0, 0x08000008ULL);
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK(cpu.read_register(1) == 0x0000043Bu);
+
+    // Test GICD_ISENABLER1 (INTIDs 32..63) at 0x08000104
+    cpu.write_register(0, 0x08000104ULL);
+    cpu.write_register(2, 0x00000005u); // enable SPI 32 and 34
+    phase31_run_one(cpu, memory, 0xB9000002u); // STR W2, [X0]
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK(cpu.read_register(1) == 0x00000005u);
+
+    // Test GICD_ICENABLER1 at 0x08000184 to clear SPI 32
+    cpu.write_register(0, 0x08000184ULL);
+    cpu.write_register(2, 0x00000001u);
+    phase31_run_one(cpu, memory, 0xB9000002u); // STR W2, [X0]
+    cpu.write_register(0, 0x08000104ULL);
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK(cpu.read_register(1) == 0x00000004u); // only SPI 34 remains enabled
+
+    // Test GICD_IPRIORITYR byte access for INTID 34 at 0x08000422
+    cpu.write_register(0, 0x08000422ULL);
+    cpu.write_register(2, 0xA0u);
+    phase31_run_one(cpu, memory, 0x39000002u); // STRB W2, [X0]
+    phase31_run_one(cpu, memory, 0x39400001u); // LDRB W1, [X0]
+    CHECK(cpu.read_register(1) == 0xA0u);
+}
+
+void phase41_gicr_mmio_registers() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+    cpu.set_current_el(1);
+
+    // RD_base: GICR_TYPER at 0x080A0008
+    cpu.write_register(0, 0x080A0008ULL);
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK((cpu.read_register(1) & 0x10u) != 0); // Last=1
+
+    // SGI_base: GICR_ISENABLER0 at 0x080B0100
+    cpu.write_register(0, 0x080B0100ULL);
+    cpu.write_register(2, (1u << 30)); // Enable PPI 30 (Physical timer)
+    phase31_run_one(cpu, memory, 0xB9000002u); // STR W2, [X0]
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK((cpu.read_register(1) & (1u << 30)) != 0);
+
+    // SGI_base: GICR_ICENABLER0 at 0x080B0180
+    cpu.write_register(0, 0x080B0180ULL);
+    cpu.write_register(2, (1u << 30));
+    phase31_run_one(cpu, memory, 0xB9000002u); // STR W2, [X0] to disable
+    cpu.write_register(0, 0x080B0100ULL);
+    phase31_run_one(cpu, memory, 0xB9400001u); // LDR W1, [X0]
+    CHECK((cpu.read_register(1) & (1u << 30)) == 0);
+}
+
+void phase41_icc_system_registers() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+    cpu.set_current_el(1);
+
+    // ICC_PMR_EL1: MSR 0xD5184600, MRS 0xD5384600
+    cpu.write_register(0, 0x80ULL);
+    phase31_run_one(cpu, memory, 0xD5184600u); // MSR ICC_PMR_EL1, X0
+    phase31_run_one(cpu, memory, 0xD5384601u); // MRS X1, ICC_PMR_EL1
+    CHECK(cpu.read_register(1) == 0x80u);
+
+    // ICC_BPR0_EL1: MSR 0xD518C860, MRS 0xD538C860
+    cpu.write_register(0, 3ULL);
+    phase31_run_one(cpu, memory, 0xD518C860u); // MSR ICC_BPR0_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538C861u); // MRS X1, ICC_BPR0_EL1
+    CHECK(cpu.read_register(1) == 3u);
+
+    // ICC_BPR1_EL1: MSR 0xD518CC60, MRS 0xD538CC60
+    cpu.write_register(0, 4ULL);
+    phase31_run_one(cpu, memory, 0xD518CC60u); // MSR ICC_BPR1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CC61u); // MRS X1, ICC_BPR1_EL1
+    CHECK(cpu.read_register(1) == 4u);
+
+    // ICC_IGRPEN0_EL1: MSR 0xD518CCC0, MRS 0xD538CCC0
+    cpu.write_register(0, 1ULL);
+    phase31_run_one(cpu, memory, 0xD518CCC0u); // MSR ICC_IGRPEN0_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CCC1u); // MRS X1, ICC_IGRPEN0_EL1
+    CHECK(cpu.read_register(1) == 1u);
+
+    // ICC_IGRPEN1_EL1: MSR 0xD518CCE0, MRS 0xD538CCE0
+    cpu.write_register(0, 1ULL);
+    phase31_run_one(cpu, memory, 0xD518CCE0u); // MSR ICC_IGRPEN1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CCE1u); // MRS X1, ICC_IGRPEN1_EL1
+    CHECK(cpu.read_register(1) == 1u);
+
+    // ICC_SRE_EL1: read returns 0x7
+    phase31_run_one(cpu, memory, 0xD538CCA1u); // MRS X1, ICC_SRE_EL1
+    CHECK(cpu.read_register(1) == 0x7u);
+
+    // ICC_SRE_EL2 at EL2: MSR 0xD51CC9A0, MRS 0xD53CC9A0
+    cpu.set_current_el(2);
+    phase31_run_one(cpu, memory, 0xD53CC9A1u); // MRS X1, ICC_SRE_EL2
+    CHECK(cpu.read_register(1) == 0xFu);
+}
+
+void phase41_ich_virtual_registers() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+    cpu.set_current_el(2);
+
+    // ICH_HCR_EL2: MSR 0xD51CCB00, MRS 0xD53CCB00
+    cpu.write_register(0, 1ULL); // En=1
+    phase31_run_one(cpu, memory, 0xD51CCB00u); // MSR ICH_HCR_EL2, X0
+    phase31_run_one(cpu, memory, 0xD53CCB01u); // MRS X1, ICH_HCR_EL2
+    CHECK(cpu.read_register(1) == 1u);
+
+    // ICH_VTR_EL2: MRS 0xD53CCB20
+    phase31_run_one(cpu, memory, 0xD53CCB21u); // MRS X1, ICH_VTR_EL2
+    CHECK(cpu.read_register(1) != 0);
+
+    // ICH_VMCR_EL2: MSR 0xD51CCBE0, MRS 0xD53CCBE0
+    cpu.write_register(0, 0x00000000F0480003ULL); // VPMR=0xF0, VENG0=1, VENG1=1
+    phase31_run_one(cpu, memory, 0xD51CCBE0u); // MSR ICH_VMCR_EL2, X0
+    phase31_run_one(cpu, memory, 0xD53CCBE1u); // MRS X1, ICH_VMCR_EL2
+    CHECK(cpu.read_register(1) == 0x00000000F0480003ULL);
+
+    // ICH_LR0_EL2 .. ICH_LR3_EL2: MSR 0xD51CCC00..0xD51CCC60, MRS 0xD53CCC00..0xD53CCC60
+    const std::uint64_t lr_val = 0x500000200000001BULL; // Pending, Grp1, Prio 0x20, vINTID 27
+    cpu.write_register(0, lr_val);
+    phase31_run_one(cpu, memory, 0xD51CCC00u); // MSR ICH_LR0_EL2, X0
+    phase31_run_one(cpu, memory, 0xD53CCC01u); // MRS X1, ICH_LR0_EL2
+    CHECK(cpu.read_register(1) == lr_val);
+}
+
+void phase41_privilege_and_traps() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+
+    // At EL1, accessing ICH_HCR_EL2 must fault to EL1 Vector 0x200 (Sync EL1h)
+    cpu.set_current_el(1);
+    cpu.set_vbar_el1(0x2000);
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD53CCB00u); // MRS X0, ICH_HCR_EL2
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2200); // 0x2000 + 0x200
+    CHECK(cpu.get_esr_el1() == 0x02000000u); // EC 0x00 = Unknown / Undefined with IL=1
+
+    // At EL0, accessing ICC_PMR_EL1 must fault to EL1 Vector 0x400 (Sync Lower EL)
+    cpu.set_current_el(0);
+    cpu.set_vbar_el1(0x2000);
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD5384600u); // MRS X0, ICC_PMR_EL1
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2400); // 0x2000 + 0x400
+    CHECK(cpu.get_current_el() == 1);
+
+    // MSR to read-only ICC_IAR1_EL1 at EL1 must fault
+    cpu.set_current_el(1);
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD518CC00u); // MSR ICC_IAR1_EL1, X0
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2200);
+
+    // MRS to write-only ICC_EOIR1_EL1 at EL1 must fault
+    cpu.set_current_el(1);
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD538CC20u); // MRS X0, ICC_EOIR1_EL1
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2200);
+}
+
+void phase41_physical_interrupt_lifecycle() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+    cpu.set_current_el(1);
+    cpu.set_vbar_el1(0x2000);
+    cpu.set_daif(0); // Unmask all interrupts
+
+    // 1. Enable GICD: Grp1NS
+    cpu.get_gic().write_mmio(0x08000000ULL, 0x52u, 4u); // ARE_NS=1, EnableGrp1NS=1
+
+    // 2. Enable SPI 33: Group 1, priority 0x40
+    cpu.get_gic().write_mmio(0x08000084ULL, (1u << 1), 4u); // GICD_IGROUPR1: SPI 33 is Grp1
+    cpu.get_gic().write_mmio(0x08000104ULL, (1u << 1), 4u); // GICD_ISENABLER1: enable SPI 33
+    cpu.get_gic().write_mmio(0x08000400ULL + 33u, 0x40u, 1u); // Priority 0x40
+
+    // 3. Enable CPU interface: PMR=0x80, IGRPEN1=1
+    cpu.get_gic().write_icc_pmr(0x80u);
+    cpu.get_gic().write_icc_igrpen1(1u);
+
+    // 4. Assert SPI 33 line
+    cpu.get_gic().set_spi_level(33, true);
+
+    // Step CPU: interrupt should be taken to EL1 IRQ vector (0x280)
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD503201Fu); // NOP
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2280); // IRQ vector
+    CHECK((cpu.get_daif() & 0xFu) == 0xFu); // Interrupts masked upon exception
+
+    // 5. Acknowledge interrupt in interrupt handler: MRS X0, ICC_IAR1_EL1
+    phase31_run_one(cpu, memory, 0xD538CC00u); // MRS X0, ICC_IAR1_EL1
+    CHECK(cpu.read_register(0) == 33u); // Acknowledged INTID 33
+
+    // 6. EOI interrupt: MSR ICC_EOIR1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD518CC20u); // MSR ICC_EOIR1_EL1, X0
+
+    // Also verify Timer PPI 30 integration:
+    // Configure PPI 30 in GICR: Group 1, Enabled, Priority 0x40
+    cpu.get_gic().write_mmio(0x080B0080ULL, (1u << 30), 4u); // Grp1
+    cpu.get_gic().write_mmio(0x080B0100ULL, (1u << 30), 4u); // Enable INTID 30
+    cpu.get_gic().write_mmio(0x080B0400ULL + 30u, 0x40u, 1u); // Priority 0x40
+
+    // De-assert SPI 33 so only Timer PPI is pending
+    cpu.get_gic().set_spi_level(33, false);
+
+    // Configure Timer: enable = true, cval = 0, imask = false
+    cpu.set_daif(0);
+    cpu.write_register(0, 0ULL);
+    phase31_run_one(cpu, memory, 0xD51BE240u); // MSR CNTP_CVAL_EL0, X0
+    cpu.write_register(0, 1ULL);
+    phase31_run_one(cpu, memory, 0xD51BE220u); // MSR CNTP_CTL_EL0, X0
+
+    // Step CPU: Timer interrupt delivered via GIC to 0x2280
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD503201Fu); // NOP
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2280);
+
+    // Acknowledge Timer PPI: returns 30
+    phase31_run_one(cpu, memory, 0xD538CC00u);
+    CHECK(cpu.read_register(0) == 30u);
+    phase31_run_one(cpu, memory, 0xD518CC20u); // EOI
+}
+
+void phase41_virtual_interrupt_lifecycle() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_architectural_exceptions(true);
+
+    // Configure Hypervisor (EL2): Enable ICH and inject virtual interrupt into LR0
+    cpu.set_current_el(2);
+    cpu.get_gic().write_ich_hcr(1u); // En = 1
+    cpu.get_gic().write_ich_vmcr(0x00000000F0480003ULL); // VPMR=0xF0, VENG1=1
+    // LR0: State=Pending (0b01 << 62), Group 1 (1ULL << 60), Prio=0x30 (0x30ULL << 48), vINTID=42
+    const std::uint64_t lr0_val = (1ULL << 62) | (1ULL << 60) | (0x30ULL << 48) | 42ULL;
+    cpu.get_gic().write_ich_lr(0, lr0_val);
+
+    // Switch to Guest (EL1) with interrupts unmasked
+    cpu.set_current_el(1);
+    cpu.set_vbar_el1(0x2000);
+    cpu.set_daif(0);
+    cpu.set_program_counter(0x1000);
+    memory.write_u32(0x1000, 0xD503201Fu); // NOP
+
+    // Step: virtual interrupt delivered to guest IRQ vector 0x2280
+    cpu.step(memory);
+    CHECK(cpu.get_program_counter() == 0x2280);
+
+    // Guest acknowledges: MRS X0, ICC_IAR1_EL1
+    phase31_run_one(cpu, memory, 0xD538CC00u);
+    CHECK(cpu.read_register(0) == 42u);
+
+    // Verify LR0 transitioned to Active (0b10)
+    std::uint64_t lr0_now = cpu.get_gic().read_ich_lr(0);
+    CHECK(((lr0_now >> 62u) & 0x3u) == 0x2u); // Active
+
+    // Guest EOIs: MSR ICC_EOIR1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD518CC20u);
+
+    // Verify LR0 transitioned to Inactive (0b00)
+    lr0_now = cpu.get_gic().read_ich_lr(0);
+    CHECK(((lr0_now >> 62u) & 0x3u) == 0x0u); // Inactive
+
+    // Verify ICH_ELRSR_EL2 indicates LR0 is now empty
+    CHECK((cpu.get_gic().read_ich_elrsr() & 0x1u) != 0);
+}
+
+void phase41_disassembly_names() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_current_el(2);
+    std::vector<std::string> names;
+    cpu.set_trace_sink([&names](const CPU::TraceRecord& r) {
+        names.push_back(r.disassembly);
+    });
+
+    phase31_run_one(cpu, memory, 0xD5384600u); // MRS X0, ICC_PMR_EL1
+    phase31_run_one(cpu, memory, 0xD5184600u); // MSR ICC_PMR_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538C800u); // MRS X0, ICC_IAR0_EL1
+    phase31_run_one(cpu, memory, 0xD518C820u); // MSR ICC_EOIR0_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538C840u); // MRS X0, ICC_HPPIR0_EL1
+    phase31_run_one(cpu, memory, 0xD538C860u); // MRS X0, ICC_BPR0_EL1
+    phase31_run_one(cpu, memory, 0xD518C860u); // MSR ICC_BPR0_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CC00u); // MRS X0, ICC_IAR1_EL1
+    phase31_run_one(cpu, memory, 0xD518CC20u); // MSR ICC_EOIR1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CC40u); // MRS X0, ICC_HPPIR1_EL1
+    phase31_run_one(cpu, memory, 0xD538CC60u); // MRS X0, ICC_BPR1_EL1
+    phase31_run_one(cpu, memory, 0xD518CC60u); // MSR ICC_BPR1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CCA0u); // MRS X0, ICC_SRE_EL1
+    phase31_run_one(cpu, memory, 0xD518CCA0u); // MSR ICC_SRE_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CCC0u); // MRS X0, ICC_IGRPEN0_EL1
+    phase31_run_one(cpu, memory, 0xD518CCC0u); // MSR ICC_IGRPEN0_EL1, X0
+    phase31_run_one(cpu, memory, 0xD538CCE0u); // MRS X0, ICC_IGRPEN1_EL1
+    phase31_run_one(cpu, memory, 0xD518CCE0u); // MSR ICC_IGRPEN1_EL1, X0
+    phase31_run_one(cpu, memory, 0xD53CC9A0u); // MRS X0, ICC_SRE_EL2
+    phase31_run_one(cpu, memory, 0xD51CC9A0u); // MSR ICC_SRE_EL2, X0
+
+    phase31_run_one(cpu, memory, 0xD53CCB00u); // MRS X0, ICH_HCR_EL2
+    phase31_run_one(cpu, memory, 0xD51CCB00u); // MSR ICH_HCR_EL2, X0
+    phase31_run_one(cpu, memory, 0xD53CCB20u); // MRS X0, ICH_VTR_EL2
+    phase31_run_one(cpu, memory, 0xD53CCB40u); // MRS X0, ICH_MISR_EL2
+    phase31_run_one(cpu, memory, 0xD53CCB60u); // MRS X0, ICH_EISR_EL2
+    phase31_run_one(cpu, memory, 0xD53CCBA0u); // MRS X0, ICH_ELRSR_EL2
+    phase31_run_one(cpu, memory, 0xD53CCBE0u); // MRS X0, ICH_VMCR_EL2
+    phase31_run_one(cpu, memory, 0xD51CCBE0u); // MSR ICH_VMCR_EL2, X0
+    phase31_run_one(cpu, memory, 0xD53CCC00u); // MRS X0, ICH_LR0_EL2
+    phase31_run_one(cpu, memory, 0xD51CCC00u); // MSR ICH_LR0_EL2, X0
+
+    const std::vector<std::string> expected = {
+        "MRS X0, ICC_PMR_EL1",
+        "MSR ICC_PMR_EL1, X0",
+        "MRS X0, ICC_IAR0_EL1",
+        "MSR ICC_EOIR0_EL1, X0",
+        "MRS X0, ICC_HPPIR0_EL1",
+        "MRS X0, ICC_BPR0_EL1",
+        "MSR ICC_BPR0_EL1, X0",
+        "MRS X0, ICC_IAR1_EL1",
+        "MSR ICC_EOIR1_EL1, X0",
+        "MRS X0, ICC_HPPIR1_EL1",
+        "MRS X0, ICC_BPR1_EL1",
+        "MSR ICC_BPR1_EL1, X0",
+        "MRS X0, ICC_SRE_EL1",
+        "MSR ICC_SRE_EL1, X0",
+        "MRS X0, ICC_IGRPEN0_EL1",
+        "MSR ICC_IGRPEN0_EL1, X0",
+        "MRS X0, ICC_IGRPEN1_EL1",
+        "MSR ICC_IGRPEN1_EL1, X0",
+        "MRS X0, ICC_SRE_EL2",
+        "MSR ICC_SRE_EL2, X0",
+        "MRS X0, ICH_HCR_EL2",
+        "MSR ICH_HCR_EL2, X0",
+        "MRS X0, ICH_VTR_EL2",
+        "MRS X0, ICH_MISR_EL2",
+        "MRS X0, ICH_EISR_EL2",
+        "MRS X0, ICH_ELRSR_EL2",
+        "MRS X0, ICH_VMCR_EL2",
+        "MSR ICH_VMCR_EL2, X0",
+        "MRS X0, ICH_LR0_EL2",
+        "MSR ICH_LR0_EL2, X0",
+    };
+
+    CHECK(names.size() == expected.size());
+    for (std::size_t i = 0; i < names.size() && i < expected.size(); ++i) {
+        CHECK(names[i] == expected[i]);
+    }
+}
+void phase42_mpidr_el1_access() {
+    CPU cpu0;
+    Memory memory(0x10000);
+    cpu0.set_current_el(1);
+    cpu0.set_core_id(0);
+
+    // Core 0: MRS X0, MPIDR_EL1 (0xD53800A0)
+    phase31_run_one(cpu0, memory, 0xD53800A0u);
+    CHECK(cpu0.read_register(0) == 0x80000000ull);
+
+    // Core 1: MRS X0, MPIDR_EL1
+    CPU cpu1;
+    cpu1.set_current_el(1);
+    cpu1.set_core_id(1);
+    phase31_run_one(cpu1, memory, 0xD53800A0u);
+    CHECK(cpu1.read_register(0) == 0x80000001ull);
+
+    // EL0 access to MPIDR_EL1 should fail
+    CPU cpu_el0;
+    cpu_el0.set_current_el(0);
+    cpu_el0.set_architectural_exceptions(true);
+    phase31_run_one(cpu_el0, memory, 0xD53800A0u);
+    CHECK(cpu_el0.get_current_el() == 1); // Trapped to EL1
+
+    // MSR MPIDR_EL1, X0 (0xD51800A0) is read-only -> fault
+    CPU cpu_msr;
+    cpu_msr.set_current_el(1);
+    cpu_msr.set_architectural_exceptions(true);
+    phase31_run_one(cpu_msr, memory, 0xD51800A0u);
+    CHECK(cpu_msr.get_esr_el1() != 0); // Exception raised
+}
+
+void phase42_smp_cluster_init_and_state() {
+    winios::SMPCluster cluster(2, 0x20000);
+
+    CHECK(cluster.core_count() == 2);
+    CHECK(cluster.get_core(0).get_core_id() == 0);
+    CHECK(cluster.get_core(1).get_core_id() == 1);
+    CHECK(cluster.get_core(0).get_smp_cluster() == &cluster);
+    CHECK(cluster.get_core(1).get_smp_cluster() == &cluster);
+
+    // Verify architectural state isolation
+    cluster.get_core(0).write_register(0, 0x1111222233334444ull);
+    cluster.get_core(1).write_register(0, 0xAAAABBBBCCCCDDDDull);
+    CHECK(cluster.get_core(0).read_register(0) == 0x1111222233334444ull);
+    CHECK(cluster.get_core(1).read_register(0) == 0xAAAABBBBCCCCDDDDull);
+
+    cluster.get_core(0).set_program_counter(0x1000);
+    cluster.get_core(1).set_program_counter(0x5000);
+    CHECK(cluster.get_core(0).get_program_counter() == 0x1000);
+    CHECK(cluster.get_core(1).get_program_counter() == 0x5000);
+}
+
+void phase42_secondary_core_start_halt() {
+    winios::SMPCluster cluster(2, 0x20000);
+    Memory& memory = cluster.get_memory();
+
+    // Place NOPs at 0x1000 and 0x5000
+    memory.write_u32(0x1000, 0xD503201Fu); // NOP
+    memory.write_u32(0x1004, 0xD503201Fu); // NOP
+    memory.write_u32(0x5000, 0xD503201Fu); // NOP
+    memory.write_u32(0x5004, 0xD503201Fu); // NOP
+
+    cluster.get_core(0).set_program_counter(0x1000);
+    cluster.get_core(1).set_program_counter(0x5000);
+
+    // Core 1 is halted
+    cluster.get_core(1).set_halted(true);
+    CHECK(cluster.get_core(1).is_halted());
+
+    // Step round-robin
+    cluster.step_round_robin();
+    CHECK(cluster.get_core(0).get_program_counter() == 0x1004);
+    CHECK(cluster.get_core(1).get_program_counter() == 0x5000); // Halted core did not advance
+
+    // Unhalt Core 1
+    cluster.get_core(1).set_halted(false);
+    cluster.step_round_robin();
+    CHECK(cluster.get_core(0).get_program_counter() == 0x1008);
+    CHECK(cluster.get_core(1).get_program_counter() == 0x5004); // Core 1 advanced
+}
+
+void phase42_dual_core_gicr_mmio() {
+    winios::SMPCluster cluster(2, 0x20000);
+
+    winios::GICv3& gic = cluster.get_gic();
+    CHECK(gic.get_core_count() == 2);
+
+    // Read GICR_TYPER for Core 0 (0x080A0008): Last bit should be 0
+    std::uint64_t typer0 = gic.read_mmio(0x080A0008, 8);
+    CHECK((typer0 & (1ull << 4)) == 0); // Not last
+    CHECK(((typer0 >> 32) & 0xFFFFFFFFull) == 0); // Aff0 = 0
+
+    // Read GICR_TYPER for Core 1 (0x080C0008): Last bit should be 1
+    std::uint64_t typer1 = gic.read_mmio(0x080C0008, 8);
+    CHECK((typer1 & (1ull << 4)) != 0); // Last
+    CHECK(((typer1 >> 32) & 0xFFFFFFFFull) == 1); // Aff0 = 1
+
+    // Core 0 SGI frame ISENABLER0 at 0x080B0100
+    gic.write_mmio(0x080B0100, 1u << 27, 4);
+    CHECK((gic.read_mmio(0x080B0100, 4) & (1u << 27)) != 0);
+
+    // Core 1 SGI frame ISENABLER0 at 0x080D0100 should remain 0
+    CHECK((gic.read_mmio(0x080D0100, 4) & (1u << 27)) == 0);
+}
+
+void phase42_sgi_self_and_cross_core() {
+    winios::SMPCluster cluster(2, 0x20000);
+    winios::GICv3& gic = cluster.get_gic();
+
+    // Enable GICD: ARE_NS=1, EnableGrp1NS=1
+    gic.write_mmio(0x08000000ULL, 0x52u, 4u);
+
+    // Set INTID 5 and 9 to Group 1 in Core 1 Redistributor
+    gic.write_mmio(0x080D0080ULL, (1u << 5) | (1u << 9), 4u);
+
+    // Set priorities to 0x40
+    gic.write_mmio(0x080D0400ULL + 5u, 0x40u, 1u);
+    gic.write_mmio(0x080D0400ULL + 9u, 0x40u, 1u);
+
+    // Configure ICC for Core 0 and Core 1
+    gic.write_icc_sre_el1(1, 0);
+    gic.write_icc_sre_el1(1, 1);
+    gic.write_icc_igrpen1(1, 0);
+    gic.write_icc_igrpen1(1, 1);
+    gic.write_icc_pmr(0xF0, 0);
+    gic.write_icc_pmr(0xF0, 1);
+
+    // Enable SGI INTID 5 and 9 in Core 1 Redistributor
+    gic.write_mmio(0x080D0100, (1u << 5) | (1u << 9), 4);
+
+    // Core 0 sends SGI INTID 5 targeting Core 1: TargetList=0b0010 (bit 1), INTID=5
+    // ICC_SGI1R_EL1: INTID in [27:24], TargetList in [15:0]
+    std::uint64_t sgi1r = (5ull << 24) | 0x2ull;
+    gic.send_sgi(0, sgi1r);
+
+    // Verify INTID 5 is pending in Core 1 SGI frame (GICR_ISPENDR0 at 0x080D0200)
+    CHECK((gic.read_mmio(0x080D0200, 4) & (1u << 5)) != 0);
+    // Core 0 should NOT have INTID 5 pending
+    CHECK((gic.read_mmio(0x080B0200, 4) & (1u << 5)) == 0);
+
+    // Core 1 acknowledges group 1 interrupt
+    std::uint32_t iar = gic.acknowledge_group1(1, 1);
+    CHECK(iar == 5u);
+
+    // Core 1 EOIs interrupt
+    gic.end_of_interrupt_group1(5, 1, 1);
+
+    // Test IRM == 1 (all excluding self)
+    // IRM is bit 40. Target INTID 9.
+    std::uint64_t sgi_irm = (1ull << 40) | (9ull << 24);
+    gic.send_sgi(0, sgi_irm);
+
+    // Core 0 must NOT have INTID 9 pending
+    CHECK((gic.read_mmio(0x080B0200, 4) & (1u << 9)) == 0);
+    // Core 1 MUST have INTID 9 pending
+    CHECK((gic.read_mmio(0x080D0200, 4) & (1u << 9)) != 0);
+}
+
+void phase42_cross_core_exclusive_monitor() {
+    winios::SMPCluster cluster(2, 0x20000);
+    Memory& memory = cluster.get_memory();
+
+    CPU& core0 = cluster.get_core(0);
+    CPU& core1 = cluster.get_core(1);
+    core0.set_current_el(1);
+    core1.set_current_el(1);
+
+    // Initial memory setup at address 0x4000
+    memory.write_u64(0x4000, 0x1122334455667788ull);
+
+    // Core 0 executes LDXR X0, [X1] where X1 = 0x4000 (0xC85F7C20)
+    core0.write_register(1, 0x4000);
+    memory.write_u32(0x1000, 0xC85F7C20u); // LDXR X0, [X1]
+    core0.set_program_counter(0x1000);
+    core0.step(memory);
+    CHECK(core0.read_register(0) == 0x1122334455667788ull);
+    CHECK(core0.exclusive_monitor_valid());
+
+    // Core 1 performs a normal store STR X2, [X3] to 0x4000 (0xF9000062)
+    core1.write_register(2, 0x9999999999999999ull);
+    core1.write_register(3, 0x4000);
+    memory.write_u32(0x2000, 0xF9000062u); // STR X2, [X3]
+    core1.set_program_counter(0x2000);
+    core1.step(memory);
+    CHECK(memory.read_u64(0x4000) == 0x9999999999999999ull);
+
+    // Core 0 executes STXR W4, X5, [X1] to 0x4000 (0xC8047C25)
+    // Global reservation was invalidated by Core 1's store, so STXR MUST fail (return 1)
+    core0.write_register(5, 0xCAFEBABECAFEBABEull);
+    memory.write_u32(0x1004, 0xC8047C25u); // STXR W4, X5, [X1]
+    core0.set_program_counter(0x1004);
+    core0.step(memory);
+
+    CHECK(core0.read_register(4) == 1u); // Failed!
+    // Memory value should remain from Core 1's store, not overwritten by Core 0
+    CHECK(memory.read_u64(0x4000) == 0x9999999999999999ull);
+}
+
+void phase42_cross_core_tlbi_is() {
+    winios::SMPCluster cluster(2, 0x40000);
+    Memory& memory = cluster.get_memory();
+
+    CPU& core0 = cluster.get_core(0);
+    CPU& core1 = cluster.get_core(1);
+    core0.set_architectural_exceptions(true);
+    core1.set_architectural_exceptions(true);
+    core0.set_current_el(1);
+    core1.set_current_el(1);
+
+    // Page table setup
+    const std::uint64_t l0_base = 0x2000;
+    const std::uint64_t l1_base = 0x3000;
+    const std::uint64_t l2_base = 0x4000;
+    const std::uint64_t l3_base = 0x5000;
+    const std::uint64_t page_a  = 0x8000;
+    const std::uint64_t page_b  = 0x9000;
+
+    memory.write_u64(l0_base, l1_base | 0x3ULL);
+    memory.write_u64(l1_base, l2_base | 0x3ULL);
+    memory.write_u64(l2_base, l3_base | 0x3ULL);
+    // Identity-map page 0 (code)
+    memory.write_u64(l3_base + 0u, 0x0ULL | 0x3ULL | (1ULL << 10u));
+    // Map VA 0x1000 to page_a (0x8000)
+    memory.write_u64(l3_base + 8u, page_a | 0x3ULL | (1ULL << 10u));
+
+    memory.write_u64(page_a, 0xAAAAAAAAAAAAAAAAULL);
+    memory.write_u64(page_b, 0xBBBBBBBBBBBBBBBBULL);
+
+    core0.set_ttbr0_el1(l0_base);
+    core0.set_sctlr_el1(0x00C50839ULL); // MMU on
+    core1.set_ttbr0_el1(l0_base);
+    core1.set_sctlr_el1(0x00C50839ULL); // MMU on
+
+    // Core 0 reads VA 0x1000 -> TLB cache page_a
+    core0.write_register(2, 0x1000);
+    core0.set_program_counter(0x100);
+    phase31_run_one(core0, memory, 0xF9400041u); // LDR X1, [X2]
+    CHECK(core0.read_register(1) == 0xAAAAAAAAAAAAAAAAULL);
+
+    // Core 1 reads VA 0x1000 -> TLB cache page_a
+    core1.write_register(2, 0x1000);
+    core1.set_program_counter(0x100);
+    phase31_run_one(core1, memory, 0xF9400041u); // LDR X1, [X2]
+    CHECK(core1.read_register(1) == 0xAAAAAAAAAAAAAAAAULL);
+
+    // Modify page table entry to point to page_b in RAM
+    memory.write_u64(l3_base + 8u, page_b | 0x3ULL | (1ULL << 10u));
+
+    // TLB Hit check: without invalidation, both return cached page_a
+    core0.set_program_counter(0x104);
+    phase31_run_one(core0, memory, 0xF9400041u);
+    CHECK(core0.read_register(1) == 0xAAAAAAAAAAAAAAAAULL);
+
+    core1.set_program_counter(0x104);
+    phase31_run_one(core1, memory, 0xF9400041u);
+    CHECK(core1.read_register(1) == 0xAAAAAAAAAAAAAAAAULL);
+
+    // Core 0 executes non-IS TLBI VMALLE1 (0xD508871F)
+    core0.set_program_counter(0x108);
+    phase31_run_one(core0, memory, 0xD508871Fu); // TLBI VMALLE1
+
+    // Core 0 refetches from memory -> gets page_b!
+    core0.set_program_counter(0x10C);
+    phase31_run_one(core0, memory, 0xF9400041u);
+    CHECK(core0.read_register(1) == 0xBBBBBBBBBBBBBBBBULL);
+
+    // Core 1 was NOT invalidated by local TLBI -> still has page_a!
+    core1.set_program_counter(0x108);
+    phase31_run_one(core1, memory, 0xF9400041u);
+    CHECK(core1.read_register(1) == 0xAAAAAAAAAAAAAAAAULL);
+
+    // Now Core 0 executes Inner Shareable TLBI VMALLE1IS (0xD508831F)
+    core0.set_program_counter(0x110);
+    phase31_run_one(core0, memory, 0xD508831Fu); // TLBI VMALLE1IS
+
+    // Core 1 TLB was invalidated by the IS broadcast -> reloads page_b!
+    core1.set_program_counter(0x10C);
+    phase31_run_one(core1, memory, 0xF9400041u);
+    CHECK(core1.read_register(1) == 0xBBBBBBBBBBBBBBBBULL);
+}
+
+void phase42_cross_core_sev_wfe() {
+    winios::SMPCluster cluster(2, 0x20000);
+    Memory& memory = cluster.get_memory();
+
+    CPU& core0 = cluster.get_core(0);
+    CPU& core1 = cluster.get_core(1);
+    core0.set_architectural_exceptions(true);
+    core1.set_architectural_exceptions(true);
+
+    // Give Core 0 a NOP at 0x1000
+    memory.write_u32(0x1000, 0xD503201Fu); // NOP
+    core0.set_program_counter(0x1000);
+
+    // Core 1 executes WFE (0xD503205F) at 0x2000
+    memory.write_u32(0x2000, 0xD503205Fu); // WFE
+    core1.set_program_counter(0x2000);
+    core1.step(memory);
+    CHECK(core1.is_waiting());
+
+    // Next instruction on Core 1 is NOP at 0x2004
+    memory.write_u32(0x2004, 0xD503201Fu); // NOP
+    // Stepping round-robin while Core 1 is waiting:
+    // Core 0 executes NOP at 0x1000 -> advances to 0x1004.
+    // Core 1 is waiting -> does NOT advance (remains at 0x2004).
+    cluster.step_round_robin();
+    CHECK(core1.is_waiting());
+    CHECK(core0.get_program_counter() == 0x1004);
+    CHECK(core1.get_program_counter() == 0x2004);
+
+    // Core 0 executes SEV (0xD503209F) at 0x1004
+    memory.write_u32(0x1004, 0xD503209Fu); // SEV
+    core0.step(memory);
+
+    // SEV broadcast wakes Core 1
+    CHECK(!core1.is_waiting());
+    CHECK(core1.get_event_register());
+}
+
+void phase42_round_robin_scheduler() {
+    winios::SMPCluster cluster(2, 0x20000);
+    Memory& memory = cluster.get_memory();
+
+    // Core 0: 5 instructions ADD X0, X0, #1 (0x91000400)
+    for (std::size_t i = 0; i < 5; ++i) {
+        memory.write_u32(0x1000 + i * 4, 0x91000400u);
+    }
+    // Core 1: 5 instructions ADD X1, X1, #2 (0x91000821)
+    for (std::size_t i = 0; i < 5; ++i) {
+        memory.write_u32(0x2000 + i * 4, 0x91000821u);
+    }
+
+    cluster.get_core(0).set_program_counter(0x1000);
+    cluster.get_core(1).set_program_counter(0x2000);
+    cluster.get_core(1).set_halted(false);
+
+    // Run 10 steps total (5 round-robin cycles)
+    cluster.run_deterministic(10);
+
+    CHECK(cluster.get_core(0).read_register(0) == 5u);
+    CHECK(cluster.get_core(0).get_program_counter() == 0x1014);
+    CHECK(cluster.get_core(1).read_register(1) == 10u);
+    CHECK(cluster.get_core(1).get_program_counter() == 0x2014);
+}
+
+void phase42_disassembly_names() {
+    CPU cpu;
+    Memory memory(0x10000);
+    cpu.set_current_el(1);
+    std::vector<std::string> names;
+    cpu.set_trace_sink([&names](const CPU::TraceRecord& r) {
+        names.push_back(r.disassembly);
+    });
+
+    phase31_run_one(cpu, memory, 0xD53800A0u); // MRS X0, MPIDR_EL1
+    phase31_run_one(cpu, memory, 0xD510CBB0u); // MSR ICC_SGI1R_EL1, X16
+
+    CHECK(names.size() == 2);
+    CHECK(names[0] == "MRS X0, MPIDR_EL1");
+    CHECK(names[1] == "MSR ICC_SGI1R_EL1, X16");
+}
+
+
 int main() {
 
     constructor_starts_zeroed();
@@ -12967,6 +13713,27 @@ int main() {
     phase40_hcr_exception_routing();
     phase40_stage2_translation_and_faults();
     phase40_disassembly_names();
+
+    
+    phase41_gicd_mmio_registers();
+    phase41_gicr_mmio_registers();
+    phase41_icc_system_registers();
+    phase41_ich_virtual_registers();
+    phase41_privilege_and_traps();
+    phase41_physical_interrupt_lifecycle();
+    phase41_virtual_interrupt_lifecycle();
+    phase41_disassembly_names();
+
+    phase42_mpidr_el1_access();
+    phase42_smp_cluster_init_and_state();
+    phase42_secondary_core_start_halt();
+    phase42_dual_core_gicr_mmio();
+    phase42_sgi_self_and_cross_core();
+    phase42_cross_core_exclusive_monitor();
+    phase42_cross_core_tlbi_is();
+    phase42_cross_core_sev_wfe();
+    phase42_round_robin_scheduler();
+    phase42_disassembly_names();
 
     return test::summarize("cpu_tests");
 

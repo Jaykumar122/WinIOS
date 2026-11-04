@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -10,9 +11,10 @@ class Memory;
 
 namespace mmu {
 
-// Translation regimes modeled in Phase 37.
+// Translation regimes modeled in Phase 37-45.
 enum class TranslationRegime : std::uint8_t {
     EL1_0 = 1, // Stage-1 translation for EL1 and EL0
+    EL2   = 2, // Stage-2 translation for EL1/0 under EL2
 };
 
 // Access type for translation requests.
@@ -77,12 +79,13 @@ struct TranslationResult {
     bool executable{false};
     bool el0_accessible{false};
     std::uint8_t mair_attr{0};
+    bool is_device{false};
 };
 
 // Software TLB entry.
 struct TlbEntry {
     bool valid{false};
-    std::uint64_t virtual_page{0};   // VA >> 12
+    std::uint64_t virtual_page{0};   // VA >> 12 or IPA >> 12
     std::uint64_t physical_page{0};  // PA >> 12
     std::uint64_t page_mask{0xFFFFFFFFFFFFF000ULL}; // Mask for page/block size
     std::uint16_t asid{0};
@@ -96,10 +99,11 @@ struct TlbEntry {
     std::uint8_t attr_indx{0};       // Memory attribute index from MAIR_EL1
     std::uint8_t shareability{0};    // Shareability field (SH)
     std::uint8_t regime{0};
+    bool is_device{false};           // True if resolved to Device memory type
 };
 
 // The MMU class manages system control registers, page-table walks, permissions,
-// and the software TLB.
+// memory attributes, and the software TLB.
 class MMU {
 public:
     static constexpr std::uint64_t kPageSize4K = 4096ULL;
@@ -151,25 +155,42 @@ public:
     bool is_alignment_check_enabled() const noexcept { return (sctlr_el1_ & 0x2ULL) != 0; }
     bool is_wxn_enabled() const noexcept { return (sctlr_el1_ & (1ULL << 19u)) != 0; }
 
+    // Phase 45: Translation descriptor validation
+    bool validate_descriptor(
+        unsigned level,
+        std::uint64_t desc,
+        bool is_stage2,
+        DescriptorKind* out_kind = nullptr,
+        MmuFaultType* out_fault = nullptr) const noexcept;
+
+    // Phase 45: Memory attribute helpers
+    std::uint8_t get_mair_attribute(std::uint8_t attr_indx) const noexcept;
+    bool is_device_attribute(std::uint8_t attr_byte) const noexcept;
+
     // TLB operations
     void invalidate_tlb_all() noexcept;
     void invalidate_tlb_va(std::uint64_t va, std::uint16_t asid, bool last_level_only = false) noexcept;
     void invalidate_tlb_asid(std::uint16_t asid) noexcept;
     void invalidate_tlb_vaa(std::uint64_t va, bool last_level_only = false) noexcept;
     void invalidate_tlb_vmid(std::uint16_t vmid) noexcept;
+    void invalidate_tlb_ipas2(std::uint64_t ipa, std::uint16_t vmid) noexcept;
 
     bool is_tlb_enabled() const noexcept { return tlb_enabled_; }
     void set_tlb_enabled(bool enabled) noexcept { tlb_enabled_ = enabled; }
+    std::size_t get_tlb_entry_count() const noexcept;
+    std::vector<TlbEntry> get_tlb_entries_copy() const noexcept;
 
     // Address translation interface.
     // Handles Stage-1, Stage-2, and composite two-stage translation (VA -> IPA -> PA).
     // On translation fault, returns std::nullopt and populates fault out-parameter.
+    // If out_is_device is non-null, sets *out_is_device = true if memory is Device type.
     std::optional<std::uint64_t> translate(
         const Memory& memory,
         std::uint64_t virtual_address,
         AccessKind access,
         unsigned current_el,
-        TranslationFault* out_fault);
+        TranslationFault* out_fault,
+        bool* out_is_device = nullptr);
 
 private:
     std::optional<std::uint64_t> walk_stage1(
@@ -177,7 +198,8 @@ private:
         std::uint64_t virtual_address,
         AccessKind access,
         unsigned current_el,
-        TranslationFault* out_fault);
+        TranslationFault* out_fault,
+        bool* out_is_device = nullptr);
 
     std::optional<std::uint64_t> walk_stage2(
         const Memory& memory,
@@ -202,6 +224,10 @@ private:
     static constexpr std::size_t kTlbSize = 64;
     std::vector<TlbEntry> tlb_;
     bool tlb_enabled_{true};
+
+    // Phase 43: serializes TLB lookup/insertion against cross-core TLBI
+    // broadcasts (TLBI *IS), which run on the issuing core's thread.
+    mutable std::recursive_mutex tlb_mutex_;
 };
 
 } // namespace mmu
