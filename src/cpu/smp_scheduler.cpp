@@ -1,4 +1,5 @@
 #include "cpu/smp_scheduler.h"
+#include "device/virtual_device_bus.h"
 #include "sndl/sndl_v2_recorder.h"
 #include "trace/trace_serializer.h"
 
@@ -304,6 +305,54 @@ std::uint64_t SmpScheduler::compute_canonical_multicore_hash() const noexcept {
         const std::size_t sz = shared_memory_->size();
         const std::uint32_t mem_crc = trace::calculate_crc32c(raw, sz);
         h = fnv1a_u32(h, mem_crc);
+    }
+
+    return h;
+}
+
+std::uint64_t SmpScheduler::compute_extended_cluster_hash() const noexcept {
+    // Start with the canonical multicore hash (covering CPU cores and RAM)
+    std::uint64_t h = compute_canonical_multicore_hash();
+
+    // 1. Hash exclusive monitor reservation entries across all cores
+    for (const auto& res : exclusive_monitor_.all_reservations()) {
+        h = fnv1a_u64(h, static_cast<std::uint64_t>(res.core_id));
+        h = fnv1a_u64(h, res.valid ? 1ULL : 0ULL);
+        if (res.valid) {
+            h = fnv1a_u64(h, res.granule_address);
+            h = fnv1a_u64(h, res.exact_address);
+            h = fnv1a_u64(h, static_cast<std::uint64_t>(res.size));
+        }
+    }
+
+    // 2. Hash interrupt router pending queues across all cores
+    const auto& queues = interrupt_router_.all_queues();
+    for (std::size_t c = 0; c < queues.size(); ++c) {
+        h = fnv1a_u64(h, static_cast<std::uint64_t>(c));
+        h = fnv1a_u64(h, static_cast<std::uint64_t>(queues[c].size()));
+        for (const auto& req : queues[c]) {
+            h = fnv1a_u64(h, static_cast<std::uint64_t>(req.intid));
+            h = fnv1a_u32(h, static_cast<std::uint32_t>(req.priority));
+            h = fnv1a_u32(h, static_cast<std::uint32_t>(req.type));
+            h = fnv1a_u64(h, req.request_sequence);
+        }
+    }
+
+    // 3. Hash virtual device bus state if attached (Section 0x18 state)
+    if (device_bus_) {
+        h = fnv1a_u64(h, static_cast<std::uint64_t>(device_bus_->device_count()));
+        for (const auto& dev : device_bus_->devices()) {
+            if (!dev) continue;
+            h = fnv1a_u32(h, dev->device_id());
+            h = fnv1a_u32(h, static_cast<std::uint32_t>(dev->status()));
+            h = fnv1a_u64(h, dev->mmio_base());
+            h = fnv1a_u64(h, dev->mmio_size());
+            h = fnv1a_u32(h, dev->irq_line());
+            const auto state = dev->serialize_state();
+            if (!state.empty()) {
+                h = fnv1a_bytes(h, state.data(), state.size());
+            }
+        }
     }
 
     return h;

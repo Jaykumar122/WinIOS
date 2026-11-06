@@ -1,4 +1,5 @@
 #include "snapshot/smp_snapshot_manager.h"
+#include "device/virtual_device_bus.h"
 #include "snapshot/smp_snapshot_format.h"
 #include "snapshot/smp_snapshot_validation.h"
 #include "snapshot/snapshot_validation.h"
@@ -29,6 +30,10 @@ SnapshotResult SmpSnapshotManager::capture_to_buffer(
     const std::size_t core_count = scheduler.core_count();
     if (core_count == 0) {
         return SnapshotResult::fail(SnapshotErrorCode::InvalidArgument, "Cannot capture empty cluster with 0 registered cores");
+    }
+
+    if (scheduler.device_bus() && scheduler.device_bus()->has_busy_device()) {
+        return SnapshotResult::fail(SnapshotErrorCode::DeviceBusy, "Cannot capture snapshot: one or more virtual devices are busy");
     }
 
     std::vector<PendingClusterSection> pending;
@@ -109,6 +114,19 @@ SnapshotResult SmpSnapshotManager::capture_to_buffer(
         irq_data.core_queues[c].assign(all_q[c].begin(), all_q[c].end());
     }
     pending.push_back({SnapshotSectionType::InterruptRouter, 0, serialize_interrupt_router_state(irq_data)});
+
+    // 7.5. Device State Sections (if VirtualDeviceBus is attached)
+    if (scheduler.device_bus()) {
+        for (const auto& dev : scheduler.device_bus()->devices()) {
+            if (dev) {
+                pending.push_back({
+                    SnapshotSectionType::DeviceState,
+                    dev->device_id(),
+                    dev->serialize_state()
+                });
+            }
+        }
+    }
 
     // 8. Integrity Section
     IntegritySnapshotData integ_data;
@@ -277,12 +295,16 @@ SnapshotResult SmpSnapshotManager::restore_from_buffer(
     InterruptRouterSnapshotData irq_data;
     IntegritySnapshotData integrity_data;
     const WSnapSectionDescriptor* mem_desc = nullptr;
+    std::vector<const WSnapSectionDescriptor*> device_sections;
 
     for (const auto& d : descriptors) {
         const std::uint8_t* sec_data = data + d.file_offset;
         const std::size_t sec_size = static_cast<std::size_t>(d.compressed_size);
 
         switch (d.section_type) {
+        case SnapshotSectionType::DeviceState:
+            device_sections.push_back(&d);
+            break;
         case SnapshotSectionType::CoreDirectory: {
             auto res = deserialize_core_directory(sec_data, sec_size, core_dir);
             if (!res.success) return res;
@@ -367,6 +389,16 @@ SnapshotResult SmpSnapshotManager::restore_from_buffer(
     scheduler.set_quantum_instructions(sched_data.quantum_instructions);
     scheduler.set_global_retirement_sequence(sched_data.global_retirement_sequence);
     scheduler.set_current_core_index(sched_data.current_core_index);
+
+    // Restore virtual devices
+    if (scheduler.device_bus()) {
+        for (const auto* sec : device_sections) {
+            auto dev = scheduler.device_bus()->find_device(static_cast<std::uint32_t>(sec->section_id));
+            if (dev && (sec->file_offset + sec->compressed_size <= size)) {
+                (void)dev->deserialize_state(data + sec->file_offset, static_cast<std::size_t>(sec->compressed_size));
+            }
+        }
+    }
 
     return SnapshotResult::ok();
 }

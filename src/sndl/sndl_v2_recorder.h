@@ -1,5 +1,6 @@
 #pragma once
 
+#include "device/dma_payload_store.h"
 #include "sndl/sndl_v2_types.h"
 #include "sndl/sndl_v2_writer.h"
 
@@ -19,6 +20,8 @@ struct SndlV2RecorderOptions {
     std::uint64_t base_snapshot_file_size{0};
     std::uint64_t initial_global_sequence{0};
     std::uint32_t records_per_block{kDefaultV2RecordsPerBlock};
+    std::uint64_t session_id{0};
+    bool emit_session_metadata{false};
 };
 
 class SndlV2Recorder {
@@ -34,6 +37,7 @@ public:
 
     [[nodiscard]] bool is_recording() const noexcept { return is_recording_; }
     [[nodiscard]] std::uint16_t core_count() const noexcept { return options_.core_count; }
+    [[nodiscard]] std::uint64_t session_id() const noexcept { return session_id_; }
     [[nodiscard]] std::uint64_t global_event_sequence() const noexcept { return current_global_sequence_; }
     [[nodiscard]] std::uint64_t global_retirement_sequence() const noexcept { return global_retirement_sequence_; }
     [[nodiscard]] std::uint64_t core_retirement_count(std::size_t core_id) const noexcept {
@@ -85,6 +89,22 @@ public:
     void record_reservation_cleared(std::size_t core_id, std::uint64_t paddr, std::uint64_t pc);
     void record_store_exclusive_result(std::size_t core_id, std::uint64_t paddr, bool success, std::uint64_t pc);
 
+    // Virtual Device & DMA Operations
+    void record_device_register_read(std::size_t core_id, std::uint32_t device_id, std::uint64_t reg_offset, std::uint64_t val, std::uint32_t width);
+    void record_device_register_write(std::size_t core_id, std::uint32_t device_id, std::uint64_t reg_offset, std::uint64_t val, std::uint32_t width);
+    void record_dma_submission_accepted(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint64_t dst_paddr, std::uint64_t length, std::uint32_t op_type, std::uint32_t extra_flags = 0);
+    void record_dma_submission_accepted(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint64_t length, std::uint32_t op_type);
+    void record_dma_submission_rejected(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint32_t error_code);
+    void record_dma_transfer_completed(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint64_t bytes_transferred, std::uint32_t descriptors_processed = 1);
+    void record_dma_transfer_failed(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint32_t error_code);
+    void record_device_interrupt_asserted(std::size_t core_id, std::uint32_t device_id, std::uint32_t irq_line);
+    void record_dma_chunk(std::size_t core_id, std::uint32_t device_id, std::uint64_t chunk_dst_paddr, const std::uint8_t* chunk_data, std::uint16_t chunk_len, std::uint16_t chunk_idx);
+
+    // Companion DMA payload storage
+    [[nodiscard]] device::DmaPayloadStore& dma_payload_store() noexcept { return dma_payload_store_; }
+    [[nodiscard]] const device::DmaPayloadStore& dma_payload_store() const noexcept { return dma_payload_store_; }
+    void record_dma_copy_payload(std::uint64_t desc_id, std::uint64_t dst_paddr, const std::uint8_t* data, std::size_t size);
+
     // Direct event injection (low-level)
     void record_event(SndlV2Record record);
 
@@ -96,7 +116,9 @@ private:
 
     SndlV2RecorderOptions options_;
     SndlV2Writer writer_;
+    device::DmaPayloadStore dma_payload_store_;
     std::vector<std::uint64_t> core_retirement_counts_;
+    std::uint64_t session_id_{0};
     std::uint64_t current_global_sequence_{0};
     std::uint64_t global_retirement_sequence_{0};
     bool is_recording_{false};

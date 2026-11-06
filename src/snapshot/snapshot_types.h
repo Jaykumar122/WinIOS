@@ -25,6 +25,7 @@ enum class SnapshotSectionType : std::uint32_t {
     ExclusiveMonitor       = 0x15u,
     InterruptRouter        = 0x16u,
     Integrity              = 0x17u,
+    DeviceState            = 0x18u,
     Custom      = 0x80u
 };
 
@@ -44,6 +45,7 @@ enum class SnapshotSectionType : std::uint32_t {
     case SnapshotSectionType::ExclusiveMonitor:       return "EXCLUSIVE_MONITOR";
     case SnapshotSectionType::InterruptRouter:        return "INTERRUPT_ROUTER";
     case SnapshotSectionType::Integrity:              return "INTEGRITY";
+    case SnapshotSectionType::DeviceState:            return "DEVICE_STATE";
     case SnapshotSectionType::Custom:                 return "CUSTOM";
     default:                                          return "UNKNOWN";
     }
@@ -73,7 +75,8 @@ enum class SnapshotErrorCode : std::uint32_t {
     CorruptedChunk          = 14,
     MissingRequiredSection  = 15,
     RestorationFailed       = 16,
-    InvalidArgument         = 17
+    InvalidArgument         = 17,
+    DeviceBusy              = 18
 };
 
 [[nodiscard]] constexpr std::string_view error_code_name(SnapshotErrorCode code) noexcept {
@@ -96,6 +99,7 @@ enum class SnapshotErrorCode : std::uint32_t {
     case SnapshotErrorCode::MissingRequiredSection:  return "Missing required section";
     case SnapshotErrorCode::RestorationFailed:       return "Snapshot restoration failed";
     case SnapshotErrorCode::InvalidArgument:         return "Invalid argument supplied";
+    case SnapshotErrorCode::DeviceBusy:              return "Device busy during snapshot capture";
     default:                                         return "Unknown error";
     }
 }

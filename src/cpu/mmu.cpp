@@ -112,6 +112,12 @@ bool MMU::validate_descriptor(
 
     case 1:
         if (type_bits == 0x1ULL) {
+            // Level 1 Block (1GB): bits [29:12] must be 0 (1GB alignment)
+            if ((desc & 0x3FFFF000ULL) != 0) {
+                if (out_kind) *out_kind = DescriptorKind::Invalid;
+                if (out_fault) *out_fault = MmuFaultType::AddressSize;
+                return false;
+            }
             if (out_kind) *out_kind = DescriptorKind::Block;
             return true;
         }
@@ -125,6 +131,12 @@ bool MMU::validate_descriptor(
 
     case 2:
         if (type_bits == 0x1ULL) {
+            // Level 2 Block (2MB): bits [20:12] must be 0 (2MB alignment)
+            if ((desc & 0x001FF000ULL) != 0) {
+                if (out_kind) *out_kind = DescriptorKind::Invalid;
+                if (out_fault) *out_fault = MmuFaultType::AddressSize;
+                return false;
+            }
             if (out_kind) *out_kind = DescriptorKind::Block;
             return true;
         }

@@ -14,6 +14,7 @@
 // Exception class, ESR_EL1.EC (bits [31:26]).
 enum class ExceptionClass : std::uint32_t {
     Unknown               = 0x00, // EC 0b000000, "Unknown reason"
+    FpSimdAccessTrap      = 0x07, // EC 0b000111, Trapped FP/SIMD access (CPACR_EL1.FPEN)
     IllegalExecutionState = 0x0E, // EC 0b001110
     SvcAArch64            = 0x15, // EC 0b010101
     HvcAArch64            = 0x16, // EC 0b010110
@@ -97,6 +98,17 @@ inline SynchronousException make_undefined_instruction(std::uint64_t address) {
     SynchronousException e;
     e.ec = ExceptionClass::Unknown;
     e.preferred_return = address;
+    return e;
+}
+
+// EC 0x07: Access to SVE, Advanced SIMD, or floating-point trapped by CPACR_EL1.FPEN
+inline SynchronousException make_fp_simd_access_trap(std::uint64_t address) {
+    SynchronousException e;
+    e.ec = ExceptionClass::FpSimdAccessTrap;
+    e.iss = 0u;
+    e.instruction_length_4 = true;
+    e.preferred_return = address;
+    e.target_el = 1;
     return e;
 }
 
@@ -253,3 +265,69 @@ inline bool is_unallocated_encoding(std::uint32_t instruction) noexcept {
 struct SynchronousExceptionSignal {
     SynchronousException exception;
 };
+
+// -----------------------------------------------------------------------------
+// Phase 52 Stage 38: Unified Architectural Exception Representation
+// -----------------------------------------------------------------------------
+enum class ExceptionType : std::uint8_t {
+    Synchronous = 0,
+    IRQ         = 1,
+    FIQ         = 2,
+    SError      = 3,
+};
+
+[[nodiscard]] constexpr const char* exception_type_name(ExceptionType type) noexcept {
+    switch (type) {
+    case ExceptionType::Synchronous: return "Synchronous";
+    case ExceptionType::IRQ:         return "IRQ";
+    case ExceptionType::FIQ:         return "FIQ";
+    case ExceptionType::SError:      return "SError";
+    default:                         return "Unknown";
+    }
+}
+
+// Complete architectural exception descriptor for centralized delivery
+struct ArchitecturalException {
+    ExceptionType type{ExceptionType::Synchronous};
+    ExceptionClass ec{ExceptionClass::Unknown};
+    unsigned originating_el{0};
+    unsigned target_el{1};
+    std::uint64_t faulting_pc{0};
+    std::uint64_t preferred_return{0};
+    std::uint32_t syndrome{0};
+    bool has_fault_address{false};
+    std::uint64_t fault_address{0};
+    bool has_fault_ipa{false};
+    std::uint64_t fault_ipa{0};
+    std::uint32_t intid{1023u};
+    std::uint8_t priority{0xFFu};
+    bool is_virtual{false};
+    int lr_index{-1};
+
+    [[nodiscard]] constexpr bool is_asynchronous() const noexcept {
+        return type == ExceptionType::IRQ || type == ExceptionType::FIQ || type == ExceptionType::SError;
+    }
+};
+
+// Computes the architectural vector offset relative to VBAR_ELx according to ARMv8-A D1.10
+[[nodiscard]] constexpr std::uint32_t compute_vector_offset(unsigned origin_el, unsigned target_el, bool sp_sel, ExceptionType type) noexcept {
+    std::uint32_t table_section = 0;
+    if (origin_el < target_el) {
+        table_section = 0x400u; // Lower EL, AArch64
+    } else {
+        table_section = sp_sel ? 0x200u : 0x000u; // Current EL with SPx / SP0
+    }
+    std::uint32_t type_offset = 0;
+    switch (type) {
+    case ExceptionType::Synchronous: type_offset = 0x000u; break;
+    case ExceptionType::IRQ:         type_offset = 0x080u; break;
+    case ExceptionType::FIQ:         type_offset = 0x100u; break;
+    case ExceptionType::SError:      type_offset = 0x180u; break;
+    }
+    return table_section + type_offset;
+}
+
+// 3-argument overload assuming target_el = 1 for backwards compatibility
+[[nodiscard]] constexpr std::uint32_t compute_vector_offset(unsigned origin_el, bool sp_sel, ExceptionType type) noexcept {
+    return compute_vector_offset(origin_el, 1u, sp_sel, type);
+}

@@ -1,3 +1,4 @@
+#include <atomic>
 #include "sndl/sndl_v2_recorder.h"
 #include <algorithm>
 
@@ -29,6 +30,9 @@ SndlV2Result SndlV2Recorder::start_recording(const std::filesystem::path& output
     current_global_sequence_ = options_.initial_global_sequence;
     global_retirement_sequence_ = 0;
 
+    session_id_ = options_.session_id ? options_.session_id
+        : (options_.base_snapshot_hash ? (options_.base_snapshot_hash ^ 0x534E444C56325345ull) : 0xDEADBEEFCAFE0001ull);
+
     WSndlV2Header hdr{};
     hdr.magic = kWSndlV2Magic;
     hdr.version = kWSndlVersion2;
@@ -45,6 +49,31 @@ SndlV2Result SndlV2Recorder::start_recording(const std::filesystem::path& output
         return res;
     }
 
+    if (options_.emit_session_metadata || options_.session_id != 0) {
+        // Emit session metadata record binding session_id and base snapshot
+        SndlV2Record meta{};
+        meta.global_event_sequence = next_sequence();
+        meta.global_retirement_sequence = 0;
+        meta.core_retirement_count = 0;
+        meta.pc = 0;
+        meta.event_type = SndlV2EventType::RecordingSessionMetadata;
+        meta.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+        meta.core_id = 0;
+        meta.source_id = 0;
+        meta.payload1 = session_id_;
+        meta.payload2 = options_.base_snapshot_hash;
+        meta.payload3 = options_.memory_capacity;
+        meta.flags = static_cast<std::uint32_t>(device::RecordingLifecycleState::Recording);
+        meta.payload_size = 32;
+        (void)writer_.write_record(meta);
+    }
+
+    const auto dma_res = dma_payload_store_.open_write(output_path.string() + ".dma", session_id_, options_.base_snapshot_hash);
+    if (dma_res.is_failure()) {
+        (void)writer_.close();
+        return SndlV2Result::fail(SndlV2ErrorCode::FileWriteFailed, dma_res.message);
+    }
+
     is_recording_ = true;
     return SndlV2Result::ok();
 }
@@ -53,6 +82,15 @@ SndlV2Result SndlV2Recorder::stop_recording(SndlV2CompletionStatus status) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!is_recording_) {
         return SndlV2Result::ok();
+    }
+
+    const auto lifecycle = (status == SndlV2CompletionStatus::Completed)
+        ? device::RecordingLifecycleState::Complete
+        : device::RecordingLifecycleState::Aborted;
+
+    const auto dma_res = dma_payload_store_.finalize(lifecycle);
+    if (dma_res.is_failure() && status == SndlV2CompletionStatus::Completed) {
+        status = SndlV2CompletionStatus::Incomplete;
     }
 
     is_recording_ = false;
@@ -340,6 +378,121 @@ void SndlV2Recorder::record_store_exclusive_result(std::size_t core_id, std::uin
     rec.payload1 = paddr;
     rec.payload2 = success ? 1 : 0;
     record_event(rec);
+}
+
+void SndlV2Recorder::record_device_register_read(std::size_t core_id, std::uint32_t device_id, std::uint64_t reg_offset, std::uint64_t val, std::uint32_t width) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DeviceRegisterRead;
+    rec.boundary_type = SndlV2BoundaryType::DuringInstruction;
+    rec.payload1 = reg_offset;
+    rec.payload2 = val;
+    rec.payload3 = width;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_device_register_write(std::size_t core_id, std::uint32_t device_id, std::uint64_t reg_offset, std::uint64_t val, std::uint32_t width) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DeviceRegisterWrite;
+    rec.boundary_type = SndlV2BoundaryType::DuringInstruction;
+    rec.payload1 = reg_offset;
+    rec.payload2 = val;
+    rec.payload3 = width;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_dma_submission_accepted(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint64_t dst_paddr, std::uint64_t length, std::uint32_t op_type, std::uint32_t extra_flags) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DmaSubmissionAccepted;
+    rec.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+    rec.payload1 = desc_addr;
+    rec.payload2 = dst_paddr;
+    rec.payload3 = (length & 0xFFFFFFFFull) | ((static_cast<std::uint64_t>(op_type) & 0xFFull) << 32);
+    rec.flags = extra_flags;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_dma_submission_accepted(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint64_t length, std::uint32_t op_type) {
+    record_dma_submission_accepted(core_id, device_id, desc_addr, 0, length, op_type, 0);
+}
+
+void SndlV2Recorder::record_dma_submission_rejected(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint32_t error_code) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DmaSubmissionRejected;
+    rec.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+    rec.payload1 = desc_addr;
+    rec.payload2 = error_code;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_dma_transfer_completed(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint64_t bytes_transferred, std::uint32_t descriptors_processed) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DmaTransferCompleted;
+    rec.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+    rec.payload1 = desc_addr;
+    rec.payload2 = bytes_transferred;
+    rec.payload3 = descriptors_processed;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_dma_transfer_failed(std::size_t core_id, std::uint32_t device_id, std::uint64_t desc_addr, std::uint32_t error_code) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DmaTransferFailed;
+    rec.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+    rec.payload1 = desc_addr;
+    rec.payload2 = error_code;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_device_interrupt_asserted(std::size_t core_id, std::uint32_t device_id, std::uint32_t irq_line) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DeviceInterruptAsserted;
+    rec.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+    rec.payload1 = irq_line;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_dma_chunk(std::size_t core_id, std::uint32_t device_id, std::uint64_t chunk_dst_paddr, const std::uint8_t* chunk_data, std::uint16_t chunk_len, std::uint16_t chunk_idx) {
+    SndlV2Record rec{};
+    rec.core_id = static_cast<std::uint32_t>(core_id);
+    rec.source_id = device_id;
+    rec.event_type = SndlV2EventType::DmaDataChunk;
+    rec.boundary_type = SndlV2BoundaryType::SchedulerBoundary;
+    rec.payload1 = chunk_dst_paddr;
+
+    std::uint64_t p2 = 0;
+    std::uint64_t p3 = 0;
+    if (chunk_data && chunk_len > 0) {
+        std::size_t n1 = std::min<std::size_t>(chunk_len, 8);
+        std::memcpy(&p2, chunk_data, n1);
+        if (chunk_len > 8) {
+            std::size_t n2 = std::min<std::size_t>(chunk_len - 8, 8);
+            std::memcpy(&p3, chunk_data + 8, n2);
+        }
+    }
+    rec.payload2 = p2;
+    rec.payload3 = p3;
+    rec.flags = (static_cast<std::uint32_t>(chunk_idx) << 16) | chunk_len;
+    rec.payload_size = chunk_len;
+    record_event(rec);
+}
+
+void SndlV2Recorder::record_dma_copy_payload(std::uint64_t desc_id, std::uint64_t dst_paddr, const std::uint8_t* data, std::size_t size) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    (void)dma_payload_store_.record_payload(current_global_sequence_, desc_id, dst_paddr, data, size);
 }
 
 } // namespace winios::sndl

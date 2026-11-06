@@ -156,6 +156,25 @@ public:
     std::uint64_t get_vbar_el1() const noexcept { return vbar_el1_; }
     void set_vbar_el1(std::uint64_t value) noexcept { vbar_el1_ = value; }
 
+    // Phase 36 / 52: Thread pointer system registers
+    std::uint64_t get_tpidr_el0() const noexcept { return tpidr_el0_; }
+    void set_tpidr_el0(std::uint64_t value) noexcept { tpidr_el0_ = value; }
+    std::uint64_t get_tpidr_el1() const noexcept { return tpidr_el1_; }
+    void set_tpidr_el1(std::uint64_t value) noexcept { tpidr_el1_ = value; }
+    std::uint64_t get_tpidrro_el0() const noexcept { return tpidrro_el0_; }
+    void set_tpidrro_el0(std::uint64_t value) noexcept { tpidrro_el0_ = value; }
+
+    // Phase 37 / 52: CPACR_EL1 and FP/SIMD access control
+    std::uint64_t get_cpacr_el1() const noexcept { return cpacr_el1_; }
+    void set_cpacr_el1(std::uint64_t value) noexcept { cpacr_el1_ = value; }
+    bool is_fp_simd_enabled(unsigned current_el) const noexcept {
+        const std::uint32_t fpen = static_cast<std::uint32_t>((cpacr_el1_ >> 20u) & 0x3u);
+        if (current_el == 0) {
+            return fpen == 0b11;
+        }
+        return (fpen & 0x1u) != 0;
+    }
+
     // Phase 39/50: Timer and interrupt state.
     using TimerState = winios::TimerState;
 
@@ -236,6 +255,9 @@ public:
     // Phase 39: Check timer fire status and pending interrupts.
     void check_timer_status() noexcept;
     bool check_pending_interrupts();
+
+    // Phase 52 Stage 38: Centralized Architectural Exception Delivery
+    void deliver_architectural_exception(const ArchitecturalException& exc);
 
     // Phase 39 / Phase 52 Stage 12: Deliver an asynchronous exception (IRQ or FIQ) to EL1.
     void raise_asynchronous_exception(bool is_fiq, std::uint32_t intid = 0, bool is_virtual = false, std::uint8_t priority = 0);
@@ -579,6 +601,10 @@ private:
     std::uint32_t esr_el1_{};     // Exception Syndrome Register EL1
     std::uint64_t far_el1_{};     // Fault Address Register EL1
     std::uint64_t vbar_el1_{};    // Vector Base Address Register EL1
+    std::uint64_t tpidr_el0_{};   // EL0 Read/Write Software Thread ID
+    std::uint64_t tpidr_el1_{};   // EL1 Read/Write Software Thread ID
+    std::uint64_t tpidrro_el0_{}; // EL0 Read-Only Software Thread ID
+    std::uint64_t cpacr_el1_{};   // Architectural Coprocessor Access Control Register EL1
     // daif_: DAIF interrupt mask bits [3:0] = {D, A, I, F}.
     // Starts all-masked (0xF) — typical EL1 reset state.
     std::uint8_t daif_{0xFu};

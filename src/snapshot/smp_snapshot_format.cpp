@@ -85,8 +85,8 @@ std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState&
     //   EL3: 8 + 4 + 4 + 8 + 8 + 8 = 40
     // Sysregs: 7 * 8 = 56
     // Timers: 8 + 4 + 4 + 8 + 4 + 4 = 32
-    // Total: 40 + 248 + 40 + 8 + 520 + 32 + 40 + 40 + 56 + 32 = 1056 bytes
-    constexpr std::size_t kPayloadSize = 1056;
+    // Total: 40 + 248 + 40 + 8 + 520 + 32 + 40 + 40 + 56 + 32 + 24 = 1080 bytes
+    constexpr std::size_t kPayloadSize = 1080;
     std::vector<std::uint8_t> buf(kPayloadSize, 0u);
     std::uint8_t* p = buf.data();
 
@@ -175,6 +175,12 @@ std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState&
     trace::encode_u32_le(p + 28, 0u);
     p += 32;
 
+    // Phase 36: Thread Pointer registers (3 * 8 = 24 bytes)
+    trace::encode_u64_le(p + 0, state.tpidr_el0);
+    trace::encode_u64_le(p + 8, state.tpidr_el1);
+    trace::encode_u64_le(p + 16, state.tpidrro_el0);
+    p += 24;
+
     return buf;
 }
 
@@ -259,6 +265,17 @@ SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std
     out_state.cntp_ctl_el0 = trace::decode_u32_le(p + 8);
     out_state.cntv_cval_el0 = trace::decode_u64_le(p + 16);
     out_state.cntv_ctl_el0 = trace::decode_u32_le(p + 24);
+    p += 32;
+
+    if (size >= 1080) {
+        out_state.tpidr_el0 = trace::decode_u64_le(p + 0);
+        out_state.tpidr_el1 = trace::decode_u64_le(p + 8);
+        out_state.tpidrro_el0 = trace::decode_u64_le(p + 16);
+    } else {
+        out_state.tpidr_el0 = 0;
+        out_state.tpidr_el1 = 0;
+        out_state.tpidrro_el0 = 0;
+    }
 
     return SnapshotResult::ok();
 }
@@ -736,6 +753,49 @@ SnapshotResult decode_smp_wsnap_header(const std::uint8_t* src, std::size_t size
     out_header.reserved1 = trace::decode_u32_le(src + 52);
     out_header.reserved2 = trace::decode_u32_le(src + 56);
     out_header.header_crc32c = stored_crc;
+
+    return SnapshotResult::ok();
+}
+
+std::vector<std::uint8_t> serialize_device_state(std::uint32_t device_id, const std::vector<std::uint8_t>& device_payload) {
+    const std::size_t total_sz = 8 + device_payload.size() + 4;
+    std::vector<std::uint8_t> buf(total_sz, 0);
+
+    trace::encode_u32_le(buf.data() + 0, device_id);
+    trace::encode_u32_le(buf.data() + 4, static_cast<std::uint32_t>(device_payload.size()));
+    if (!device_payload.empty()) {
+        std::memcpy(buf.data() + 8, device_payload.data(), device_payload.size());
+    }
+
+    const std::uint32_t crc = trace::calculate_crc32c(buf.data(), 8 + device_payload.size());
+    trace::encode_u32_le(buf.data() + 8 + device_payload.size(), crc);
+
+    return buf;
+}
+
+SnapshotResult deserialize_device_state(const std::uint8_t* src, std::size_t size,
+                                        std::uint32_t& out_device_id,
+                                        std::vector<std::uint8_t>& out_payload) {
+    if (!src || size < 12) {
+        return SnapshotResult::fail(SnapshotErrorCode::InvalidStateData, "Buffer too small for device state");
+    }
+
+    const std::uint32_t payload_len = trace::decode_u32_le(src + 4);
+    if (size < 8 + static_cast<std::size_t>(payload_len) + 4) {
+        return SnapshotResult::fail(SnapshotErrorCode::TruncatedFile, "Device state payload truncated");
+    }
+
+    const std::uint32_t expected_crc = trace::calculate_crc32c(src, 8 + payload_len);
+    const std::uint32_t actual_crc = trace::decode_u32_le(src + 8 + payload_len);
+    if (expected_crc != actual_crc) {
+        return SnapshotResult::fail(SnapshotErrorCode::SectionCrcMismatch, "Device state CRC32C verification failed");
+    }
+
+    out_device_id = trace::decode_u32_le(src + 0);
+    out_payload.resize(payload_len);
+    if (payload_len > 0) {
+        std::memcpy(out_payload.data(), src + 8, payload_len);
+    }
 
     return SnapshotResult::ok();
 }

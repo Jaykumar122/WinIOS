@@ -57,6 +57,12 @@ std::vector<std::uint8_t> serialize_cluster_metadata(const std::string& desc,
                                                          std::string& out_creator,
                                                          std::string& out_topology);
 
+// 9. Virtual Device State
+std::vector<std::uint8_t> serialize_device_state(std::uint32_t device_id, const std::vector<std::uint8_t>& device_payload);
+[[nodiscard]] SnapshotResult deserialize_device_state(const std::uint8_t* src, std::size_t size,
+                                                      std::uint32_t& out_device_id,
+                                                      std::vector<std::uint8_t>& out_payload);
+
 // Cluster Header Decode Routine (strictly version 2)
 [[nodiscard]] SnapshotResult decode_smp_wsnap_header(const std::uint8_t* src, std::size_t size,
                                                      WSnapHeader& out_header) noexcept;

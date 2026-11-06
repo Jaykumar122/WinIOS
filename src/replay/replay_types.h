@@ -174,6 +174,7 @@ struct ReplayConfig {
     bool verify_state_hashes{true};
     bool allow_experimental_smp{false};          // Must be explicitly true to run SMP
     bool allow_four_core_replay{false};          // Stage 27: Explicit opt-in for experimental 4-core SMP replay
+    bool allow_eight_core_replay{false};         // Stage 29: Explicit opt-in for experimental 8-core SMP replay
     bool strict_bypass_checks{true};             // Stage 20: Prevent any unrecorded live input leakage
     bool require_exact_event_consumption{false}; // Stage 20: Require exact consumption of all SNDL records
     bool require_snapshot_association{true};     // Stage 21: Reject non-zero SNDL base hashes that do not match the snapshot

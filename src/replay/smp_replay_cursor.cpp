@@ -164,4 +164,32 @@ sndl::SndlV2Result SmpReplayEventCursor::consume_next(sndl::SndlV2Record& out_re
     return sndl::SndlV2Result::ok();
 }
 
+sndl::SndlV2Result SmpReplayEventCursor::seek_to_sequence(const std::filesystem::path& path, std::uint64_t target_sequence) {
+    const auto open_res = open(path, strict_monotonicity_);
+    if (open_res.is_failure()) {
+        return open_res;
+    }
+
+    if (target_sequence == 0 || target_sequence == current_sequence_) {
+        return sndl::SndlV2Result::ok();
+    }
+
+    sndl::SndlV2Record rec{};
+    while (has_next() && current_sequence_ < target_sequence) {
+        const auto res = consume_next(rec);
+        if (res.is_failure()) {
+            return res;
+        }
+    }
+
+    if (current_sequence_ != target_sequence) {
+        return sndl::SndlV2Result::fail(
+            sndl::SndlV2ErrorCode::InvalidSequence,
+            "Target sequence " + std::to_string(target_sequence) + " not reached (stopped at " + std::to_string(current_sequence_) + ")"
+        );
+    }
+
+    return sndl::SndlV2Result::ok();
+}
+
 } // namespace winios::replay

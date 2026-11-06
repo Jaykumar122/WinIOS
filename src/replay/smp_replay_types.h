@@ -3,6 +3,7 @@
 #include "cpu/smp_core_state.h"
 #include "cpu/smp_scheduler.h"
 #include "sndl/sndl_v2_types.h"
+#include "trace/trace_serializer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -99,7 +100,8 @@ enum class SmpReplayDivergenceType : std::uint32_t {
     SnapshotMismatch         = 13,
     FinalStateMismatch       = 14,
     UnsupportedExternalInput = 15,
-    IncompleteRecording      = 16
+    IncompleteRecording      = 16,
+    DmaDataMismatch          = 17
 };
 
 [[nodiscard]] constexpr std::string_view smp_replay_divergence_type_name(SmpReplayDivergenceType t) noexcept {
@@ -121,6 +123,7 @@ enum class SmpReplayDivergenceType : std::uint32_t {
     case SmpReplayDivergenceType::FinalStateMismatch:       return "FinalStateMismatch";
     case SmpReplayDivergenceType::UnsupportedExternalInput: return "UnsupportedExternalInput";
     case SmpReplayDivergenceType::IncompleteRecording:      return "IncompleteRecording";
+    case SmpReplayDivergenceType::DmaDataMismatch:          return "DmaDataMismatch";
     default:                                                return "Unknown";
     }
 }
@@ -170,12 +173,17 @@ enum class SmpReplayClockSource : std::uint32_t {
 // SmpReplayCapabilityConfig: Capability Gate and Replay Policy
 // -----------------------------------------------------------------------------
 struct SmpReplayCapabilityConfig {
-    std::size_t max_supported_cores{2};            // By default 2; set to 4 if allow_four_core_replay is enabled
+    std::size_t max_supported_cores{2};            // By default 2; set to 4 or 8 if enabled
     bool allow_experimental_smp{false};          // Required to be true for any multi-core replay
     bool allow_four_core_replay{false};            // Stage 27: Explicit 4-core opt-in capability
+    bool allow_eight_core_replay{false};           // Stage 29: Explicit 8-core opt-in capability
     SmpReplayClockSource clock_source{SmpReplayClockSource::DeterministicVirtualClock}; // Stage 27: Clock capability
     bool allow_unvirtualized_wall_clock{false};    // BLK-SMP-04 rejection guard
     bool allow_uncaptured_dma{false};              // BLK-SMP-03 rejection guard
+    bool allow_virtual_devices{false};             // Stage 31: Virtual device execution capability
+    bool allow_virtual_dma{false};                 // Stage 31: Virtual DMA capability
+    bool allow_dma_recording{false};               // Stage 31: Virtual DMA recording capability
+    bool allow_dma_replay{false};                  // Stage 31: Virtual DMA deterministic replay capability
     bool require_completed_footer{true};          // Rejects incomplete/aborted/overflow recordings
     bool require_snapshot_association{true};       // Enforces canonical cluster hash parity
     bool enforce_strict_monotonicity{true};        // S_{i+1} = S_i + 1 sequence check
@@ -196,6 +204,68 @@ struct SmpReplayStats {
     std::uint64_t execution_microseconds{0};
     SmpReplayState final_state{SmpReplayState::Uninitialized};
     SmpReplayDivergence divergence;
+};
+
+// -----------------------------------------------------------------------------
+// SmpReplayCheckpoint: Deterministic SMP Replay State Boundary
+// -----------------------------------------------------------------------------
+struct SmpReplayCheckpoint {
+    static constexpr std::uint32_t kMagic = 0x534D5043u; // 'SMPC'
+    static constexpr std::uint32_t kVersion = 1;
+
+    std::uint32_t magic{kMagic};
+    std::uint32_t version{kVersion};
+    std::uint64_t session_id{0};
+    std::uint64_t base_snapshot_hash{0};
+    std::uint64_t global_event_sequence{0};
+    std::uint64_t global_retirement_sequence{0};
+    std::uint64_t checkpoint_cluster_hash{0};
+    std::size_t active_core_count{0};
+    std::vector<std::uint64_t> per_core_retired;
+    std::vector<std::uint64_t> per_core_pc;
+    std::vector<SmpCoreState> per_core_states;
+    std::vector<std::uint8_t> memory_content;
+    std::uint64_t dma_payload_store_offset{0};
+    std::vector<std::uint8_t> dma_device_state;
+    std::uint32_t crc32c{0};
+
+    [[nodiscard]] std::uint32_t compute_crc32c() const noexcept {
+        std::uint32_t crc = 0xFFFFFFFFu;
+        auto hash_bytes = [&](const void* ptr, std::size_t len) {
+            crc = trace::calculate_crc32c(ptr, len, crc);
+        };
+        hash_bytes(&magic, sizeof(magic));
+        hash_bytes(&version, sizeof(version));
+        hash_bytes(&session_id, sizeof(session_id));
+        hash_bytes(&base_snapshot_hash, sizeof(base_snapshot_hash));
+        hash_bytes(&global_event_sequence, sizeof(global_event_sequence));
+        hash_bytes(&global_retirement_sequence, sizeof(global_retirement_sequence));
+        hash_bytes(&checkpoint_cluster_hash, sizeof(checkpoint_cluster_hash));
+        const std::uint64_t cc = active_core_count;
+        hash_bytes(&cc, sizeof(cc));
+        if (!per_core_retired.empty()) {
+            hash_bytes(per_core_retired.data(), per_core_retired.size() * sizeof(std::uint64_t));
+        }
+        if (!per_core_pc.empty()) {
+            hash_bytes(per_core_pc.data(), per_core_pc.size() * sizeof(std::uint64_t));
+        }
+        for (const auto& s : per_core_states) {
+            const std::uint64_t h = s.compute_canonical_hash();
+            hash_bytes(&h, sizeof(h));
+        }
+        if (!memory_content.empty()) {
+            hash_bytes(memory_content.data(), memory_content.size());
+        }
+        hash_bytes(&dma_payload_store_offset, sizeof(dma_payload_store_offset));
+        if (!dma_device_state.empty()) {
+            hash_bytes(dma_device_state.data(), dma_device_state.size());
+        }
+        return crc ^ 0xFFFFFFFFu;
+    }
+
+    [[nodiscard]] bool verify_crc() const noexcept {
+        return crc32c == compute_crc32c();
+    }
 };
 
 } // namespace winios::replay

@@ -81,20 +81,30 @@ ReplayResult ReplaySession::prepare(
                 const std::uint16_t cc = trace::decode_u16_le(hdr_bytes + 10);
                 if (cc > 1) {
                     if (cc == 8) {
-                        state_ = ReplayLifecycleState::Failed;
-                        stats_.completion_status = ReplayCompletionStatus::UnsupportedConfiguration;
-                        return ReplayResult::fail(
-                            ReplayErrorCode::UnsupportedConfiguration,
-                            "Eight-core SMP replay is strictly rejected by capability gate."
-                        );
-                    }
-                    if (cc != 2 && cc != 4) {
+                        if (!config_.allow_experimental_smp || !config_.allow_eight_core_replay) {
+                            state_ = ReplayLifecycleState::Failed;
+                            stats_.completion_status = ReplayCompletionStatus::UnsupportedConfiguration;
+                            return ReplayResult::fail(
+                                ReplayErrorCode::UnsupportedConfiguration,
+                                "Eight-core SMP replay is experimental and requires allow_eight_core_replay = true."
+                            );
+                        }
+                    } else if (cc == 4) {
+                        if (!config_.allow_four_core_replay) {
+                            state_ = ReplayLifecycleState::Failed;
+                            stats_.completion_status = ReplayCompletionStatus::UnsupportedConfiguration;
+                            return ReplayResult::fail(
+                                ReplayErrorCode::UnsupportedConfiguration,
+                                "Four-core SMP replay is experimental and requires allow_four_core_replay = true."
+                            );
+                        }
+                    } else if (cc != 2) {
                         state_ = ReplayLifecycleState::Failed;
                         stats_.completion_status = ReplayCompletionStatus::UnsupportedConfiguration;
                         return ReplayResult::fail(
                             ReplayErrorCode::UnsupportedConfiguration,
                             "Multi-core SMP replay is unsupported: snapshot specifies " +
-                            std::to_string(cc) + " cores. (Only 2-core and experimental 4-core replay are supported)."
+                            std::to_string(cc) + " cores. (Only 2-core, 4-core, and experimental 8-core replay are supported)."
                         );
                     }
                     if (!config_.allow_experimental_smp) {
@@ -105,19 +115,12 @@ ReplayResult ReplaySession::prepare(
                             "Multi-core SMP replay is unsupported/experimental without explicit capability gate enablement."
                         );
                     }
-                    if (cc == 4 && !config_.allow_four_core_replay) {
-                        state_ = ReplayLifecycleState::Failed;
-                        stats_.completion_status = ReplayCompletionStatus::UnsupportedConfiguration;
-                        return ReplayResult::fail(
-                            ReplayErrorCode::UnsupportedConfiguration,
-                            "Four-core SMP replay is experimental and requires allow_four_core_replay = true."
-                        );
-                    }
 
                     SmpReplayCapabilityConfig smp_cfg{};
                     smp_cfg.max_supported_cores = cc;
                     smp_cfg.allow_experimental_smp = config_.allow_experimental_smp;
                     smp_cfg.allow_four_core_replay = config_.allow_four_core_replay;
+                    smp_cfg.allow_eight_core_replay = config_.allow_eight_core_replay;
                     smp_coordinator_ = std::make_unique<SmpReplayCoordinator>(smp_cfg);
                     const auto smp_prep = smp_coordinator_->prepare(wsnap_path, sndl_path);
                     if (smp_prep.is_failure()) {

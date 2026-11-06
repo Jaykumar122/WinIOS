@@ -76,7 +76,23 @@ enum class SndlV2EventType : std::uint16_t {
     MemoryBarrierSync           = 60,
     ReservationSet              = 61,
     ReservationCleared          = 62,
-    StoreExclusiveResult        = 63
+    StoreExclusiveResult        = 63,
+
+    // Virtual Device & DMA Operations (70..79)
+    DeviceRegisterRead          = 70,
+    DeviceRegisterWrite         = 71,
+    DmaSubmissionAccepted       = 72,
+    DmaSubmissionRejected       = 73,
+    DmaTransferCompleted        = 74,
+    DmaTransferFailed           = 75,
+    DeviceInterruptAsserted     = 76,
+    DeviceStateTransition       = 77,
+    DmaDataChunk                = 78,
+
+    // Session Identity & Replay Checkpoints (80..89)
+    RecordingSessionMetadata    = 80,
+    ReplayCheckpoint            = 81,
+    PayloadStoreBinding         = 82
 };
 
 [[nodiscard]] constexpr std::string_view sndl_v2_event_type_name(SndlV2EventType t) noexcept {
@@ -110,6 +126,18 @@ enum class SndlV2EventType : std::uint16_t {
     case SndlV2EventType::ReservationSet:            return "ReservationSet";
     case SndlV2EventType::ReservationCleared:        return "ReservationCleared";
     case SndlV2EventType::StoreExclusiveResult:      return "StoreExclusiveResult";
+    case SndlV2EventType::DeviceRegisterRead:        return "DeviceRegisterRead";
+    case SndlV2EventType::DeviceRegisterWrite:       return "DeviceRegisterWrite";
+    case SndlV2EventType::DmaSubmissionAccepted:     return "DmaSubmissionAccepted";
+    case SndlV2EventType::DmaSubmissionRejected:     return "DmaSubmissionRejected";
+    case SndlV2EventType::DmaTransferCompleted:      return "DmaTransferCompleted";
+    case SndlV2EventType::DmaTransferFailed:         return "DmaTransferFailed";
+    case SndlV2EventType::DeviceInterruptAsserted:   return "DeviceInterruptAsserted";
+    case SndlV2EventType::DeviceStateTransition:     return "DeviceStateTransition";
+    case SndlV2EventType::DmaDataChunk:              return "DmaDataChunk";
+    case SndlV2EventType::RecordingSessionMetadata:  return "RecordingSessionMetadata";
+    case SndlV2EventType::ReplayCheckpoint:          return "ReplayCheckpoint";
+    case SndlV2EventType::PayloadStoreBinding:       return "PayloadStoreBinding";
     default:                                         return "Unknown";
     }
 }
@@ -127,7 +155,8 @@ enum class SndlV2BoundaryType : std::uint8_t {
     ExceptionBoundary     = 6,
     SchedulerBoundary     = 7,
     BarrierBoundary       = 8,
-    CoreLifecycleBoundary = 9
+    CoreLifecycleBoundary = 9,
+    CheckpointBoundary    = 10
 };
 
 [[nodiscard]] constexpr std::string_view sndl_v2_boundary_type_name(SndlV2BoundaryType b) noexcept {
@@ -141,6 +170,7 @@ enum class SndlV2BoundaryType : std::uint8_t {
     case SndlV2BoundaryType::SchedulerBoundary:     return "SchedulerBoundary";
     case SndlV2BoundaryType::BarrierBoundary:       return "BarrierBoundary";
     case SndlV2BoundaryType::CoreLifecycleBoundary: return "CoreLifecycleBoundary";
+    case SndlV2BoundaryType::CheckpointBoundary:    return "CheckpointBoundary";
     default:                                        return "Unknown";
     }
 }
@@ -149,18 +179,20 @@ enum class SndlV2BoundaryType : std::uint8_t {
 // SNDL v2 Completion Status
 // -----------------------------------------------------------------------------
 enum class SndlV2CompletionStatus : std::uint16_t {
-    Incomplete = 0,
-    Completed  = 1,
-    Aborted    = 2,
-    Overflow   = 3
+    Incomplete          = 0,
+    Completed           = 1,
+    Aborted             = 2,
+    Overflow            = 3,
+    RecoveredIncomplete = 4
 };
 
 [[nodiscard]] constexpr std::string_view sndl_v2_completion_status_name(SndlV2CompletionStatus s) noexcept {
     switch (s) {
-    case SndlV2CompletionStatus::Completed:  return "Completed";
-    case SndlV2CompletionStatus::Aborted:    return "Aborted";
-    case SndlV2CompletionStatus::Overflow:   return "Overflow";
-    default:                                 return "Incomplete";
+    case SndlV2CompletionStatus::Completed:           return "Completed";
+    case SndlV2CompletionStatus::Aborted:             return "Aborted";
+    case SndlV2CompletionStatus::Overflow:            return "Overflow";
+    case SndlV2CompletionStatus::RecoveredIncomplete: return "RecoveredIncomplete";
+    default:                                          return "Incomplete";
     }
 }
 
@@ -191,7 +223,11 @@ enum class SndlV2ErrorCode : std::uint32_t {
     RecordCrcMismatch       = 20,
     InvalidPayload          = 21,
     ResourceLimitExceeded   = 22,
-    TrailingGarbage         = 23
+    TrailingGarbage         = 23,
+    SessionMismatch         = 24,
+    CompanionMissing        = 25,
+    CompanionCorrupt        = 26,
+    UnrecoverableTransaction= 27
 };
 
 [[nodiscard]] constexpr std::string_view sndl_v2_error_name(SndlV2ErrorCode code) noexcept {
@@ -220,6 +256,10 @@ enum class SndlV2ErrorCode : std::uint32_t {
     case SndlV2ErrorCode::InvalidPayload:          return "Invalid event payload semantics";
     case SndlV2ErrorCode::ResourceLimitExceeded:   return "Resource allocation limit exceeded";
     case SndlV2ErrorCode::TrailingGarbage:         return "Unexpected trailing data after footer";
+    case SndlV2ErrorCode::SessionMismatch:         return "Recording session identity mismatch";
+    case SndlV2ErrorCode::CompanionMissing:        return "Companion payload store missing or incomplete";
+    case SndlV2ErrorCode::CompanionCorrupt:        return "Companion payload store checksum mismatch";
+    case SndlV2ErrorCode::UnrecoverableTransaction:return "Incomplete or unrecoverable transaction in recording";
     default:                                       return "Unknown error";
     }
 }

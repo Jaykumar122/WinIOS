@@ -15,7 +15,7 @@ public:
     static constexpr std::uint64_t kGicrBase = 0x080A0000ULL;
     static constexpr std::uint64_t kGicrCoreStride = 0x00020000ULL; // 128 KB per core (RD + SGI)
 
-    static constexpr std::size_t kMaxCores = 4;
+    static constexpr std::size_t kMaxCores = 8;
     static constexpr std::uint32_t kNumSgiPpi = 32u;
     static constexpr std::uint32_t kNumSpis   = 96u; // INTID 32..127
     static constexpr std::uint32_t kTotalIrqs = kNumSgiPpi + kNumSpis; // 128

@@ -1802,6 +1802,8 @@ constexpr std::uint16_t kSysregFPSR     = (1u<<14)|(3u<<11)|(4u<<7)|(4u<<3)|1u; 
 // Phase 37: MMU system registers
 // op0=3, op1=0, CRn=1, CRm=0, op2=0  -> SCTLR_EL1   key = (1<<14)|(0<<11)|(1<<7)|(0<<3)|0
 constexpr std::uint16_t kSysregSCTLR_EL1 = (1u<<14)|(0u<<11)|(1u<<7)|(0u<<3)|0u; // 0x4080
+// op0=3, op1=0, CRn=1, CRm=0, op2=2  -> CPACR_EL1   key = (1<<14)|(0<<11)|(1<<7)|(0<<3)|2
+constexpr std::uint16_t kSysregCPACR_EL1 = (1u<<14)|(0u<<11)|(1u<<7)|(0u<<3)|2u; // 0x4082
 // op0=3, op1=0, CRn=2, CRm=0, op2=2  -> TCR_EL1     key = (1<<14)|(0<<11)|(2<<7)|(0<<3)|2
 constexpr std::uint16_t kSysregTCR_EL1   = (1u<<14)|(0u<<11)|(2u<<7)|(0u<<3)|2u; // 0x4102
 // op0=3, op1=0, CRn=2, CRm=0, op2=0  -> TTBR0_EL1   key = (1<<14)|(0<<11)|(2<<7)|(0<<3)|0
@@ -1816,6 +1818,10 @@ constexpr std::uint16_t kSysregID_AA64MMFR0 = (1u<<14)|(0u<<11)|(0u<<7)|(7u<<3)|
 constexpr std::uint16_t kSysregPAR_EL1   = (1u<<14)|(0u<<11)|(7u<<7)|(4u<<3)|0u; // 0x43A0
 // Phase 38: DCZID_EL0 (op0=3, op1=3, CRn=0, CRm=0, op2=7)
 constexpr std::uint16_t kSysregDCZID_EL0 = (1u<<14)|(3u<<11)|(0u<<7)|(0u<<3)|7u; // 0x5807
+// Phase 36: Thread Pointer system registers
+constexpr std::uint16_t kSysregTPIDR_EL0   = (1u<<14)|(3u<<11)|(13u<<7)|(0u<<3)|2u; // 0x5E82
+constexpr std::uint16_t kSysregTPIDR_EL1   = (1u<<14)|(0u<<11)|(13u<<7)|(0u<<3)|4u; // 0x4684
+constexpr std::uint16_t kSysregTPIDRRO_EL0 = (1u<<14)|(3u<<11)|(13u<<7)|(0u<<3)|3u; // 0x5E83
 
 // Phase 40: EL2 Virtualization system registers
 constexpr std::uint16_t kSysregSP_EL1       = (1u<<14)|(4u<<11)|(4u<<7)|(1u<<3)|0u; // 0x6208
@@ -2000,6 +2006,7 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     case kSysregFPCR:     return "FPCR";
     case kSysregFPSR:     return "FPSR";
     case kSysregSCTLR_EL1:return "SCTLR_EL1";
+    case kSysregCPACR_EL1:return "CPACR_EL1";
     case kSysregTCR_EL1:  return "TCR_EL1";
     case kSysregTTBR0_EL1:return "TTBR0_EL1";
     case kSysregTTBR1_EL1:return "TTBR1_EL1";
@@ -2007,6 +2014,9 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     case kSysregID_AA64MMFR0: return "ID_AA64MMFR0_EL1";
     case kSysregPAR_EL1:  return "PAR_EL1";
     case kSysregDCZID_EL0: return "DCZID_EL0";
+    case kSysregTPIDR_EL0:   return "TPIDR_EL0";
+    case kSysregTPIDR_EL1:   return "TPIDR_EL1";
+    case kSysregTPIDRRO_EL0: return "TPIDRRO_EL0";
     case kSysregCNTFRQ_EL0: return "CNTFRQ_EL0";
     case kSysregCNTPCT_EL0: return "CNTPCT_EL0";
     case kSysregCNTVCT_EL0: return "CNTVCT_EL0";
@@ -3941,6 +3951,10 @@ void CPU::reset() {
     esr_el1_    = 0;
     far_el1_    = 0;
     vbar_el1_   = 0;
+    tpidr_el0_  = 0;
+    tpidr_el1_  = 0;
+    tpidrro_el0_= 0;
+    cpacr_el1_  = 0;
     daif_       = 0xFu; // all interrupts masked at reset
     il_         = false;
     pstate_ss_  = false;
@@ -4056,8 +4070,84 @@ std::uint16_t CPU::read_h_register(std::size_t index) const {
 void CPU::write_h_register(std::size_t index, std::uint16_t value) {
     write_vector_register(index, VectorRegister{value, 0});
 }
-void CPU::raise_synchronous_exception(const SynchronousException& exception) {
+void CPU::deliver_architectural_exception(const ArchitecturalException& exc) {
     exception_taken_in_step_ = true;
+    const unsigned prev_el = current_el_;
+    const bool prev_spsel = sp_sel_;
+    const std::uint8_t prev_daif = daif_;
+    const std::uint64_t source_pc = exc.faulting_pc ? exc.faulting_pc : program_counter_;
+
+    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
+    const std::uint32_t spsr = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
+    const std::uint32_t vector_offset = compute_vector_offset(prev_el, exc.target_el, prev_spsel, exc.type);
+
+    if (exc.target_el == 3) {
+        spsr_el3_ = spsr;
+        elr_el3_ = exc.preferred_return;
+        esr_el3_ = exc.syndrome;
+        if (exc.has_fault_address) {
+            far_el3_ = exc.fault_address;
+        }
+        current_el_ = 3;
+        sp_sel_ = true;
+        program_counter_ = vbar_el3_ + vector_offset;
+    } else if (exc.target_el == 2) {
+        spsr_el2_ = spsr;
+        elr_el2_ = exc.preferred_return;
+        esr_el2_ = exc.syndrome;
+        if (exc.has_fault_address) {
+            far_el2_ = exc.fault_address;
+        }
+        if (exc.has_fault_ipa) {
+            hpfar_el2_ = (exc.fault_ipa >> 8u) & 0x0000FFFFFFFFFFF0ULL;
+        }
+        current_el_ = 2;
+        sp_sel_ = true;
+        program_counter_ = vbar_el2_ + vector_offset;
+    } else {
+        spsr_el1_ = spsr;
+        elr_el1_ = exc.preferred_return;
+        esr_el1_ = exc.syndrome;
+        if (exc.has_fault_address) {
+            far_el1_ = exc.fault_address;
+        }
+        current_el_ = 1;
+        sp_sel_ = true;
+        program_counter_ = vbar_el1_ + vector_offset;
+    }
+
+    daif_ = 0xFu;
+    il_ = false;
+    pstate_ss_ = false;
+
+    if (exc.is_asynchronous()) {
+        winios::sndl::hook_interrupt_delivery(
+            static_cast<std::uint16_t>(core_id_), source_pc,
+            instruction_retirement_count_, exc.intid, exc.priority,
+            exc.type == ExceptionType::FIQ, exc.is_virtual, exc.target_el);
+    }
+
+    if (!is_halted_.load(std::memory_order_acquire)) {
+        if (exc.is_asynchronous()) {
+            if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
+                emit_interrupt_delivered_trace(source_pc, program_counter_, exc.intid,
+                                               exc.type == ExceptionType::FIQ, exc.is_virtual,
+                                               exc.target_el, exc.priority);
+            }
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
+            emit_exception_entered_trace(source_pc, program_counter_, exc.syndrome,
+                                         exc.fault_address, exc.has_fault_address,
+                                         !exc.is_asynchronous(), exc.target_el);
+        }
+        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+            emit_context_changed_trace(source_pc, program_counter_, prev_el, exc.target_el, prev_spsel, true,
+                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, exc.is_asynchronous());
+        }
+    }
+}
+
+void CPU::raise_synchronous_exception(const SynchronousException& exception) {
     if (exception.target_el == 3 || current_el_ == 3) {
         raise_el3_exception(exception, current_el_ < 3);
         return;
@@ -4074,180 +4164,74 @@ void CPU::raise_synchronous_exception(const SynchronousException& exception) {
         raise_el2_exception(exception, current_el_ < 2);
         return;
     }
-    const unsigned prev_el = current_el_;
-    const bool prev_spsel = sp_sel_;
-    const std::uint8_t prev_daif = daif_;
-    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    spsr_el1_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
-    std::uint32_t vector_offset;
-    if (current_el_ == 0) {
-        vector_offset = 0x400u;                       // lower EL, AArch64
-    } else {
-        vector_offset = sp_sel_ ? 0x200u : 0x000u;    // EL1h / EL1t
-    }
-    elr_el1_ = exception.preferred_return;
-    if (exception.has_fault_address) {
-        far_el1_ = exception.fault_address;
-    }
-    esr_el1_ = exception.esr();
-    daif_ = 0xFu;
-    il_ = false;
-    pstate_ss_ = false;
-    current_el_ = 1;
-    sp_sel_ = true;
-    program_counter_ = vbar_el1_ + vector_offset;
 
-
-    if (!is_halted_.load(std::memory_order_acquire)) {
-        const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
-                              exception.ec == ExceptionClass::HvcAArch64 ||
-                              exception.ec == ExceptionClass::SmcAArch64);
-        const std::uint64_t source_pc = (is_call && exception.preferred_return >= 4u)
-            ? (exception.preferred_return - 4u)
-            : exception.preferred_return;
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
-            emit_exception_entered_trace(source_pc, program_counter_, esr_el1_,
-                                         exception.fault_address, exception.has_fault_address, true, 1);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-            emit_context_changed_trace(source_pc, program_counter_, prev_el, 1, prev_spsel, true,
-                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu);
-        }
-    }
+    ArchitecturalException exc{};
+    exc.type = ExceptionType::Synchronous;
+    exc.ec = exception.ec;
+    exc.originating_el = current_el_;
+    exc.target_el = 1;
+    const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
+                          exception.ec == ExceptionClass::HvcAArch64 ||
+                          exception.ec == ExceptionClass::SmcAArch64);
+    exc.faulting_pc = (is_call && exception.preferred_return >= 4u) ? (exception.preferred_return - 4u) : exception.preferred_return;
+    exc.preferred_return = exception.preferred_return;
+    exc.syndrome = exception.esr();
+    exc.has_fault_address = exception.has_fault_address;
+    exc.fault_address = exception.fault_address;
+    deliver_architectural_exception(exc);
 }
 
 void CPU::raise_el2_exception(const SynchronousException& exception, bool from_lower_el) {
-    exception_taken_in_step_ = true;
-    const unsigned prev_el = current_el_;
-    const bool prev_spsel = sp_sel_;
-    const std::uint8_t prev_daif = daif_;
-    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    spsr_el2_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
-    std::uint32_t vector_offset;
-    if (from_lower_el) {
-        vector_offset = 0x400u; // lower EL, AArch64
-    } else {
-        vector_offset = sp_sel_ ? 0x200u : 0x000u; // EL2h / EL2t
-    }
-    elr_el2_ = exception.preferred_return;
-    if (exception.has_fault_address) {
-        far_el2_ = exception.fault_address;
-    }
-    if (exception.has_fault_ipa) {
-        hpfar_el2_ = (exception.fault_ipa >> 8u) & 0x0000FFFFFFFFFFF0ULL;
-    }
-    esr_el2_ = exception.esr();
-    daif_ = 0xFu;
-    il_ = false;
-    pstate_ss_ = false;
-    current_el_ = 2;
-    sp_sel_ = true;
-    program_counter_ = vbar_el2_ + vector_offset;
-
-
-    if (!is_halted_.load(std::memory_order_acquire)) {
-        const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
-                              exception.ec == ExceptionClass::HvcAArch64 ||
-                              exception.ec == ExceptionClass::SmcAArch64);
-        const std::uint64_t source_pc = (is_call && exception.preferred_return >= 4u)
-            ? (exception.preferred_return - 4u)
-            : exception.preferred_return;
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
-            emit_exception_entered_trace(source_pc, program_counter_, esr_el2_,
-                                         exception.fault_address, exception.has_fault_address, true, 2);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-            emit_context_changed_trace(source_pc, program_counter_, prev_el, 2, prev_spsel, true,
-                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu);
-        }
-    }
+    (void)from_lower_el;
+    ArchitecturalException exc{};
+    exc.type = ExceptionType::Synchronous;
+    exc.ec = exception.ec;
+    exc.originating_el = current_el_;
+    exc.target_el = 2;
+    const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
+                          exception.ec == ExceptionClass::HvcAArch64 ||
+                          exception.ec == ExceptionClass::SmcAArch64);
+    exc.faulting_pc = (is_call && exception.preferred_return >= 4u) ? (exception.preferred_return - 4u) : exception.preferred_return;
+    exc.preferred_return = exception.preferred_return;
+    exc.syndrome = exception.esr();
+    exc.has_fault_address = exception.has_fault_address;
+    exc.fault_address = exception.fault_address;
+    exc.has_fault_ipa = exception.has_fault_ipa;
+    exc.fault_ipa = exception.fault_ipa;
+    deliver_architectural_exception(exc);
 }
 
 void CPU::raise_el3_exception(const SynchronousException& exception, bool from_lower_el) {
-    exception_taken_in_step_ = true;
-    const unsigned prev_el = current_el_;
-    const bool prev_spsel = sp_sel_;
-    const std::uint8_t prev_daif = daif_;
-    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    spsr_el3_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
-    std::uint32_t vector_offset;
-    if (from_lower_el) {
-        vector_offset = 0x400u; // lower EL, AArch64
-    } else {
-        vector_offset = sp_sel_ ? 0x200u : 0x000u; // EL3h / EL3t
-    }
-    elr_el3_ = exception.preferred_return;
-    if (exception.has_fault_address) {
-        far_el3_ = exception.fault_address;
-    }
-    esr_el3_ = exception.esr();
-    daif_ = 0xFu;
-    il_ = false;
-    pstate_ss_ = false;
-    current_el_ = 3;
-    sp_sel_ = true;
-    program_counter_ = vbar_el3_ + vector_offset;
-
-
-    if (!is_halted_.load(std::memory_order_acquire)) {
-        const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
-                              exception.ec == ExceptionClass::HvcAArch64 ||
-                              exception.ec == ExceptionClass::SmcAArch64);
-        const std::uint64_t source_pc = (is_call && exception.preferred_return >= 4u)
-            ? (exception.preferred_return - 4u)
-            : exception.preferred_return;
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
-            emit_exception_entered_trace(source_pc, program_counter_, esr_el3_,
-                                         exception.fault_address, exception.has_fault_address, true, 3);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-            emit_context_changed_trace(source_pc, program_counter_, prev_el, 3, prev_spsel, true,
-                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu);
-        }
-    }
+    (void)from_lower_el;
+    ArchitecturalException exc{};
+    exc.type = ExceptionType::Synchronous;
+    exc.ec = exception.ec;
+    exc.originating_el = current_el_;
+    exc.target_el = 3;
+    const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
+                          exception.ec == ExceptionClass::HvcAArch64 ||
+                          exception.ec == ExceptionClass::SmcAArch64);
+    exc.faulting_pc = (is_call && exception.preferred_return >= 4u) ? (exception.preferred_return - 4u) : exception.preferred_return;
+    exc.preferred_return = exception.preferred_return;
+    exc.syndrome = exception.esr();
+    exc.has_fault_address = exception.has_fault_address;
+    exc.fault_address = exception.fault_address;
+    deliver_architectural_exception(exc);
 }
 
 void CPU::raise_el3_asynchronous_exception(bool is_fiq, bool from_lower_el, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
-    exception_taken_in_step_ = true;
-    const unsigned prev_el = current_el_;
-    const bool prev_spsel = sp_sel_;
-    const std::uint8_t prev_daif = daif_;
-    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    spsr_el3_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
-    std::uint32_t vector_offset;
-    if (from_lower_el) {
-        vector_offset = is_fiq ? 0x500u : 0x480u; // lower EL, AArch64
-    } else {
-        if (sp_sel_) {
-            vector_offset = is_fiq ? 0x300u : 0x280u; // EL3h (SPx)
-        } else {
-            vector_offset = is_fiq ? 0x100u : 0x080u; // EL3t (SP0)
-        }
-    }
-    const std::uint64_t source_pc = program_counter_;
-    elr_el3_ = program_counter_;
-    esr_el3_ = 0;
-    daif_ = 0xFu;
-    il_ = false;
-    pstate_ss_ = false;
-    current_el_ = 3;
-    sp_sel_ = true;
-    program_counter_ = vbar_el3_ + vector_offset;
-
-    winios::sndl::hook_interrupt_delivery(static_cast<std::uint16_t>(core_id_), source_pc, instruction_retirement_count_, intid, priority, is_fiq, is_virtual, 3);
-
-    if (!is_halted_.load(std::memory_order_acquire)) {
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
-            emit_interrupt_delivered_trace(source_pc, program_counter_, intid, is_fiq, is_virtual, 3, priority);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
-            emit_exception_entered_trace(source_pc, program_counter_, 0, 0, false, false, 3);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-            emit_context_changed_trace(source_pc, program_counter_, prev_el, 3, prev_spsel, true,
-                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, true);
-        }
-    }
+    (void)from_lower_el;
+    ArchitecturalException exc{};
+    exc.type = is_fiq ? ExceptionType::FIQ : ExceptionType::IRQ;
+    exc.originating_el = current_el_;
+    exc.target_el = 3;
+    exc.faulting_pc = program_counter_;
+    exc.preferred_return = program_counter_;
+    exc.syndrome = 0;
+    exc.intid = intid;
+    exc.priority = priority;
+    exc.is_virtual = is_virtual;
+    deliver_architectural_exception(exc);
 }
 
 void CPU::check_timer_status() noexcept {
@@ -4438,89 +4422,32 @@ bool CPU::check_pending_interrupts() {
 }
 
 void CPU::raise_asynchronous_exception(bool is_fiq, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
-    exception_taken_in_step_ = true;
-    const unsigned prev_el = current_el_;
-    const bool prev_spsel = sp_sel_;
-    const std::uint8_t prev_daif = daif_;
-    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    spsr_el1_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
-    std::uint32_t vector_offset;
-    if (current_el_ == 0) {
-        vector_offset = is_fiq ? 0x500u : 0x480u; // lower EL, AArch64
-    } else {
-        if (sp_sel_) {
-            vector_offset = is_fiq ? 0x300u : 0x280u; // EL1h (SPx)
-        } else {
-            vector_offset = is_fiq ? 0x100u : 0x080u; // EL1t (SP0)
-        }
-    }
-    const std::uint64_t source_pc = program_counter_;
-    elr_el1_ = program_counter_;
-    esr_el1_ = 0; // EC = 0 for IRQ/FIQ
-    daif_ = 0xFu;
-    il_ = false;
-    pstate_ss_ = false;
-    current_el_ = 1;
-    sp_sel_ = true;
-    program_counter_ = vbar_el1_ + vector_offset;
-
-    winios::sndl::hook_interrupt_delivery(static_cast<std::uint16_t>(core_id_), source_pc, instruction_retirement_count_, intid, priority, is_fiq, is_virtual, 1);
-
-    if (!is_halted_.load(std::memory_order_acquire)) {
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
-            emit_interrupt_delivered_trace(source_pc, program_counter_, intid, is_fiq, is_virtual, 1, priority);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
-            emit_exception_entered_trace(source_pc, program_counter_, 0, 0, false, false, 1);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-            emit_context_changed_trace(source_pc, program_counter_, prev_el, 1, prev_spsel, true,
-                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, true);
-        }
-    }
+    ArchitecturalException exc{};
+    exc.type = is_fiq ? ExceptionType::FIQ : ExceptionType::IRQ;
+    exc.originating_el = current_el_;
+    exc.target_el = 1;
+    exc.faulting_pc = program_counter_;
+    exc.preferred_return = program_counter_;
+    exc.syndrome = 0;
+    exc.intid = intid;
+    exc.priority = priority;
+    exc.is_virtual = is_virtual;
+    deliver_architectural_exception(exc);
 }
 
 void CPU::raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
-    exception_taken_in_step_ = true;
-    const unsigned prev_el = current_el_;
-    const bool prev_spsel = sp_sel_;
-    const std::uint8_t prev_daif = daif_;
-    pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    spsr_el2_ = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
-    std::uint32_t vector_offset;
-    if (from_lower_el) {
-        vector_offset = is_fiq ? 0x500u : 0x480u;
-    } else {
-        if (sp_sel_) {
-            vector_offset = is_fiq ? 0x300u : 0x280u;
-        } else {
-            vector_offset = is_fiq ? 0x100u : 0x080u;
-        }
-    }
-    const std::uint64_t source_pc = program_counter_;
-    elr_el2_ = program_counter_;
-    esr_el2_ = 0;
-    daif_ = 0xFu;
-    il_ = false;
-    pstate_ss_ = false;
-    current_el_ = 2;
-    sp_sel_ = true;
-    program_counter_ = vbar_el2_ + vector_offset;
-
-    winios::sndl::hook_interrupt_delivery(static_cast<std::uint16_t>(core_id_), source_pc, instruction_retirement_count_, intid, priority, is_fiq, is_virtual, 2);
-
-    if (!is_halted_.load(std::memory_order_acquire)) {
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::InterruptDelivered, static_cast<std::uint16_t>(core_id_))) {
-            emit_interrupt_delivered_trace(source_pc, program_counter_, intid, is_fiq, is_virtual, 2, priority);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ExceptionEntered, static_cast<std::uint16_t>(core_id_))) {
-            emit_exception_entered_trace(source_pc, program_counter_, 0, 0, false, false, 2);
-        }
-        if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-            emit_context_changed_trace(source_pc, program_counter_, prev_el, 2, prev_spsel, true,
-                                       winios::trace::ContextChangeReason::ExceptionEntry, prev_daif, 0xFu, true);
-        }
-    }
+    (void)from_lower_el;
+    ArchitecturalException exc{};
+    exc.type = is_fiq ? ExceptionType::FIQ : ExceptionType::IRQ;
+    exc.originating_el = current_el_;
+    exc.target_el = 2;
+    exc.faulting_pc = program_counter_;
+    exc.preferred_return = program_counter_;
+    exc.syndrome = 0;
+    exc.intid = intid;
+    exc.priority = priority;
+    exc.is_virtual = is_virtual;
+    deliver_architectural_exception(exc);
 }
 
 bool CPU::is_software_step_active() const noexcept {
@@ -6922,6 +6849,22 @@ void CPU::step(Memory& guest_memory) {
         emit_trace(true, true, target);
         return;
     }
+    // Phase 37: CPACR_EL1 FP/SIMD access control check.
+    // Checks FPEN bits [21:20] before decoding or executing any FP/SIMD instruction.
+    if ((instruction & 0x3E000000u) == 0x3C000000u || // SIMD/FP Load/Store
+        (instruction & 0xFF200C00u) == 0x1E200800u || // Scalar FP 2-source
+        (instruction & 0xFF207C00u) == 0x1E204000u || // Scalar FP 1-source
+        (instruction & 0xFF20FC07u) == 0x1E202000u || // FP Compare
+        (instruction & 0xFF201FE0u) == 0x1E201000u || // FP Immediate
+        (instruction & 0x7F20FC00u) == 0x1E200000u) {  // FP <-> Integer / GP
+        if (!is_fp_simd_enabled(static_cast<unsigned>(current_el_))) {
+            if (architectural_exceptions_) {
+                raise_synchronous_exception(make_fp_simd_access_trap(instruction_address));
+                return;
+            }
+            throw std::runtime_error("Trapped FP/SIMD instruction access via CPACR_EL1.FPEN");
+        }
+    }
     // Phase 32B: SIMD & Floating-Point Load/Store
     // Bits 29:27 = 111, Bit 26 = 1 (V=1).
     if ((instruction & 0x3E000000u) == 0x3C000000u) {
@@ -7344,7 +7287,13 @@ void CPU::step(Memory& guest_memory) {
                 il_         = true;
                 pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
                 program_counter_ = new_pc;
-                emit_trace();
+                emit_trace(false, false, 0, true, new_pc, spsr, current_el_);
+                if (!is_halted_.load(std::memory_order_acquire)) {
+                    if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
+                        emit_context_changed_trace(instruction_address, new_pc, prev_el, current_el_, prev_spsel, sp_sel_,
+                                                   winios::trace::ContextChangeReason::ExceptionReturn, prev_daif, daif_);
+                    }
+                }
                 return;
             }
             throw std::runtime_error("ERET: invalid SPSR M field: 0x" + std::to_string(m));
@@ -7872,6 +7821,12 @@ void CPU::step(Memory& guest_memory) {
             if (reg_key == kSysregDCZID_EL0) {
                 return is_mrs; // read-only
             }
+            if (reg_key == kSysregTPIDR_EL0) {
+                return true; // EL0 read/write
+            }
+            if (reg_key == kSysregTPIDRRO_EL0) {
+                return is_mrs; // EL0 read-only
+            }
             if (reg_key == kSysregCNTFRQ_EL0) {
                 return is_mrs && ((get_cntkctl_el1() & 0x3u) != 0u);
             }
@@ -8054,6 +8009,9 @@ void CPU::step(Memory& guest_memory) {
             case kSysregSCTLR_EL1:
                 value = mmu_.get_sctlr_el1();
                 break;
+            case kSysregCPACR_EL1:
+                value = cpacr_el1_;
+                break;
             case kSysregTCR_EL1:
                 value = mmu_.get_tcr_el1();
                 break;
@@ -8083,6 +8041,15 @@ void CPU::step(Memory& guest_memory) {
                 break;
             case kSysregDCZID_EL0:
                 value = 0x00000004ULL;
+                break;
+            case kSysregTPIDR_EL0:
+                value = tpidr_el0_;
+                break;
+            case kSysregTPIDR_EL1:
+                value = tpidr_el1_;
+                break;
+            case kSysregTPIDRRO_EL0:
+                value = tpidrro_el0_;
                 break;
             case kSysregCNTFRQ_EL0:
                 value = virtual_time_->get_frequency();
@@ -8474,6 +8441,9 @@ void CPU::step(Memory& guest_memory) {
             case kSysregSCTLR_EL1:
                 mmu_.set_sctlr_el1(val);
                 break;
+            case kSysregCPACR_EL1:
+                cpacr_el1_ = val;
+                break;
             case kSysregTCR_EL1:
                 mmu_.set_tcr_el1(val);
                 break;
@@ -8488,6 +8458,15 @@ void CPU::step(Memory& guest_memory) {
                 break;
             case kSysregPAR_EL1:
                 mmu_.set_par_el1(val);
+                break;
+            case kSysregTPIDR_EL0:
+                tpidr_el0_ = val;
+                break;
+            case kSysregTPIDR_EL1:
+                tpidr_el1_ = val;
+                break;
+            case kSysregTPIDRRO_EL0:
+                tpidrro_el0_ = val;
                 break;
             case kSysregDCZID_EL0:
                 if (architectural_exceptions_) {

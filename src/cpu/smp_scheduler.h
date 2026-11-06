@@ -18,6 +18,10 @@ namespace sndl {
 class SndlV2Recorder;
 }
 
+namespace device {
+class VirtualDeviceBus;
+}
+
 // -----------------------------------------------------------------------------
 // QuantumTruncationReason: Deterministic cause of quantum termination
 // -----------------------------------------------------------------------------
@@ -133,6 +137,10 @@ public:
     // Multicore canonical state hash
     [[nodiscard]] std::uint64_t compute_canonical_multicore_hash() const noexcept;
 
+    // Phase 52 Stage 35: Extended canonical cluster hash covering Section 0x18 DeviceBus,
+    // exclusive monitor reservations, and interrupt router pending queues (AUD-34-01).
+    [[nodiscard]] std::uint64_t compute_extended_cluster_hash() const noexcept;
+
     // Transition audit history
     [[nodiscard]] const std::vector<QuantumTransitionRecord>& transition_history() const noexcept {
         return history_;
@@ -142,6 +150,10 @@ public:
     // Optional SNDL v2 recorder integration
     void attach_sndl_recorder(sndl::SndlV2Recorder* recorder) noexcept { sndl_recorder_ = recorder; }
     [[nodiscard]] sndl::SndlV2Recorder* sndl_recorder() const noexcept { return sndl_recorder_; }
+
+    // Optional Virtual Device Bus integration
+    void attach_device_bus(std::shared_ptr<device::VirtualDeviceBus> bus) noexcept { device_bus_ = std::move(bus); }
+    [[nodiscard]] std::shared_ptr<device::VirtualDeviceBus> device_bus() const noexcept { return device_bus_; }
 
 private:
     std::shared_ptr<SmpSharedMemory> shared_memory_;
@@ -155,6 +167,7 @@ private:
     std::uint64_t global_retirement_sequence_{0};
     std::vector<QuantumTransitionRecord> history_;
     sndl::SndlV2Recorder* sndl_recorder_{nullptr};
+    std::shared_ptr<device::VirtualDeviceBus> device_bus_;
 };
 
 } // namespace winios

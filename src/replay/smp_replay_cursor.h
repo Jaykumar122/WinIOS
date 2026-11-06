@@ -56,6 +56,9 @@ public:
     // Raw consumption of next event without semantic type checks (validates sequence continuity)
     [[nodiscard]] sndl::SndlV2Result consume_next(sndl::SndlV2Record& out_record);
 
+    // Repositions cursor to a specific global sequence
+    [[nodiscard]] sndl::SndlV2Result seek_to_sequence(const std::filesystem::path& path, std::uint64_t target_sequence);
+
 private:
     [[nodiscard]] sndl::SndlV2Result validate_sequence_continuity(const sndl::SndlV2Record& rec);
 

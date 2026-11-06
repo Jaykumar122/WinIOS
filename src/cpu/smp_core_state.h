@@ -100,6 +100,9 @@ struct SmpCoreState {
     std::uint64_t mair_el1{0};
     std::uint64_t cpacr_el1{0};
     std::uint64_t cntvoff_el2{0};
+    std::uint64_t tpidr_el0{0};
+    std::uint64_t tpidr_el1{0};
+    std::uint64_t tpidrro_el0{0};
 
     // --- Per-Core Timer Control State ---
     std::uint64_t cntp_cval_el0{0};

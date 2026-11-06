@@ -64,7 +64,10 @@ bool SmpExclusiveMonitorManager::store_exclusive(std::size_t core_id, std::uint6
 void SmpExclusiveMonitorManager::invalidate_reservations(std::size_t writer_core_id, std::uint64_t address, std::size_t size) noexcept {
     if (size == 0) return;
     const std::uint64_t start_granule = address & kGranuleMask;
-    const std::uint64_t end_granule = (address + size - 1) & kGranuleMask;
+    const std::uint64_t end_address = (address > std::numeric_limits<std::uint64_t>::max() - size)
+        ? std::numeric_limits<std::uint64_t>::max()
+        : (address + size - 1);
+    const std::uint64_t end_granule = end_address & kGranuleMask;
 
     for (std::size_t i = 0; i < reservations_.size(); ++i) {
         if (i == writer_core_id) continue;
@@ -82,6 +85,9 @@ void SmpExclusiveMonitorManager::clear_reservation(std::size_t core_id) noexcept
     if (core_id < reservations_.size()) {
         if (reservations_[core_id].valid) {
             reservations_[core_id].valid = false;
+            reservations_[core_id].granule_address = 0;
+            reservations_[core_id].exact_address = 0;
+            reservations_[core_id].size = 0;
             telemetry_.clrex_count++;
         }
     }

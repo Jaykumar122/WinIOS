@@ -3,6 +3,9 @@
 #include "cpu/cpu.h"
 #include "cpu/smp_scheduler.h"
 #include "cpu/smp_shared_memory.h"
+#include "device/dma_payload_store.h"
+#include "device/virtual_device_bus.h"
+#include "device/virtual_dma_device.h"
 #include "replay/replay_types.h"
 #include "replay/smp_replay_core_state.h"
 #include "replay/smp_replay_cursor.h"
@@ -40,6 +43,13 @@ public:
     // Executes a single scheduler quantum slice under deterministic replay control
     [[nodiscard]] bool step_quantum();
 
+    // Checkpoint creation and restoration
+    [[nodiscard]] SmpReplayCheckpoint create_checkpoint() const;
+    [[nodiscard]] bool restore_checkpoint(const SmpReplayCheckpoint& checkpoint);
+
+    // Cross-file identity & payload pre-validation
+    [[nodiscard]] bool validate_cross_file_integrity(const std::filesystem::path& sndl_path, std::string& out_error);
+
     // Closes session and frees resources
     void close() noexcept;
 
@@ -53,6 +63,12 @@ public:
     [[nodiscard]] SmpReplayEventCursor& cursor() noexcept { return cursor_; }
     [[nodiscard]] SmpScheduler* scheduler() noexcept { return scheduler_.get(); }
     [[nodiscard]] const SmpScheduler* scheduler() const noexcept { return scheduler_.get(); }
+    [[nodiscard]] const device::DmaPayloadStore& dma_payload_store() const noexcept { return dma_payload_store_; }
+    [[nodiscard]] device::DmaPayloadStore& dma_payload_store() noexcept { return dma_payload_store_; }
+    [[nodiscard]] device::VirtualDeviceBus* device_bus() noexcept { return device_bus_.get(); }
+    [[nodiscard]] const device::VirtualDeviceBus* device_bus() const noexcept { return device_bus_.get(); }
+    [[nodiscard]] device::VirtualDmaDevice* dma_device() noexcept { return dma_device_.get(); }
+    [[nodiscard]] const device::VirtualDmaDevice* dma_device() const noexcept { return dma_device_.get(); }
 
 private:
     void trigger_divergence(SmpReplayDivergence div);
@@ -68,6 +84,9 @@ private:
     std::size_t active_core_count_{2};
     std::shared_ptr<SmpSharedMemory> shared_memory_;
     std::unique_ptr<SmpScheduler> scheduler_;
+    std::shared_ptr<device::VirtualDeviceBus> device_bus_;
+    std::shared_ptr<device::VirtualDmaDevice> dma_device_;
+    device::DmaPayloadStore dma_payload_store_;
     std::vector<std::shared_ptr<CPU>> cpus_;
     std::vector<SmpReplayCoreState> core_replay_states_;
 

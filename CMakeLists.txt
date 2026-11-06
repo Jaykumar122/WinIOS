@@ -21,6 +21,8 @@ endfunction()
 # Emulator core, shared by the demo executable and the unit tests.
 add_library(winios_core STATIC
     src/cpu/cpu.cpp
+    src/cpu/sysreg.cpp
+    src/cpu/darwin_sysreg_compat.cpp
     src/cpu/debug_architecture.cpp
     src/cpu/debug_exceptions.cpp
     src/cpu/gicv3.cpp
@@ -29,6 +31,14 @@ add_library(winios_core STATIC
     src/cpu/psci.cpp
     src/cpu/smp_cluster.cpp
     src/cpu/smp_core_state.cpp
+    src/cpu/smp_topology.cpp
+    src/device/virtual_device.cpp
+    src/device/virtual_device_bus.cpp
+    src/device/virtual_dma_engine.cpp
+    src/device/virtual_dma_device.cpp
+    src/device/dma_payload_store.cpp
+    src/device/recording_recovery.cpp
+    src/reference/independent_reference_model.cpp
     src/cpu/smp_exclusive_monitor.cpp
     src/cpu/smp_shared_memory.cpp
     src/cpu/smp_interrupt_router.cpp
@@ -659,6 +669,232 @@ if(BUILD_TESTING)
     target_link_libraries(smp_four_core_replay_benchmark PRIVATE winios_core)
     winios_set_warnings(smp_four_core_replay_benchmark)
 
+    add_executable(smp_topology_scalability_tests
+        tests/unit/smp_topology_scalability_tests.cpp
+    )
+    target_link_libraries(smp_topology_scalability_tests PRIVATE winios_core)
+    winios_set_warnings(smp_topology_scalability_tests)
+    add_test(NAME smp_topology_scalability_tests COMMAND smp_topology_scalability_tests)
+
+    add_executable(smp_eight_core_architecture_tests
+        tests/unit/smp_eight_core_architecture_tests.cpp
+    )
+    target_link_libraries(smp_eight_core_architecture_tests PRIVATE winios_core)
+    winios_set_warnings(smp_eight_core_architecture_tests)
+    add_test(NAME smp_eight_core_architecture_tests COMMAND smp_eight_core_architecture_tests)
+
+    add_executable(smp_eight_core_replay_tests
+        tests/unit/smp_eight_core_replay_tests.cpp
+    )
+    target_link_libraries(smp_eight_core_replay_tests PRIVATE winios_core)
+    winios_set_warnings(smp_eight_core_replay_tests)
+    add_test(NAME smp_eight_core_replay_tests COMMAND smp_eight_core_replay_tests)
+
+    add_executable(smp_eight_core_replay_hardening_tests
+        tests/unit/smp_eight_core_replay_hardening_tests.cpp
+    )
+    target_link_libraries(smp_eight_core_replay_hardening_tests PRIVATE winios_core)
+    winios_set_warnings(smp_eight_core_replay_hardening_tests)
+    add_test(NAME smp_eight_core_replay_hardening_tests COMMAND smp_eight_core_replay_hardening_tests)
+
+    add_executable(smp_long_duration_replay_tests
+        tests/unit/smp_long_duration_replay_tests.cpp
+    )
+    target_link_libraries(smp_long_duration_replay_tests PRIVATE winios_core)
+    winios_set_warnings(smp_long_duration_replay_tests)
+    add_test(NAME smp_long_duration_replay_tests COMMAND smp_long_duration_replay_tests)
+
+    add_executable(smp_cross_topology_tests
+        tests/unit/smp_cross_topology_tests.cpp
+    )
+    target_link_libraries(smp_cross_topology_tests PRIVATE winios_core)
+    winios_set_warnings(smp_cross_topology_tests)
+    add_test(NAME smp_cross_topology_tests COMMAND smp_cross_topology_tests)
+
+    add_executable(smp_independent_state_validation_tests
+        tests/unit/smp_independent_state_validation_tests.cpp
+    )
+    target_link_libraries(smp_independent_state_validation_tests PRIVATE winios_core)
+    winios_set_warnings(smp_independent_state_validation_tests)
+    add_test(NAME smp_independent_state_validation_tests COMMAND smp_independent_state_validation_tests)
+
+    add_executable(smp_event_corruption_stress_tests
+        tests/unit/smp_event_corruption_stress_tests.cpp
+    )
+    target_link_libraries(smp_event_corruption_stress_tests PRIVATE winios_core)
+    winios_set_warnings(smp_event_corruption_stress_tests)
+    add_test(NAME smp_event_corruption_stress_tests COMMAND smp_event_corruption_stress_tests)
+
+    add_executable(smp_large_snapshot_stress_tests
+        tests/unit/smp_large_snapshot_stress_tests.cpp
+    )
+    target_link_libraries(smp_large_snapshot_stress_tests PRIVATE winios_core)
+    winios_set_warnings(smp_large_snapshot_stress_tests)
+    add_test(NAME smp_large_snapshot_stress_tests COMMAND smp_large_snapshot_stress_tests)
+
+    add_executable(smp_scheduler_fairness_tests
+        tests/unit/smp_scheduler_fairness_tests.cpp
+    )
+    target_link_libraries(smp_scheduler_fairness_tests PRIVATE winios_core)
+    winios_set_warnings(smp_scheduler_fairness_tests)
+    add_test(NAME smp_scheduler_fairness_tests COMMAND smp_scheduler_fairness_tests)
+
+    add_executable(smp_interrupt_timer_stress_tests
+        tests/unit/smp_interrupt_timer_stress_tests.cpp
+    )
+    target_link_libraries(smp_interrupt_timer_stress_tests PRIVATE winios_core)
+    winios_set_warnings(smp_interrupt_timer_stress_tests)
+    add_test(NAME smp_interrupt_timer_stress_tests COMMAND smp_interrupt_timer_stress_tests)
+
+    add_executable(smp_replay_performance_profile
+        tests/unit/smp_replay_performance_profile.cpp
+    )
+    target_link_libraries(smp_replay_performance_profile PRIVATE winios_core)
+    winios_set_warnings(smp_replay_performance_profile)
+    add_test(NAME smp_replay_performance_profile COMMAND smp_replay_performance_profile)
+
+    add_executable(virtual_device_bus_tests
+        tests/unit/virtual_device_bus_tests.cpp
+    )
+    target_link_libraries(virtual_device_bus_tests PRIVATE winios_core)
+    winios_set_warnings(virtual_device_bus_tests)
+    add_test(NAME virtual_device_bus_tests COMMAND virtual_device_bus_tests)
+
+    add_executable(virtual_dma_descriptor_tests
+        tests/unit/virtual_dma_descriptor_tests.cpp
+    )
+    target_link_libraries(virtual_dma_descriptor_tests PRIVATE winios_core)
+    winios_set_warnings(virtual_dma_descriptor_tests)
+    add_test(NAME virtual_dma_descriptor_tests COMMAND virtual_dma_descriptor_tests)
+
+    add_executable(virtual_dma_memory_integrity_tests
+        tests/unit/virtual_dma_memory_integrity_tests.cpp
+    )
+    target_link_libraries(virtual_dma_memory_integrity_tests PRIVATE winios_core)
+    winios_set_warnings(virtual_dma_memory_integrity_tests)
+    add_test(NAME virtual_dma_memory_integrity_tests COMMAND virtual_dma_memory_integrity_tests)
+
+    add_executable(virtual_dma_snapshot_tests
+        tests/unit/virtual_dma_snapshot_tests.cpp
+    )
+    target_link_libraries(virtual_dma_snapshot_tests PRIVATE winios_core)
+    winios_set_warnings(virtual_dma_snapshot_tests)
+    add_test(NAME virtual_dma_snapshot_tests COMMAND virtual_dma_snapshot_tests)
+
+    add_executable(virtual_dma_smp_tests
+        tests/unit/virtual_dma_smp_tests.cpp
+    )
+    target_link_libraries(virtual_dma_smp_tests PRIVATE winios_core)
+    winios_set_warnings(virtual_dma_smp_tests)
+    add_test(NAME virtual_dma_smp_tests COMMAND virtual_dma_smp_tests)
+
+    add_executable(virtual_dma_benchmark
+        tests/unit/virtual_dma_benchmark.cpp
+    )
+    target_link_libraries(virtual_dma_benchmark PRIVATE winios_core)
+    winios_set_warnings(virtual_dma_benchmark)
+
+    add_executable(smp_eight_core_replay_benchmark
+        tests/unit/smp_eight_core_replay_benchmark.cpp
+    )
+    target_link_libraries(smp_eight_core_replay_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_eight_core_replay_benchmark)
+
+        add_executable(dma_payload_store_tests
+        tests/unit/dma_payload_store_tests.cpp
+    )
+    target_link_libraries(dma_payload_store_tests PRIVATE winios_core)
+    winios_set_warnings(dma_payload_store_tests)
+    add_test(NAME dma_payload_store_tests COMMAND dma_payload_store_tests)
+
+    add_executable(dma_recording_replay_tests
+        tests/unit/dma_recording_replay_tests.cpp
+    )
+    target_link_libraries(dma_recording_replay_tests PRIVATE winios_core)
+    winios_set_warnings(dma_recording_replay_tests)
+    add_test(NAME dma_recording_replay_tests COMMAND dma_recording_replay_tests)
+
+    add_executable(dma_smp_determinism_tests
+        tests/unit/dma_smp_determinism_tests.cpp
+    )
+    target_link_libraries(dma_smp_determinism_tests PRIVATE winios_core)
+    winios_set_warnings(dma_smp_determinism_tests)
+    add_test(NAME dma_smp_determinism_tests COMMAND dma_smp_determinism_tests)
+
+    add_executable(dma_adversarial_tests
+        tests/unit/dma_adversarial_tests.cpp
+    )
+    target_link_libraries(dma_adversarial_tests PRIVATE winios_core)
+    winios_set_warnings(dma_adversarial_tests)
+    add_test(NAME dma_adversarial_tests COMMAND dma_adversarial_tests)
+
+    add_executable(dma_benchmark
+        tests/unit/dma_benchmark.cpp
+    )
+    target_link_libraries(dma_benchmark PRIVATE winios_core)
+    winios_set_warnings(dma_benchmark)
+
+    add_executable(smp_scalability_benchmark
+        tests/unit/smp_scalability_benchmark.cpp
+    )
+    target_link_libraries(smp_scalability_benchmark PRIVATE winios_core)
+    winios_set_warnings(smp_scalability_benchmark)
+
+    add_executable(dma_crash_recovery_tests
+        tests/unit/dma_crash_recovery_tests.cpp
+    )
+    target_link_libraries(dma_crash_recovery_tests PRIVATE winios_core)
+    winios_set_warnings(dma_crash_recovery_tests)
+    add_test(NAME dma_crash_recovery_tests COMMAND dma_crash_recovery_tests)
+
+    add_executable(dma_replay_checkpoint_tests
+        tests/unit/dma_replay_checkpoint_tests.cpp
+    )
+    target_link_libraries(dma_replay_checkpoint_tests PRIVATE winios_core)
+    winios_set_warnings(dma_replay_checkpoint_tests)
+    add_test(NAME dma_replay_checkpoint_tests COMMAND dma_replay_checkpoint_tests)
+
+    add_executable(dma_snapshot_continuation_tests
+        tests/unit/dma_snapshot_continuation_tests.cpp
+    )
+    target_link_libraries(dma_snapshot_continuation_tests PRIVATE winios_core)
+    winios_set_warnings(dma_snapshot_continuation_tests)
+    add_test(NAME dma_snapshot_continuation_tests COMMAND dma_snapshot_continuation_tests)
+
+    add_executable(dma_long_duration_stress_tests
+        tests/unit/dma_long_duration_stress_tests.cpp
+    )
+    target_link_libraries(dma_long_duration_stress_tests PRIVATE winios_core)
+    winios_set_warnings(dma_long_duration_stress_tests)
+    add_test(NAME dma_long_duration_stress_tests COMMAND dma_long_duration_stress_tests)
+
+    add_executable(differential_validation_tests
+        tests/unit/differential_validation_tests.cpp
+    )
+    target_link_libraries(differential_validation_tests PRIVATE winios_core)
+    winios_set_warnings(differential_validation_tests)
+    add_test(NAME differential_validation_tests COMMAND differential_validation_tests)
+
+    add_executable(independent_recording_recovery_tests
+        tests/unit/independent_recording_recovery_tests.cpp
+    )
+    target_link_libraries(independent_recording_recovery_tests PRIVATE winios_core)
+    winios_set_warnings(independent_recording_recovery_tests)
+    add_test(NAME independent_recording_recovery_tests COMMAND independent_recording_recovery_tests)
+
+    add_executable(smp_endurance_certification_tests
+        tests/unit/smp_endurance_certification_tests.cpp
+    )
+    target_link_libraries(smp_endurance_certification_tests PRIVATE winios_core)
+    winios_set_warnings(smp_endurance_certification_tests)
+    add_test(NAME smp_endurance_certification_tests COMMAND smp_endurance_certification_tests)
+
+    add_executable(dma_recovery_benchmark
+        tests/unit/dma_recovery_benchmark.cpp
+    )
+    target_link_libraries(dma_recovery_benchmark PRIVATE winios_core)
+    winios_set_warnings(dma_recovery_benchmark)
+
     add_executable(inferno_integration_tests
         tests/integration/inferno_integration_tests.cpp
     )
@@ -688,8 +924,51 @@ if(BUILD_TESTING)
                          trace_analyzer_tests trace_analysis_pipeline_tests
                          snapshot_tests sndl_tests replay_tests replay_hardening_tests
                          replay_scalability_tests smp_foundation_tests smp_snapshot_tests smp_sndl_v2_tests sndl_v2_hardening_tests
-                         smp_replay_tests smp_four_core_replay_tests
-                         PROPERTIES TIMEOUT 120)
+                         smp_replay_tests smp_four_core_replay_tests smp_topology_scalability_tests smp_eight_core_architecture_tests smp_eight_core_replay_tests smp_eight_core_replay_hardening_tests
+                         smp_long_duration_replay_tests smp_cross_topology_tests smp_independent_state_validation_tests smp_event_corruption_stress_tests smp_large_snapshot_stress_tests smp_scheduler_fairness_tests smp_interrupt_timer_stress_tests smp_replay_performance_profile
+                         virtual_device_bus_tests virtual_dma_descriptor_tests virtual_dma_memory_integrity_tests virtual_dma_snapshot_tests virtual_dma_smp_tests dma_payload_store_tests dma_recording_replay_tests dma_smp_determinism_tests dma_adversarial_tests dma_crash_recovery_tests dma_replay_checkpoint_tests dma_snapshot_continuation_tests dma_long_duration_stress_tests differential_validation_tests independent_recording_recovery_tests smp_endurance_certification_tests
+                         PROPERTIES TIMEOUT 180)
     set_tests_properties(threading_tests PROPERTIES TIMEOUT 120)
     set_tests_properties(inferno_launcher_tests PROPERTIES TIMEOUT 120)
 endif()
+
+# Phase 52 Stage 35 Tests
+add_executable(architectural_state_integrity_tests tests/unit/architectural_state_integrity_tests.cpp)
+target_link_libraries(architectural_state_integrity_tests PRIVATE winios_core)
+add_test(NAME ArchitecturalStateIntegrityTests COMMAND architectural_state_integrity_tests)
+
+add_executable(mmu_conformance_tests tests/unit/mmu_conformance_tests.cpp)
+target_link_libraries(mmu_conformance_tests PRIVATE winios_core)
+add_test(NAME MmuConformanceTests COMMAND mmu_conformance_tests)
+
+add_executable(gic_memory_ordering_tests tests/unit/gic_memory_ordering_tests.cpp)
+target_link_libraries(gic_memory_ordering_tests PRIVATE winios_core)
+add_test(NAME GicMemoryOrderingTests COMMAND gic_memory_ordering_tests)
+
+# Phase 52 Stage 36 Tests
+add_executable(system_register_conformance_tests tests/unit/system_register_conformance_tests.cpp)
+target_link_libraries(system_register_conformance_tests PRIVATE winios_core)
+add_test(NAME SystemRegisterConformanceTests COMMAND system_register_conformance_tests)
+
+# Phase 52 Stage 37 Tests
+add_executable(mmu_cpacr_conformance_tests tests/unit/mmu_cpacr_conformance_tests.cpp)
+target_link_libraries(mmu_cpacr_conformance_tests PRIVATE winios_core)
+add_test(NAME MmuCpacrConformanceTests COMMAND mmu_cpacr_conformance_tests)
+
+# Phase 52 Stage 38 Tests
+add_executable(stage38_interrupt_exception_tests tests/unit/stage38_interrupt_exception_tests.cpp)
+target_link_libraries(stage38_interrupt_exception_tests PRIVATE winios_core)
+add_test(NAME ArchitecturalExceptionDeliveryTests COMMAND stage38_interrupt_exception_tests --suite 1)
+add_test(NAME ExceptionVectorSelectionTests COMMAND stage38_interrupt_exception_tests --suite 2)
+add_test(NAME EretStateValidationTests COMMAND stage38_interrupt_exception_tests --suite 3)
+add_test(NAME DaifInterruptMaskingTests COMMAND stage38_interrupt_exception_tests --suite 4)
+add_test(NAME GicInterruptLifecycleTests COMMAND stage38_interrupt_exception_tests --suite 5)
+add_test(NAME GicPriorityAndPreemptionTests COMMAND stage38_interrupt_exception_tests --suite 6)
+add_test(NAME GicSystemRegisterTests COMMAND stage38_interrupt_exception_tests --suite 7)
+add_test(NAME VirtualTimerConformanceTests COMMAND stage38_interrupt_exception_tests --suite 8)
+add_test(NAME TimerPpiIntegrationTests COMMAND stage38_interrupt_exception_tests --suite 9)
+add_test(NAME SmpInterruptDeterminismTests COMMAND stage38_interrupt_exception_tests --suite 10)
+add_test(NAME ExceptionInterruptReplayTests COMMAND stage38_interrupt_exception_tests --suite 11)
+add_test(NAME Stage38SnapshotRestoreTests COMMAND stage38_interrupt_exception_tests --suite 12)
+add_test(NAME Stage38ReferenceDifferentialTests COMMAND stage38_interrupt_exception_tests --suite 13)
+add_test(NAME Stage38FuzzAndEnduranceTests COMMAND stage38_interrupt_exception_tests --suite 14)

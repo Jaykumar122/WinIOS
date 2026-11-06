@@ -8272,6 +8272,7 @@ void phase32_register_state_and_upper_zeroing() {
 void phase32_fp_simd_loads_stores() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -8382,6 +8383,7 @@ void phase32_fp_simd_loads_stores() {
 void phase32_scalar_fp_arithmetic_and_movement() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -8514,6 +8516,7 @@ void phase32_scalar_fp_arithmetic_and_movement() {
 void phase32_scalar_fp_compare() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -8576,6 +8579,7 @@ void phase32_scalar_fp_compare() {
 void phase32_fp_conversion_and_rounding() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -8740,6 +8744,7 @@ void phase32_system_registers_fpcr_fpsr() {
 void phase32_advanced_simd_operations() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -8844,6 +8849,7 @@ void phase32_advanced_simd_operations() {
 void phase32_disassembly_names() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -8914,6 +8920,7 @@ void phase32_disassembly_names() {
 void phase33_simd_integer_arithmetic_mul_sat_minmax_addp() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9030,6 +9037,7 @@ void phase33_simd_integer_arithmetic_mul_sat_minmax_addp() {
 void phase33_simd_vector_comparisons() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9100,6 +9108,7 @@ void phase33_simd_vector_comparisons() {
 void phase33_simd_shifts() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9154,6 +9163,7 @@ void phase33_simd_shifts() {
 void phase33_simd_widening_and_narrowing() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9216,6 +9226,7 @@ void phase33_simd_widening_and_narrowing() {
 void phase33_simd_reductions_and_misc() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9284,6 +9295,7 @@ void phase33_simd_reductions_and_misc() {
 void phase33_disassembly_names() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9354,6 +9366,7 @@ void phase33_disassembly_names() {
 void phase34_simd_fp_arithmetic() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9424,6 +9437,7 @@ void phase34_simd_fp_arithmetic() {
 void phase34_simd_fp_unary() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9474,6 +9488,7 @@ void phase34_simd_fp_unary() {
 void phase34_simd_fp_comparisons() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9540,6 +9555,7 @@ void phase34_simd_fp_comparisons() {
 void phase34_simd_fp_pairwise_minmax() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9604,6 +9620,7 @@ void phase34_simd_fp_pairwise_minmax() {
 void phase34_simd_fp_conversions() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 
@@ -9676,6 +9693,7 @@ void phase34_simd_fp_conversions() {
 void phase34_unallocated_and_disassembly() {
 
     CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
 
     Memory memory(0x1000);
 

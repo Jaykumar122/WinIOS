@@ -64,7 +64,7 @@ void print_usage() {
                  "                [--max-events <count>] [--output <path>] [--format text|json]\n"
               << "  win_ios.exe snapshot inspect|validate|create|restore <file.wsnap>\n"
               << "  win_ios.exe sndl inspect|validate|summary <file.sndl> [--snapshot <file.wsnap>]\n"
-              << "  win_ios.exe replay validate|inspect|run <file.wsnap> <file.sndl> [--max-instructions <n>] [--trace-wtr <out.wtr>] [--divergence-report <rep.json>] [--checkpoint-interval <n>] [--allow-smp]\n"
+              << "  win_ios.exe replay validate|inspect|run <file.wsnap> <file.sndl> [--max-instructions <n>] [--trace-wtr <out.wtr>] [--divergence-report <rep.json>] [--checkpoint-interval <n>] [--allow-smp] [--allow-four-core] [--allow-eight-core]\n"
               << "  win_ios.exe replay profile <file.wsnap> <file.sndl> [--max-instructions <n>] [--checkpoint-interval <n>] [--output <profile.json|profile.txt>] [--format text|json]\n"
               << "  win_ios.exe replay benchmark <file.wsnap> <file.sndl> [--max-instructions <n>] [--checkpoint-interval <n>] [--iterations <n>] [--profiling]\n"
               << "  win_ios.exe replay diagnostics <file.wsnap> <file.sndl> [--max-instructions <n>] [--checkpoint-interval <n>]\n"
@@ -628,6 +628,10 @@ int run_replay_mode(int argc, char* argv[]) {
             } else if (opt == "--allow-smp") {
                 config.allow_experimental_smp = true;
                 config.mode = winios::replay::ReplayMode::MultiCore;
+            } else if (opt == "--allow-four-core") {
+                config.allow_four_core_replay = true;
+            } else if (opt == "--allow-eight-core") {
+                config.allow_eight_core_replay = true;
             }
         }
 

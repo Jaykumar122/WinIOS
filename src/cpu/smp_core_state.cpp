@@ -89,6 +89,9 @@ void SmpCoreState::reset(std::size_t id, CoreLifecycleState initial_state) noexc
     mair_el1 = 0;
     cpacr_el1 = 0;
     cntvoff_el2 = 0;
+    tpidr_el0 = 0;
+    tpidr_el1 = 0;
+    tpidrro_el0 = 0;
 
     cntp_cval_el0 = 0;
     cntp_ctl_el0 = 0;
@@ -159,6 +162,10 @@ void SmpCoreState::capture_from_cpu(const CPU& cpu) {
     ttbr0_el1 = cpu.get_ttbr0_el1();
     ttbr1_el1 = cpu.get_ttbr1_el1();
     mair_el1 = cpu.get_mair_el1();
+    cpacr_el1 = cpu.get_cpacr_el1();
+    tpidr_el0 = cpu.get_tpidr_el0();
+    tpidr_el1 = cpu.get_tpidr_el1();
+    tpidrro_el0 = cpu.get_tpidrro_el0();
 
     const auto& pt = cpu.get_phys_timer();
     cntp_cval_el0 = pt.cval;
@@ -246,6 +253,10 @@ void SmpCoreState::apply_to_cpu(CPU& cpu) const {
     cpu.set_ttbr0_el1(ttbr0_el1);
     cpu.set_ttbr1_el1(ttbr1_el1);
     cpu.set_mair_el1(mair_el1);
+    cpu.set_cpacr_el1(cpacr_el1);
+    cpu.set_tpidr_el0(tpidr_el0);
+    cpu.set_tpidr_el1(tpidr_el1);
+    cpu.set_tpidrro_el0(tpidrro_el0);
 
     auto pt = cpu.get_phys_timer();
     pt.cval = cntp_cval_el0;
@@ -324,6 +335,9 @@ std::uint64_t SmpCoreState::compute_canonical_hash() const noexcept {
     h = fnv1a_u64(h, ttbr1_el1);
     h = fnv1a_u64(h, mair_el1);
     h = fnv1a_u64(h, cpacr_el1);
+    h = fnv1a_u64(h, tpidr_el0);
+    h = fnv1a_u64(h, tpidr_el1);
+    h = fnv1a_u64(h, tpidrro_el0);
 
     // Timers
     h = fnv1a_u64(h, cntp_cval_el0);
@@ -361,7 +375,8 @@ bool SmpCoreState::operator==(const SmpCoreState& o) const noexcept {
         far_el3 != o.far_el3 || vbar_el3 != o.vbar_el3 || scr_el3 != o.scr_el3) return false;
 
     if (sctlr_el1 != o.sctlr_el1 || tcr_el1 != o.tcr_el1 || ttbr0_el1 != o.ttbr0_el1 ||
-        ttbr1_el1 != o.ttbr1_el1 || mair_el1 != o.mair_el1 || cpacr_el1 != o.cpacr_el1) return false;
+        ttbr1_el1 != o.ttbr1_el1 || mair_el1 != o.mair_el1 || cpacr_el1 != o.cpacr_el1 ||
+        tpidr_el0 != o.tpidr_el0 || tpidr_el1 != o.tpidr_el1 || tpidrro_el0 != o.tpidrro_el0) return false;
 
     if (cntp_cval_el0 != o.cntp_cval_el0 || cntp_ctl_el0 != o.cntp_ctl_el0 ||
         cntv_cval_el0 != o.cntv_cval_el0 || cntv_ctl_el0 != o.cntv_ctl_el0) return false;
