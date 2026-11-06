@@ -43,3 +43,8 @@ artifacts/
 stage21_benchmark/
 divergence_report.json
 
+
+# Exclude markdown report files
+*.md
+!README.md
+!docs/progress.md
