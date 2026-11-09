@@ -42,10 +42,11 @@ constexpr SysRegDescriptor kDescriptors[] = {
     { SysRegId::PAR_EL1,          "PAR_EL1",          make_sysreg_key(3, 0, 7, 4, 0),  3, 0, 7, 4, 0, 1, true, true,  64, 0, 0, 0 },
     { SysRegId::ID_AA64MMFR0_EL1, "ID_AA64MMFR0_EL1", make_sysreg_key(3, 0, 0, 7, 0),  3, 0, 0, 7, 0, 1, true, false, 64, 0x0000000000001122ULL, 0, 0 },
     { SysRegId::DCZID_EL0,        "DCZID_EL0",        make_sysreg_key(3, 3, 0, 0, 7),  3, 3, 0, 0, 7, 0, true, false, 64, 0x4ULL, 0, 0 },
+    { SysRegId::CTR_EL0,          "CTR_EL0",          make_sysreg_key(3, 3, 0, 0, 1),  3, 3, 0, 0, 1, 0, true, false, 64, 0x4004ULL, 0, 0 },
     { SysRegId::MPIDR_EL1,        "MPIDR_EL1",        make_sysreg_key(3, 0, 0, 0, 5),  3, 0, 0, 0, 5, 1, true, false, 64, 0x80000000ULL, 0, 0 },
 
     // --- Generic Timers ---
-    { SysRegId::CNTFRQ_EL0,   "CNTFRQ_EL0",   make_sysreg_key(3, 3, 14, 0, 0), 3, 3, 14, 0, 0, 0, true, true,  64, 62500000ULL, 0, 0 },
+    { SysRegId::CNTFRQ_EL0,   "CNTFRQ_EL0",   make_sysreg_key(3, 3, 14, 0, 0), 3, 3, 14, 0, 0, 0, true, true,  64, 24000000ULL, 0, 0 },
     { SysRegId::CNTPCT_EL0,   "CNTPCT_EL0",   make_sysreg_key(3, 3, 14, 0, 1), 3, 3, 14, 0, 1, 0, true, false, 64, 0, 0, 0 },
     { SysRegId::CNTVCT_EL0,   "CNTVCT_EL0",   make_sysreg_key(3, 3, 14, 0, 2), 3, 3, 14, 0, 2, 0, true, false, 64, 0, 0, 0 },
     { SysRegId::CNTKCTL_EL1,  "CNTKCTL_EL1",  make_sysreg_key(3, 0, 14, 1, 0), 3, 0, 14, 1, 0, 1, true, true,  64, 0, 0, 0 },
@@ -135,6 +136,7 @@ constexpr SysRegDescriptor kDescriptors[] = {
 
     // --- Debug Architecture Registers ---
     { SysRegId::MDSCR_EL1,        "MDSCR_EL1",        make_sysreg_key(2, 0, 0, 2, 2), 2, 0, 0, 2, 2, 1, true, true,  64, 0, 0, 0 },
+    { SysRegId::MDCCINT_EL1,      "MDCCINT_EL1",      make_sysreg_key(2, 0, 0, 2, 0), 2, 0, 0, 2, 0, 1, true, true,  64, 0, 0, 0 },
     { SysRegId::DBGBVR0_EL1,      "DBGBVR0_EL1",      make_sysreg_key(2, 0, 0, 0, 4), 2, 0, 0, 0, 4, 1, true, true,  64, 0, 0, 0 },
     { SysRegId::DBGBVR1_EL1,      "DBGBVR1_EL1",      make_sysreg_key(2, 0, 0, 1, 4), 2, 0, 0, 1, 4, 1, true, true,  64, 0, 0, 0 },
     { SysRegId::DBGBVR2_EL1,      "DBGBVR2_EL1",      make_sysreg_key(2, 0, 0, 2, 4), 2, 0, 0, 2, 4, 1, true, true,  64, 0, 0, 0 },

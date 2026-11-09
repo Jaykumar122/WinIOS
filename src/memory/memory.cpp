@@ -61,6 +61,11 @@ std::uint64_t Memory::read_bytes(std::size_t offset, std::size_t width) const {
         value |= static_cast<std::uint64_t>(bytes_[offset + i])
                  << static_cast<unsigned>(i * kBitsPerByte);
     }
+
+    if (load_observer_) {
+        load_observer_(offset, width, value);
+    }
+
     return value;
 }
 

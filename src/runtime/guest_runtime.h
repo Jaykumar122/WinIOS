@@ -46,6 +46,13 @@ public:
     static ExecutionResult execute(const std::filesystem::path& path,
                                    const RuntimeConfig& config,
                                    CPU::TraceSink trace_sink = {});
+    // Prepares caller-owned state without executing guest instructions.
+    static ExecutionResult prepare_elf(const std::filesystem::path& path,
+                                       const RuntimeConfig& config, CPU& cpu,
+                                       Memory& memory, CPU::TraceSink trace_sink = {});
+    static ExecutionResult execute_elf(const std::filesystem::path& path,
+                                       const RuntimeConfig& config,
+                                       CPU::TraceSink trace_sink = {});
 };
 
 const char* execution_status_name(ExecutionStatus status) noexcept;

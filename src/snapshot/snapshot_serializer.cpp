@@ -61,7 +61,7 @@ std::vector<std::uint8_t> serialize_cpu_state(const CPU& cpu) {
     trace::encode_u32_le(dst + offset + 16, cpu.get_il() ? 1u : 0u);
     trace::encode_u32_le(dst + offset + 20, cpu.get_pstate_ss() ? 1u : 0u);
     trace::encode_u32_le(dst + offset + 24, cpu.architectural_exceptions() ? 1u : 0u);
-    trace::encode_u32_le(dst + offset + 28, 0u); // reserved
+    trace::encode_u32_le(dst + offset + 28, static_cast<std::uint32_t>(cpu.get_cpacr_el1()));
     offset += 32;
 
     // 5. SIMD V0..V31 (32 * 16 = 512 bytes) + FPCR/FPSR (8 bytes)
@@ -128,8 +128,8 @@ std::vector<std::uint8_t> serialize_cpu_state(const CPU& cpu) {
 
     // 10. Lifecycle State (8 bytes)
     dst[offset + 0] = cpu.is_halted() ? 1u : 0u;
-    dst[offset + 1] = cpu.is_waiting() ? 1u : 0u;
-    dst[offset + 2] = 0u; // waiting_for_event
+    dst[offset + 1] = cpu.is_waiting_for_interrupt() ? 1u : 0u;
+    dst[offset + 2] = cpu.is_waiting_for_event() ? 1u : 0u;
     dst[offset + 3] = cpu.get_event_register() ? 1u : 0u;
     dst[offset + 4] = cpu.is_started() ? 1u : 0u;
     dst[offset + 5] = cpu.is_stopped() ? 1u : 0u;
@@ -144,9 +144,16 @@ std::vector<std::uint8_t> serialize_cpu_state(const CPU& cpu) {
     return buffer;
 }
 
+std::vector<std::uint8_t> serialize_cpu_state_with_retirement(const CPU& cpu) {
+    auto buffer = serialize_cpu_state(cpu);
+    buffer.resize(1136, 0);
+    trace::encode_u64_le(buffer.data() + 1128, cpu.get_instruction_retirement_count());
+    return buffer;
+}
+
 SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, CPU& cpu) {
     constexpr std::size_t kCpuStatePayloadSize = 1128;
-    if (!src || size < kCpuStatePayloadSize) {
+    if (!src || size < kCpuStatePayloadSize || (size > 1128 && size < 1136)) {
         return SnapshotResult::fail(SnapshotErrorCode::TruncatedFile, "CPU state buffer truncated");
     }
 
@@ -177,6 +184,7 @@ SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, 
     cpu.set_il(trace::decode_u32_le(src + offset + 16) != 0);
     cpu.set_pstate_ss(trace::decode_u32_le(src + offset + 20) != 0);
     cpu.set_architectural_exceptions(trace::decode_u32_le(src + offset + 24) != 0);
+    cpu.set_cpacr_el1(trace::decode_u32_le(src + offset + 28));
     offset += 32;
 
     // 5. SIMD V0..V31 & FPCR/FPSR
@@ -236,7 +244,7 @@ SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, 
     cpu.set_par_el1(trace::decode_u64_le(src + offset + 40));
     offset += 48;
 
-    // 10. Lifecycle
+    // 10. Lifecycle and local exclusive monitor metadata.
     cpu.set_halted(src[offset + 0] != 0u);
     cpu.set_waiting_for_interrupt(src[offset + 1] != 0u);
     cpu.set_waiting_for_event(src[offset + 2] != 0u);
@@ -248,10 +256,11 @@ SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, 
     // 11. Trace Sequence
     cpu.set_instruction_trace_sequence(trace::decode_u64_le(src + offset));
     offset += 8;
+    cpu.set_instruction_retirement_count(size >= 1136 ? trace::decode_u64_le(src + 1128) : 0);
 
+    cpu.clear_exclusive_monitor();
     // Architectural policy: flush TLB on restore
     cpu.get_mmu().invalidate_tlb_all();
-    cpu.clear_exclusive_monitor();
 
     return SnapshotResult::ok();
 }
@@ -427,7 +436,7 @@ std::vector<std::uint8_t> serialize_timer_state(const VirtualTime& vt, std::size
 
         trace::encode_u64_le(dst + offset + 40, vt.get_cntvoff_el2(c));
         trace::encode_u64_le(dst + offset + 48, vt.get_cntkctl_el1(c));
-        trace::encode_u32_le(dst + offset + 56, static_cast<std::uint32_t>(vt.get_cnthctl_el2(c)));
+        trace::encode_u64_le(dst + offset + 56, vt.get_cnthctl_el2(c));
         dst[offset + 60] = vt.is_core_offline(c) ? 1u : 0u;
         dst[offset + 61] = 0u;
         dst[offset + 62] = 0u;
@@ -482,7 +491,7 @@ SnapshotResult deserialize_timer_state(const std::uint8_t* src, std::size_t size
 
         vt.set_cntvoff_el2(c, trace::decode_u64_le(src + offset + 40));
         vt.set_cntkctl_el1(c, trace::decode_u64_le(src + offset + 48));
-        vt.set_cnthctl_el2(c, trace::decode_u32_le(src + offset + 56));
+        vt.set_cnthctl_el2(c, trace::decode_u64_le(src + offset + 56));
         vt.set_core_offline(c, src[offset + 60] != 0u);
 
         offset += 64;
@@ -718,7 +727,7 @@ std::vector<std::uint8_t> serialize_pmu_state(const PMU& pmu, std::size_t core_i
 
     trace::encode_u64_le(dst + 32, pmu.read_pmccntr());
     trace::encode_u32_le(dst + 40, pmu.read_pmccfiltr());
-    trace::encode_u32_le(dst + 44, 0u);
+    trace::encode_u32_le(dst + 44, static_cast<std::uint32_t>(pmu.cycle_prescaler()));
 
     for (std::size_t i = 0; i < 6; ++i) {
         trace::encode_u32_le(dst + 48 + i * 4, pmu.read_pmevcntr(i));
@@ -743,6 +752,7 @@ SnapshotResult deserialize_pmu_state(const std::uint8_t* src, std::size_t size, 
 
     pmu.write_pmccntr(trace::decode_u64_le(src + 32));
     pmu.write_pmccfiltr(trace::decode_u32_le(src + 40));
+    pmu.set_cycle_prescaler(trace::decode_u32_le(src + 44));
 
     for (std::size_t i = 0; i < 6; ++i) {
         pmu.write_pmevcntr(i, trace::decode_u32_le(src + 48 + i * 4));
@@ -757,16 +767,17 @@ SnapshotResult deserialize_pmu_state(const std::uint8_t* src, std::size_t size, 
 // =============================================================================
 
 std::vector<std::uint8_t> serialize_debug_state(const DebugArchitecture& dbg, std::size_t core_id) {
-    // Header (16 bytes: core_id, pad, mdscr_el1)
+    // Header (16 bytes: core_id, mdccint_el1 (Stage 39, formerly pad), mdscr_el1)
     // 4 Breakpoints: 4 * 16 = 64 bytes
     // 4 Watchpoints: 4 * 16 = 64 bytes
-    // Total = 144 bytes
+    // Total = 144 bytes (format-compatible with pre-Stage-39 snapshots: the
+    // 4-byte field at offset 4 was zero, which decodes as MDCCINT_EL1 == 0).
     constexpr std::size_t kDebugSize = 144;
     std::vector<std::uint8_t> buffer(kDebugSize, 0u);
     std::uint8_t* dst = buffer.data();
 
     trace::encode_u32_le(dst + 0, static_cast<std::uint32_t>(core_id));
-    trace::encode_u32_le(dst + 4, 0u);
+    trace::encode_u32_le(dst + 4, static_cast<std::uint32_t>(dbg.get_mdccint_el1() & 0xFu));
     trace::encode_u64_le(dst + 8, dbg.get_mdscr_el1());
 
     std::size_t offset = 16;
@@ -793,6 +804,7 @@ SnapshotResult deserialize_debug_state(const std::uint8_t* src, std::size_t size
         return SnapshotResult::fail(SnapshotErrorCode::TruncatedFile, "Debug state truncated");
     }
 
+    dbg.set_mdccint_el1(trace::decode_u32_le(src + 4));
     dbg.set_mdscr_el1(trace::decode_u64_le(src + 8));
 
     std::size_t offset = 16;

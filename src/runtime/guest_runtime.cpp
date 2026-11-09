@@ -1,6 +1,7 @@
 #include "guest_runtime.h"
 
 #include "loader/binary_loader.h"
+#include "loader/elf_loader.h"
 
 #include <limits>
 #include <stdexcept>
@@ -16,6 +17,23 @@ ExecutionResult invalid_result(const std::string& message) {
 
 bool range_overflows(std::uint64_t start, std::uint64_t size) {
     return size > std::numeric_limits<std::uint64_t>::max() - start;
+}
+std::string elf_config_error(const RuntimeConfig& config, bool have_sink) {
+    if (config.memory_size == 0 || config.max_instructions == 0
+        || config.stack_size == 0 || config.stack_base > config.memory_size
+        || config.stack_size > config.memory_size
+        || range_overflows(config.stack_base, config.stack_size)
+        || config.stack_base + config.stack_size > config.memory_size) {
+        return "Runtime memory, stack, and instruction limit must be nonzero and valid";
+    }
+    if ((config.stack_base + config.stack_size) % 16u != 0u) {
+        return "ELF initial stack pointer must be 16-byte aligned";
+    }
+    if (config.completion_sentinel.has_value()) {
+        return "ELF execution uses HLT, not a completion sentinel";
+    }
+    if (config.tracing && !have_sink) return "Tracing requires a trace sink";
+    return {};
 }
 }
 
@@ -38,6 +56,7 @@ ExecutionResult GuestRuntime::execute(const std::filesystem::path& path,
         || config.stack_size == 0) {
         return invalid_result("Runtime memory, stack, and instruction limit must be nonzero");
     }
+
     if (config.load_address > config.memory_size
         || config.entry_address > config.memory_size
         || config.stack_base > config.memory_size
@@ -129,6 +148,89 @@ ExecutionResult GuestRuntime::execute(const std::filesystem::path& path,
         ExecutionResult result;
         result.status = ExecutionStatus::load_error;
         result.error = error.what();
+        return result;
+    } catch (const std::exception& error) {
+        ExecutionResult result;
+        result.status = ExecutionStatus::load_error;
+        result.error = error.what();
+        return result;
+    }
+}
+
+ExecutionResult GuestRuntime::prepare_elf(const std::filesystem::path& path,
+                                          const RuntimeConfig& config, CPU& cpu,
+                                          Memory& memory, CPU::TraceSink trace_sink) {
+    const auto error = elf_config_error(config, static_cast<bool>(trace_sink));
+    if (!error.empty()) return invalid_result(error);
+    if (memory.size() != config.memory_size) return invalid_result("ELF memory size mismatch");
+    try {
+        const LoadedElf loaded = ElfLoader::load(path, memory);
+        for (const LoadedElfSegment& segment : loaded.segments) {
+            if (segment.address < config.stack_base + config.stack_size
+                && config.stack_base < segment.address + segment.size) {
+                return invalid_result("ELF segment overlaps configured stack");
+            }
+        }
+        cpu.initialize_entry(loaded.entry_address, memory);
+        cpu.set_stack_pointer(config.stack_base + config.stack_size);
+        if (config.tracing) cpu.set_trace_sink(std::move(trace_sink));
+        ExecutionResult result;
+        result.status = ExecutionStatus::completed;
+        result.loaded_bytes = loaded.loaded_bytes;
+        return result;
+    } catch (const std::exception& error) {
+        ExecutionResult result;
+        result.status = ExecutionStatus::load_error;
+        result.error = error.what();
+        return result;
+    }
+}
+
+ExecutionResult GuestRuntime::execute_elf(const std::filesystem::path& path,
+                                          const RuntimeConfig& config,
+                                          CPU::TraceSink trace_sink) {
+    const auto error = elf_config_error(config, static_cast<bool>(trace_sink));
+    if (!error.empty()) return invalid_result(error);
+    try {
+        Memory memory(config.memory_size);
+        CPU cpu;
+        ExecutionResult result = prepare_elf(path, config, cpu, memory, std::move(trace_sink));
+        if (result.status != ExecutionStatus::completed) return result;
+        const auto capture_state = [&] {
+            result.final_pc = cpu.get_program_counter();
+            result.final_stack_pointer = cpu.get_stack_pointer();
+            for (std::size_t index = 0; index < CPU::kRegisterCount; ++index) {
+                result.final_registers[index] = cpu.read_register(index);
+            }
+            if (memory.size() >= 0x108u) {
+                result.memory_at_0x100 = memory.read_u64(0x100u);
+            }
+        };
+        for (std::size_t count = 0; count < config.max_instructions; ++count) {
+            try {
+                cpu.step(memory);
+            } catch (const std::out_of_range& error) {
+                result.status = ExecutionStatus::memory_fault;
+                result.error = error.what();
+                result.instructions_executed = count;
+                capture_state();
+                return result;
+            } catch (const std::runtime_error& error) {
+                result.status = ExecutionStatus::unsupported_instruction;
+                result.error = error.what();
+                result.instructions_executed = count;
+                capture_state();
+                return result;
+            }
+            result.instructions_executed = count + 1;
+            if (cpu.is_halted()) {
+                result.status = ExecutionStatus::completed;
+                capture_state();
+                return result;
+            }
+        }
+        result.status = ExecutionStatus::instruction_limit_reached;
+        capture_state();
         return result;
     } catch (const std::exception& error) {
         ExecutionResult result;

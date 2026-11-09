@@ -97,6 +97,10 @@ void SmpCoreState::reset(std::size_t id, CoreLifecycleState initial_state) noexc
     cntp_ctl_el0 = 0;
     cntv_cval_el0 = 0;
     cntv_ctl_el0 = 0;
+
+    debug = SmpDebugState{};
+    pmu = SmpPmuState{};
+    pmu.pmcr = static_cast<std::uint32_t>(kNumEventCounters) << kPMCRNumCountersShift;
 }
 
 void SmpCoreState::capture_from_cpu(const CPU& cpu) {
@@ -173,6 +177,34 @@ void SmpCoreState::capture_from_cpu(const CPU& cpu) {
     const auto& vt = cpu.get_virt_timer();
     cntv_cval_el0 = vt.cval;
     cntv_ctl_el0 = (vt.enable ? 1u : 0u) | (vt.imask ? 2u : 0u) | (vt.istatus ? 4u : 0u);
+
+    // Stage 39: per-core architectural debug configuration.
+    const auto& dbg = cpu.get_debug_arch();
+    debug.mdscr_el1 = dbg.get_mdscr_el1();
+    debug.mdccint_el1 = dbg.get_mdccint_el1();
+    for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+        debug.breakpoint_value[i] = dbg.get_dbgbvr(i);
+        debug.breakpoint_control[i] = dbg.get_dbgbcr(i);
+    }
+    for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+        debug.watchpoint_value[i] = dbg.get_dbgwvr(i);
+        debug.watchpoint_control[i] = dbg.get_dbgwcr(i);
+    }
+
+    const auto& p = cpu.get_pmu();
+    pmu.pmcr = p.read_pmcr();
+    pmu.counter_enable = p.read_pmcntenset();
+    pmu.overflow_status = p.read_pmovsset();
+    pmu.interrupt_enable = p.read_pmintenset();
+    pmu.selector = p.read_pmselr();
+    pmu.user_enable = p.read_pmuserenr();
+    pmu.cycle_counter = p.read_pmccntr();
+    pmu.cycle_filter = p.read_pmccfiltr();
+    pmu.cycle_prescaler = p.cycle_prescaler();
+    for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+        pmu.event_counter[i] = p.read_pmevcntr(i);
+        pmu.event_type[i] = p.read_pmevtyper(i);
+    }
 }
 
 void SmpCoreState::apply_to_cpu(CPU& cpu) const {
@@ -271,6 +303,35 @@ void SmpCoreState::apply_to_cpu(CPU& cpu) const {
     vt.imask = (cntv_ctl_el0 & 2u) != 0;
     vt.istatus = (cntv_ctl_el0 & 4u) != 0;
     cpu.set_virt_timer(vt);
+
+    // Stage 39: restore per-core architectural debug configuration.
+    auto& dbg = cpu.get_debug_arch();
+    dbg.set_mdscr_el1(debug.mdscr_el1);
+    dbg.set_mdccint_el1(debug.mdccint_el1);
+    for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+        dbg.set_dbgbvr(i, debug.breakpoint_value[i]);
+        dbg.set_dbgbcr(i, debug.breakpoint_control[i]);
+    }
+    for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+        dbg.set_dbgwvr(i, debug.watchpoint_value[i]);
+        dbg.set_dbgwcr(i, debug.watchpoint_control[i]);
+    }
+
+    auto& p = cpu.get_pmu();
+    p.reset();
+    p.write_pmcr(pmu.pmcr);
+    p.write_pmcntenset(pmu.counter_enable);
+    p.write_pmovsset(pmu.overflow_status);
+    p.write_pmintenset(pmu.interrupt_enable);
+    p.write_pmselr(pmu.selector);
+    p.write_pmuserenr(pmu.user_enable);
+    p.write_pmccntr(pmu.cycle_counter);
+    p.write_pmccfiltr(pmu.cycle_filter);
+    p.set_cycle_prescaler(pmu.cycle_prescaler);
+    for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+        p.write_pmevcntr(i, pmu.event_counter[i]);
+        p.write_pmevtyper(i, pmu.event_type[i]);
+    }
 }
 
 std::uint64_t SmpCoreState::compute_canonical_hash() const noexcept {
@@ -345,6 +406,32 @@ std::uint64_t SmpCoreState::compute_canonical_hash() const noexcept {
     h = fnv1a_u64(h, cntv_cval_el0);
     h = fnv1a_u32(h, cntv_ctl_el0);
 
+    // Stage 39: architectural debug configuration
+    h = fnv1a_u64(h, debug.mdscr_el1);
+    h = fnv1a_u64(h, debug.mdccint_el1);
+    for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+        h = fnv1a_u64(h, debug.breakpoint_value[i]);
+        h = fnv1a_u32(h, debug.breakpoint_control[i]);
+    }
+    for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+        h = fnv1a_u64(h, debug.watchpoint_value[i]);
+        h = fnv1a_u32(h, debug.watchpoint_control[i]);
+    }
+
+    h = fnv1a_u32(h, pmu.pmcr);
+    h = fnv1a_u32(h, pmu.counter_enable);
+    h = fnv1a_u32(h, pmu.overflow_status);
+    h = fnv1a_u32(h, pmu.interrupt_enable);
+    h = fnv1a_u32(h, pmu.selector);
+    h = fnv1a_u32(h, pmu.user_enable);
+    h = fnv1a_u64(h, pmu.cycle_counter);
+    h = fnv1a_u32(h, pmu.cycle_filter);
+    h = fnv1a_u64(h, pmu.cycle_prescaler);
+    for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+        h = fnv1a_u32(h, pmu.event_counter[i]);
+        h = fnv1a_u32(h, pmu.event_type[i]);
+    }
+
     return h;
 }
 
@@ -380,6 +467,8 @@ bool SmpCoreState::operator==(const SmpCoreState& o) const noexcept {
 
     if (cntp_cval_el0 != o.cntp_cval_el0 || cntp_ctl_el0 != o.cntp_ctl_el0 ||
         cntv_cval_el0 != o.cntv_cval_el0 || cntv_ctl_el0 != o.cntv_ctl_el0) return false;
+
+    if (debug != o.debug || pmu != o.pmu) return false;
 
     return true;
 }

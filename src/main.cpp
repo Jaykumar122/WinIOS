@@ -1,4 +1,6 @@
 #include "cpu/cpu.h"
+#include "app/darwin_boot_cli.h"
+#include "app/elf_session_cli.h"
 #include "debugger/debugger.h"
 #include "inferno/inferno_launcher.h"
 #include "loader/binary_loader.h"
@@ -53,8 +55,15 @@ void print_usage() {
     std::cout << "Usage:\n"
               << "  win_ios.exe\n"
               << "  win_ios.exe --debug\n"
+              << "  win_ios.exe darwin boot --kernelcache <path> [--append <boot-args>] [--memory <MB>] [--smp <cores>] [--display] [--headless] [--screenshot <path>]\n"
+              << "  win_ios.exe darwin info --kernelcache <path>\n"
               << "  win_ios.exe --run-binary <path> --memory-size <bytes>"
                  " --entry <address> --max-instructions <count> [--trace]\n"
+              << "  win_ios.exe elf-session run|capture|record|replay --memory-size <bytes> --max-instructions <count>\n"
+                 "                --elf <file>|--restore <snapshot> [--snapshot <out>] [--log <file>] [--manifest <file>]\n"
+              << "  win_ios.exe --run-elf <path> --memory-size <bytes>"
+                 " --max-instructions <count> [--trace]\n"
+                 "                [--stack-base <address>] [--stack-size <bytes>]\n"
               << "  win_ios.exe --inferno info|version|machines|t8030"
                  " [--inferno-exe <path>] [--inferno-runtime <dir>]\n"
                  "                [--inferno-workdir <dir>] [--inferno-timeout <ms>]\n"
@@ -241,7 +250,7 @@ int run_inferno_mode(int argc, char* argv[]) {
     return 0;
 }
 
-int run_binary_mode(int argc, char* argv[]) {
+int run_guest_mode(int argc, char* argv[], bool elf_mode) {
     std::string binary_path;
     std::size_t memory_size = 0;
     std::uint64_t entry = 0;
@@ -251,12 +260,14 @@ int run_binary_mode(int argc, char* argv[]) {
     bool have_memory_size = false;
     bool have_entry = false;
     bool have_limit = false;
+    bool have_stack_base = false;
+    bool have_stack_size = false;
     std::optional<std::uint64_t> sentinel;
     bool trace = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view option(argv[index]);
-        if (option == "--run-binary") {
+        if (option == (elf_mode ? "--run-elf" : "--run-binary")) {
             if (++index >= argc) throw std::invalid_argument("Missing binary path");
             binary_path = argv[index];
         } else if (option == "--memory-size") {
@@ -264,7 +275,7 @@ int run_binary_mode(int argc, char* argv[]) {
             memory_size = static_cast<std::size_t>(
                 parse_integer(argv[index], "--memory-size"));
             have_memory_size = true;
-        } else if (option == "--entry") {
+        } else if (option == "--entry" && !elf_mode) {
             if (++index >= argc) throw std::invalid_argument("Missing entry address");
             entry = parse_integer(argv[index], "--entry");
             have_entry = true;
@@ -273,27 +284,35 @@ int run_binary_mode(int argc, char* argv[]) {
             max_instructions = static_cast<std::size_t>(
                 parse_integer(argv[index], "--max-instructions"));
             have_limit = true;
-        } else if (option == "--sentinel") {
+        } else if (option == "--sentinel" && !elf_mode) {
             if (++index >= argc) throw std::invalid_argument("Missing completion sentinel");
             sentinel = parse_integer(argv[index], "--sentinel");
+        } else if (option == "--stack-base" && elf_mode) {
+            if (++index >= argc) throw std::invalid_argument("Missing stack base");
+            stack_base = parse_integer(argv[index], "--stack-base");
+            have_stack_base = true;
+        } else if (option == "--stack-size" && elf_mode) {
+            if (++index >= argc) throw std::invalid_argument("Missing stack size");
+            stack_size = static_cast<std::size_t>(parse_integer(argv[index], "--stack-size"));
+            have_stack_size = true;
         } else if (option == "--trace") {
             trace = true;
         } else {
-            throw std::invalid_argument("Unknown binary-run option: " + std::string(option));
+            throw std::invalid_argument("Unknown guest-run option: " + std::string(option));
         }
     }
-    if (binary_path.empty() || !have_memory_size || !have_entry || !have_limit
-        || memory_size == 0) {
-        throw std::invalid_argument(
-            "--run-binary requires path, nonzero memory-size, entry, and "
-            "max-instructions");
+    if (binary_path.empty() || !have_memory_size || (!elf_mode && !have_entry)
+        || !have_limit || memory_size == 0 || (elf_mode && max_instructions == 0)) {
+        throw std::invalid_argument(elf_mode
+            ? "--run-elf requires path, nonzero memory-size and max-instructions"
+            : "--run-binary requires path, nonzero memory-size, entry, and max-instructions");
     }
 
-    stack_size = 4096;
+    if (!have_stack_size) stack_size = 4096;
     if (memory_size < stack_size) {
-        throw std::invalid_argument("Memory size is too small for the default stack");
+        throw std::invalid_argument("Memory size is too small for the configured stack");
     }
-    stack_base = memory_size - stack_size;
+    if (!have_stack_base) stack_base = memory_size - stack_size;
     RuntimeConfig config{memory_size, entry, entry, stack_base, stack_size,
                          max_instructions, sentinel, trace};
     CPU::TraceSink sink;
@@ -306,7 +325,9 @@ int run_binary_mode(int argc, char* argv[]) {
                       << '\n';
         };
     }
-    const ExecutionResult result = GuestRuntime::execute(binary_path, config, sink);
+    const ExecutionResult result = elf_mode
+        ? GuestRuntime::execute_elf(path_from_utf8(binary_path), config, sink)
+        : GuestRuntime::execute(binary_path, config, sink);
     std::cout << "Status: " << execution_status_name(result.status) << '\n'
               << "Loaded bytes: " << result.loaded_bytes << '\n'
               << "Instructions executed: " << result.instructions_executed << '\n'
@@ -1298,6 +1319,9 @@ int main(int argc, char* argv[]) {
     std::cout << "ARM64 emulation research prototype\n";
 
     try {
+    if (argc > 1 && (std::string_view(argv[1]) == "darwin" || std::string_view(argv[1]) == "--darwin")) {
+        return winios::app::DarwinBootCli::run(argc, argv);
+    }
     if (argc > 1 && (std::string_view(argv[1]) == "smp" || std::string_view(argv[1]) == "--smp")) {
         return run_smp_mode(argc, argv);
     }
@@ -1320,8 +1344,14 @@ int main(int argc, char* argv[]) {
     if (argc > 1 && (std::string_view(argv[1]) == "trace" || std::string_view(argv[1]) == "--trace-analyze")) {
         return run_trace_mode(argc, argv);
     }
+    if (argc > 1 && std::string_view(argv[1]) == "elf-session") {
+        return run_elf_session_cli(argc, argv);
+    }
     if (argc > 1 && std::string_view(argv[1]) == "--run-binary") {
-        return run_binary_mode(argc, argv);
+        return run_guest_mode(argc, argv, false);
+    }
+    if (argc > 1 && std::string_view(argv[1]) == "--run-elf") {
+        return run_guest_mode(argc, argv, true);
     }
     if (argc > 1 && std::string_view(argv[1]) == "--inferno") {
         return run_inferno_mode(argc, argv);

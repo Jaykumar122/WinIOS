@@ -22,6 +22,7 @@
 class Memory {
 public:
     using StoreObserver = std::function<void(std::size_t offset, std::size_t width)>;
+    using LoadObserver = std::function<void(std::size_t offset, std::size_t width, std::uint64_t value)>;
 
     // Creates guest RAM of `size` bytes, all initialized to zero.
     // Throws std::invalid_argument when `size` is zero.
@@ -74,6 +75,15 @@ public:
         return static_cast<bool>(store_observer_);
     }
 
+    // Installs the load observer.
+    void set_load_observer(LoadObserver observer) {
+        load_observer_ = std::move(observer);
+    }
+    void clear_load_observer() { load_observer_ = {}; }
+    bool has_load_observer() const noexcept {
+        return static_cast<bool>(load_observer_);
+    }
+
     // Optional cluster-wide store serialization mutex. When set, every write
     // holds it before acquiring its memory stripe(s). This is the point that
     // makes an exclusive load/store pair (or an LSE RMW) atomic with respect
@@ -106,5 +116,6 @@ private:
 
     std::atomic<bool> concurrent_{false};
     StoreObserver store_observer_{};
+    LoadObserver load_observer_{};
     std::recursive_mutex* store_mutex_{nullptr};
 };

@@ -18,6 +18,8 @@ inline constexpr std::size_t kMemoryChunkSizeBytes = 65536; // 64 KB chunks
 
 // Serialization routines producing packed Little-Endian byte buffers
 std::vector<std::uint8_t> serialize_cpu_state(const CPU& cpu);
+// Append-only continuation metadata for full snapshots; legacy encoder stays 1128 bytes.
+std::vector<std::uint8_t> serialize_cpu_state_with_retirement(const CPU& cpu);
 [[nodiscard]] SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, CPU& cpu);
 
 std::vector<std::uint8_t> serialize_memory_state(const Memory& memory, std::size_t chunk_size = kMemoryChunkSizeBytes);

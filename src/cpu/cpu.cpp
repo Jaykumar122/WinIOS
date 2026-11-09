@@ -210,6 +210,8 @@ constexpr std::uint32_t kBranchLink = 0x94000000u;
 constexpr std::uint32_t kBranchRegisterMask = 0xFFFFFC1Fu;
 constexpr std::uint32_t kBranchRegister = 0xD61F0000u;
 constexpr std::uint32_t kBranchLinkRegister = 0xD63F0000u;
+constexpr std::uint32_t kCompareBranch = 0x34000000u;
+constexpr std::uint32_t kTestBranch = 0x36000000u;
 constexpr std::uint32_t kReturnRegister = 0xD65F0000u;
 constexpr std::uint32_t kConditionalBranchMask = 0xFF000010u;
 constexpr std::uint32_t kConditionalBranch = 0x54000000u;
@@ -243,6 +245,9 @@ constexpr std::uint32_t kExclusiveGroup = 0x08000000u;
 // LSE atomics: size(31:30) 111000 A R 1 Rs opc(15:12) 00 Rn Rt.
 constexpr std::uint32_t kLseAtomicMask = 0x3F200C00u;
 constexpr std::uint32_t kLseAtomicPattern = 0x38200000u;
+// LSE CAS: size(31:30) 001000 A L 1 Rs 0 0 0 0 0 Rn Rt.
+constexpr std::uint32_t kLseCasMask = 0x0F20FC00u;
+constexpr std::uint32_t kLseCasPattern = 0x08207C00u;
 constexpr std::uint8_t kNegative = 0x8u;
 constexpr std::uint8_t kZero = 0x4u;
 constexpr std::uint8_t kCarry = 0x2u;
@@ -1134,6 +1139,22 @@ bool disassemble_exclusive_or_atomic(std::uint32_t instruction,
         }
         return false;
     }
+    if ((instruction & kLseCasMask) == kLseCasPattern) {
+        const std::uint32_t source = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t target = instruction & 0x1Fu;
+        std::string mnemonic = "CAS";
+        if ((instruction & (1u << 23u)) != 0) mnemonic += "A";
+        if ((instruction & (1u << 22u)) != 0) mnemonic += "L";
+        if (size_field == 0u) mnemonic += "B";
+        else if (size_field == 1u) mnemonic += "H";
+        std::ostringstream stream;
+        stream << mnemonic << ' ' << access_register_name(source, size_field)
+               << ", " << access_register_name(target, size_field)
+               << ", [" << stack_register_name(base) << ']';
+        text = stream.str();
+        return true;
+    }
     if ((instruction & kLseAtomicMask) != kLseAtomicPattern) {
         return false;
     }
@@ -1765,7 +1786,10 @@ inline std::uint16_t sysreg_key(std::uint32_t instruction) noexcept {
     // only treat as op0=2 (o0 = 0) if the register is in the debug encoding space.
     std::uint32_t o0 = (instruction >> 19u) & 0x1u;
     if (o0 == 0u) {
-        const bool is_debug_space = (op1 == 0u && crn == 0u && (op2 == 2u || (op2 >= 4u && op2 <= 7u)));
+        const bool is_debug_space =
+            (op1 == 0u && crn == 0u &&
+             ((crm == 2u && (op2 == 0u || op2 == 2u)) ||
+              (op2 >= 4u && op2 <= 7u)));
         if (!is_debug_space) {
             o0 = 1u; // legacy test encoding for op0=3 register
         }
@@ -1818,6 +1842,8 @@ constexpr std::uint16_t kSysregID_AA64MMFR0 = (1u<<14)|(0u<<11)|(0u<<7)|(7u<<3)|
 constexpr std::uint16_t kSysregPAR_EL1   = (1u<<14)|(0u<<11)|(7u<<7)|(4u<<3)|0u; // 0x43A0
 // Phase 38: DCZID_EL0 (op0=3, op1=3, CRn=0, CRm=0, op2=7)
 constexpr std::uint16_t kSysregDCZID_EL0 = (1u<<14)|(3u<<11)|(0u<<7)|(0u<<3)|7u; // 0x5807
+constexpr std::uint16_t kSysregCTR_EL0 = (1u<<14)|(3u<<11)|(0u<<7)|(0u<<3)|1u; // 0x5801
+constexpr std::size_t kCacheLineBytes = 64u;
 // Phase 36: Thread Pointer system registers
 constexpr std::uint16_t kSysregTPIDR_EL0   = (1u<<14)|(3u<<11)|(13u<<7)|(0u<<3)|2u; // 0x5E82
 constexpr std::uint16_t kSysregTPIDR_EL1   = (1u<<14)|(0u<<11)|(13u<<7)|(0u<<3)|4u; // 0x4684
@@ -1918,6 +1944,8 @@ constexpr std::uint16_t kSysregMDCR_EL2      = (1u<<14)|(4u<<11)|(1u<<7)|(1u<<3)
 // Phase 51: Debug Architecture system registers
 // MDSCR_EL1: op0=2, op1=0, CRn=0, CRm=2, op2=2 -> key = (0<<14)|(0<<11)|(0<<7)|(2<<3)|2
 constexpr std::uint16_t kSysregMDSCR_EL1     = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|2u;  // 0x0012
+// MDCCINT_EL1: op0=2, op1=0, CRn=0, CRm=2, op2=0 -> key = 0x0010
+constexpr std::uint16_t kSysregMDCCINT_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(2u<<3)|0u;  // 0x0010
 // DBGBVR<n>_EL1: op0=2, op1=0, CRn=0, CRm=n, op2=4 (n=0..15, we support 0..3)
 constexpr std::uint16_t kSysregDBGBVR0_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(0u<<3)|4u;  // 0x0004
 constexpr std::uint16_t kSysregDBGBVR1_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(1u<<3)|4u;  // 0x000C
@@ -1968,6 +1996,7 @@ inline bool is_pmu_reg(std::uint16_t key) noexcept {
 inline bool is_debug_reg(std::uint16_t key) noexcept {
     switch (key) {
     case kSysregMDSCR_EL1:
+    case kSysregMDCCINT_EL1:
     case kSysregDBGBVR0_EL1:
     case kSysregDBGBVR1_EL1:
     case kSysregDBGBVR2_EL1:
@@ -2014,6 +2043,7 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     case kSysregID_AA64MMFR0: return "ID_AA64MMFR0_EL1";
     case kSysregPAR_EL1:  return "PAR_EL1";
     case kSysregDCZID_EL0: return "DCZID_EL0";
+    case kSysregCTR_EL0: return "CTR_EL0";
     case kSysregTPIDR_EL0:   return "TPIDR_EL0";
     case kSysregTPIDR_EL1:   return "TPIDR_EL1";
     case kSysregTPIDRRO_EL0: return "TPIDRRO_EL0";
@@ -2098,6 +2128,7 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     case kSysregMDCR_EL2:       return "MDCR_EL2";
     // Phase 51: Debug Architecture system registers
     case kSysregMDSCR_EL1:      return "MDSCR_EL1";
+    case kSysregMDCCINT_EL1:    return "MDCCINT_EL1";
     case kSysregDBGBVR0_EL1:    return "DBGBVR0_EL1";
     case kSysregDBGBVR1_EL1:    return "DBGBVR1_EL1";
     case kSysregDBGBVR2_EL1:    return "DBGBVR2_EL1";
@@ -2119,11 +2150,10 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     }
 }
 // Detects the system-register (MRS/MSR) group:
-// bits[31:22] = 1101010100 and bit20 = 1 (op0=3 sysreg group).
-// Returns true if the instruction is in the Phase 35 system-register group.
+// bits[31:22] = 1101010100. Bit 21 distinguishes MRS from MSR; it is not
+// part of the group discriminator.
 inline bool is_sysreg_instr(std::uint32_t instr) noexcept {
-    return ((instr & 0xFFC00000u) == 0xD5000000u)
-        && ((instr & 0x00100000u) != 0u);
+    return (instr & 0xFFC00000u) == 0xD5000000u;
 }
 // Build SPSR_EL1 value from PSTATE.
 // SPSR format (AArch64):
@@ -4072,6 +4102,10 @@ void CPU::write_h_register(std::size_t index, std::uint16_t value) {
 }
 void CPU::deliver_architectural_exception(const ArchitecturalException& exc) {
     exception_taken_in_step_ = true;
+    clear_exclusive_monitor();
+    if (smp_cluster_) {
+        smp_cluster_->clear_exclusive_reservation(core_id_);
+    }
     const unsigned prev_el = current_el_;
     const bool prev_spsel = sp_sel_;
     const std::uint8_t prev_daif = daif_;
@@ -4475,6 +4509,11 @@ void CPU::on_instruction_retired_step(bool is_exclusive, std::uint64_t stepped_p
     dev.source_el = static_cast<unsigned>(current_el_);
     dev.instruction_address = program_counter_;
     dev.is_exclusive = is_exclusive;
+    winios::DebugEvent debug_event;
+    debug_event.type = winios::DebugEventType::SoftwareStep;
+    debug_event.address = program_counter_;
+    debug_event.source_el = static_cast<unsigned>(current_el_);
+    debug_arch_.record_debug_event(debug_event);
     const unsigned target_el = winios::determine_debug_target_el(
         dev.source_el, mdcr_el2_, mdcr_el3_, hcr_el2_);
     SynchronousException ex = winios::create_debug_synchronous_exception(dev, target_el);
@@ -4992,6 +5031,7 @@ void CPU::step(Memory& guest_memory) {
         CPU& cpu;
         bool retired{false};
         bool is_exclusive{false};
+        bool is_branch{false};
         bool ss_active{false};
         bool was_ss{false};
         std::uint64_t instruction_address{0};
@@ -5002,12 +5042,16 @@ void CPU::step(Memory& guest_memory) {
             if (retired && !cpu.exception_taken_in_step()) {
                 ++cpu.instruction_retirement_count_;
                 cpu.get_pmu().on_event(winios::ARMV8_EVENT_INST_RETIRED, static_cast<unsigned>(cpu.get_current_el()));
+                if (is_branch) {
+                    cpu.get_pmu().on_event(winios::ARMV8_EVENT_BR_IMMED_RETIRED,
+                                           static_cast<unsigned>(cpu.get_current_el()));
+                }
                 if (ss_active && was_ss) {
                     cpu.on_instruction_retired_step(is_exclusive, instruction_address);
                 }
             }
         }
-    } counter_guard{*this, false, false, ss_active_at_start, was_pstate_ss, program_counter_};
+    } counter_guard{*this, false, false, false, ss_active_at_start, was_pstate_ss, program_counter_};
 
     if (architectural_exceptions_) {
         if (check_pending_interrupts()) {
@@ -5020,6 +5064,11 @@ void CPU::step(Memory& guest_memory) {
             dev.kind = winios::DebugExceptionKind::SoftwareStep;
             dev.source_el = static_cast<unsigned>(current_el_);
             dev.instruction_address = program_counter_;
+            winios::DebugEvent debug_event;
+            debug_event.type = winios::DebugEventType::SoftwareStep;
+            debug_event.address = program_counter_;
+            debug_event.source_el = static_cast<unsigned>(current_el_);
+            debug_arch_.record_debug_event(debug_event);
             const unsigned target_el = winios::determine_debug_target_el(
                 dev.source_el, mdcr_el2_, mdcr_el3_, hcr_el2_);
             SynchronousException ex = winios::create_debug_synchronous_exception(dev, target_el);
@@ -5121,6 +5170,14 @@ void CPU::step(Memory& guest_memory) {
     const std::uint32_t instruction =
         guest_memory.read_u32(pc_as_memory_offset(phys_pc));
     counter_guard.is_exclusive = ((instruction & 0x3F000000u) == 0x08000000u);
+    counter_guard.is_branch =
+        ((instruction & kBranchImmediateMask) == kBranch) ||
+        ((instruction & kBranchRegisterMask) == kBranchRegister) ||
+        ((instruction & kBranchRegisterMask) == kBranchLinkRegister) ||
+        ((instruction & kBranchRegisterMask) == kReturnRegister) ||
+        ((instruction & kConditionalBranchMask) == kConditionalBranch) ||
+        ((instruction & kConditionalBranchMask) == kCompareBranch) ||
+        ((instruction & kConditionalBranchMask) == kTestBranch);
     // Phase 36: PSTATE.IL (set by an architecturally illegal ERET) turns the
     // next fetch into an Illegal Execution State exception. Instruction abort
     // and PC-alignment faults have priority, exactly as in the reference.
@@ -6014,7 +6071,8 @@ void CPU::step(Memory& guest_memory) {
         return;
     }
     const std::uint32_t exclusive_size_field = (instruction >> 30u) & 0x3u;
-    if ((instruction & kExclusiveGroupMask) == kExclusiveGroup) {
+    if ((instruction & kExclusiveGroupMask) == kExclusiveGroup
+        && (instruction & kLseCasMask) != kLseCasPattern) {
         const std::uint32_t op = (instruction >> 21u) & 0x7u;
         const bool ordered = (instruction & (1u << 15u)) != 0;
         const std::uint32_t status = (instruction >> 16u) & 0x1Fu;
@@ -6239,6 +6297,41 @@ void CPU::step(Memory& guest_memory) {
             return;
         }
         throw std::runtime_error("Unsupported AArch64 instruction encoding");
+    }
+    if ((instruction & kLseCasMask) == kLseCasPattern) {
+        const std::uint32_t expected = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t desired = instruction & 0x1Fu;
+        const bool acquire = (instruction & (1u << 23u)) != 0;
+        const bool release = (instruction & (1u << 22u)) != 0;
+        const std::size_t width = access_width_bytes(exclusive_size_field);
+        const std::uint64_t address = read_stack_pointer_operand(*this, base);
+        const std::size_t memory_address = pc_as_memory_offset(address);
+        memory.check_access(address, static_cast<unsigned>(width), AccessType::Write);
+        require_memory_range(memory, memory_address, width);
+        auto store_guard = lock_store_serialization();
+        const std::uint64_t mask = access_value_mask(exclusive_size_field);
+        const std::uint64_t old_value =
+            read_access_value(memory, memory_address, exclusive_size_field) & mask;
+        const std::uint64_t expected_value =
+            read_zero_register_operand(*this, expected) & mask;
+        if (release) {
+            std::atomic_thread_fence(std::memory_order_release);
+        }
+        if (old_value == expected_value) {
+            const std::uint64_t desired_value =
+                read_zero_register_operand(*this, desired) & mask;
+            write_access_value(memory, memory_address, exclusive_size_field, desired_value);
+            note_normal_store(address, width);
+        }
+        if (acquire) {
+            std::atomic_thread_fence(std::memory_order_acquire);
+        }
+        write_zero_register_result(*this, expected, old_value);
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
     }
     if ((instruction & kLseAtomicMask) == kLseAtomicPattern) {
         const std::uint32_t opc = (instruction >> 12u) & 0xFu;
@@ -6856,7 +6949,8 @@ void CPU::step(Memory& guest_memory) {
         (instruction & 0xFF207C00u) == 0x1E204000u || // Scalar FP 1-source
         (instruction & 0xFF20FC07u) == 0x1E202000u || // FP Compare
         (instruction & 0xFF201FE0u) == 0x1E201000u || // FP Immediate
-        (instruction & 0x7F20FC00u) == 0x1E200000u) {  // FP <-> Integer / GP
+        (instruction & 0x7F20FC00u) == 0x1E200000u || // FP <-> Integer / GP
+        (instruction & 0x0E000000u) == 0x0E000000u) { // Advanced SIMD arithmetic/logical
         if (!is_fp_simd_enabled(static_cast<unsigned>(current_el_))) {
             if (architectural_exceptions_) {
                 raise_synchronous_exception(make_fp_simd_access_trap(instruction_address));
@@ -7653,17 +7747,19 @@ void CPU::step(Memory& guest_memory) {
                     throw std::runtime_error("Privilege violation: DC ZVA executed at EL0 with SCTLR_EL1.DZE=0");
                 }
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
-                const std::uint64_t block_va = va & ~63ULL;
-                memory.check_range(block_va, 64u, AccessType::Write);
+                const std::uint64_t block_va =
+                    va & ~(static_cast<std::uint64_t>(kCacheLineBytes) - 1u);
+                memory.check_range(block_va, static_cast<unsigned>(kCacheLineBytes),
+                                   AccessType::Write);
                 // Phase 44: the 64-byte block clear is serialized against every
                 // other guest store. It is still emitted as eight 8-byte
                 // stores, so a concurrent *reader* may observe a partially
                 // cleared block; this is documented as a model limitation.
                 auto store_guard = lock_store_serialization();
-                for (std::size_t offset = 0; offset < 64u; offset += 8u) {
+                for (std::size_t offset = 0; offset < kCacheLineBytes; offset += 8u) {
                     memory.write_u64(static_cast<std::size_t>(block_va + offset), 0ULL);
                 }
-                note_normal_store(block_va, 64u);
+                note_normal_store(block_va, kCacheLineBytes);
                 program_counter_ = checked_add_address(
                     instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
@@ -7681,7 +7777,9 @@ void CPU::step(Memory& guest_memory) {
                     }
                 }
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
-                memory.check_range(va & ~63ULL, 64u, AccessType::Read);
+                memory.check_range(
+                    va & ~(static_cast<std::uint64_t>(kCacheLineBytes) - 1u),
+                    static_cast<unsigned>(kCacheLineBytes), AccessType::Read);
                 program_counter_ = checked_add_address(
                     instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
@@ -7695,7 +7793,9 @@ void CPU::step(Memory& guest_memory) {
                     }
                 }
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
-                memory.check_range(va & ~63ULL, 64u, AccessType::Write);
+                memory.check_range(
+                    va & ~(static_cast<std::uint64_t>(kCacheLineBytes) - 1u),
+                    static_cast<unsigned>(kCacheLineBytes), AccessType::Write);
                 program_counter_ = checked_add_address(
                     instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
@@ -7819,6 +7919,9 @@ void CPU::step(Memory& guest_memory) {
                 return true;
             }
             if (reg_key == kSysregDCZID_EL0) {
+                return is_mrs; // read-only
+            }
+            if (reg_key == kSysregCTR_EL0) {
                 return is_mrs; // read-only
             }
             if (reg_key == kSysregTPIDR_EL0) {
@@ -8041,6 +8144,10 @@ void CPU::step(Memory& guest_memory) {
                 break;
             case kSysregDCZID_EL0:
                 value = 0x00000004ULL;
+                break;
+            case kSysregCTR_EL0:
+                // DminLine=4 and IminLine=4: 64-byte data and instruction lines.
+                value = 0x00004004ULL;
                 break;
             case kSysregTPIDR_EL0:
                 value = tpidr_el0_;
@@ -8325,6 +8432,9 @@ void CPU::step(Memory& guest_memory) {
             // Phase 51: Debug Architecture system registers (MRS)
             case kSysregMDSCR_EL1:
                 value = debug_arch_.get_mdscr_el1();
+                break;
+            case kSysregMDCCINT_EL1:
+                value = debug_arch_.get_mdccint_el1();
                 break;
             case kSysregDBGBVR0_EL1:
                 value = debug_arch_.get_dbgbvr(0);
@@ -8799,6 +8909,9 @@ void CPU::step(Memory& guest_memory) {
             // Phase 51: Debug Architecture system registers (MSR)
             case kSysregMDSCR_EL1:
                 debug_arch_.set_mdscr_el1(val);
+                break;
+            case kSysregMDCCINT_EL1:
+                debug_arch_.set_mdccint_el1(val);
                 break;
             case kSysregDBGBVR0_EL1:
                 debug_arch_.set_dbgbvr(0, val);

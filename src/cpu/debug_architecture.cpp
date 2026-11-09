@@ -11,6 +11,9 @@ DebugArchitecture::DebugArchitecture() noexcept {
 
 void DebugArchitecture::reset() noexcept {
     mdscr_el1_ = 0;
+    mdccint_el1_ = 0;
+    pending_event_.reset();
+    debug_event_sequence_ = 0;
     for (auto& bp : breakpoints_) {
         bp.reset();
     }
@@ -24,6 +27,190 @@ void DebugArchitecture::set_mdscr_el1(std::uint64_t value) noexcept {
     // and read-as-zero. We silently mask unsupported bits rather than faulting.
     constexpr std::uint64_t kSupportedMask = (1ULL << 15u) | (1ULL << 0u);
     mdscr_el1_ = value & kSupportedMask;
+}
+
+void DebugArchitecture::set_mdccint_el1(std::uint64_t value) noexcept {
+    // Stage 39: only the four DCC interrupt-enable bits are implemented.  They
+    // are metadata only (no external DCC peer exists), which is documented.
+    mdccint_el1_ = value & 0xFu;
+}
+
+const char* debug_control_support_name(DebugControlSupport support) noexcept {
+    switch (support) {
+    case DebugControlSupport::Disabled:            return "Disabled";
+    case DebugControlSupport::Supported:           return "Supported";
+    case DebugControlSupport::UnsupportedFeature:  return "UnsupportedFeature";
+    case DebugControlSupport::ReservedEncoding:    return "ReservedEncoding";
+    default:                                       return "Unknown";
+    }
+}
+
+DebugControlDecode DebugArchitecture::decode_breakpoint_control(
+    std::uint32_t control) noexcept {
+    DebugControlDecode d;
+    d.enabled = (control & 0x1u) != 0u;
+    d.privilege_mode = static_cast<DebugPrivilegeMode>((control >> 1u) & 0x3u);
+    d.hmc = ((control >> 13u) & 0x1u) != 0u;
+    d.ssc = static_cast<std::uint8_t>((control >> 14u) & 0x3u);
+    d.bas = static_cast<std::uint8_t>((control >> 5u) & 0xFu);
+    d.lbn = static_cast<std::uint8_t>((control >> 16u) & 0xFu);
+    d.type = static_cast<std::uint8_t>((control >> 20u) & 0xFu);
+
+    if (!d.enabled) {
+        d.support = DebugControlSupport::Disabled;
+        d.reason = "E=0";
+        return d;
+    }
+    if (d.hmc) {
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "HMC is not modeled";
+        return d;
+    }
+    if (d.ssc != 0u) {
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "SSC is not modeled";
+        return d;
+    }
+    if (d.type == 3u) {
+        // BT=3 is a linked-context-ID / secondary link target.  It may act as
+        // the target of another slot but never fires as a top-level breakpoint.
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "BT=3 link target never fires directly";
+        return d;
+    }
+    if (d.type == 2u) {
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "BT=2 linked address match is not modeled";
+        return d;
+    }
+    if (d.type > 3u) {
+        d.support = DebugControlSupport::ReservedEncoding;
+        d.reason = "reserved BT encoding";
+        return d;
+    }
+    d.support = DebugControlSupport::Supported;
+    d.active = true;
+    d.reason = "supported";
+    return d;
+}
+
+DebugControlDecode DebugArchitecture::decode_watchpoint_control(
+    std::uint32_t control) noexcept {
+    DebugControlDecode d;
+    d.enabled = (control & 0x1u) != 0u;
+    d.privilege_mode = static_cast<DebugPrivilegeMode>((control >> 1u) & 0x3u);
+    d.lsc = static_cast<WatchpointLoadStoreControl>((control >> 3u) & 0x3u);
+    d.hmc = ((control >> 13u) & 0x1u) != 0u;
+    d.ssc = static_cast<std::uint8_t>((control >> 14u) & 0x3u);
+    d.bas = static_cast<std::uint8_t>((control >> 5u) & 0xFFu);
+    d.lbn = static_cast<std::uint8_t>((control >> 16u) & 0xFu);
+    d.linked = ((control >> 20u) & 0x1u) != 0u;
+    d.mask = static_cast<std::uint8_t>((control >> 24u) & 0x1Fu);
+
+    if (!d.enabled) {
+        d.support = DebugControlSupport::Disabled;
+        d.reason = "E=0";
+        return d;
+    }
+    if (d.hmc) {
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "HMC is not modeled";
+        return d;
+    }
+    if (d.ssc != 0u) {
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "SSC is not modeled";
+        return d;
+    }
+    if (d.mask != 0u) {
+        d.support = DebugControlSupport::UnsupportedFeature;
+        d.reason = "MASK is not modeled";
+        return d;
+    }
+    if (d.lsc == WatchpointLoadStoreControl::Neither) {
+        d.support = DebugControlSupport::ReservedEncoding;
+        d.reason = "LSC=0b00 is reserved";
+        return d;
+    }
+    d.support = DebugControlSupport::Supported;
+    d.active = true;
+    d.reason = "supported";
+    return d;
+}
+
+bool DebugArchitecture::breakpoint_slot_active(std::size_t index) const noexcept {
+    if (index >= kDebugBreakpointCount) {
+        return false;
+    }
+    const auto d = decode_breakpoint_control(breakpoints_[index].control);
+    if (!d.active) {
+        return false;
+    }
+    if (d.type == 1u) {
+        // Linked breakpoint: link number must reference a different implemented slot.
+        if (d.lbn >= kDebugBreakpointCount || d.lbn == index) {
+            return false;
+        }
+        if (!decode_breakpoint_control(breakpoints_[d.lbn].control).enabled) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool DebugArchitecture::watchpoint_slot_active(std::size_t index) const noexcept {
+    if (index >= kDebugWatchpointCount) {
+        return false;
+    }
+    const auto d = decode_watchpoint_control(watchpoints_[index].control);
+    if (!d.active) {
+        return false;
+    }
+    if (d.linked) {
+        if (d.lbn >= kDebugBreakpointCount) {
+            return false;
+        }
+        const auto target = decode_breakpoint_control(breakpoints_[d.lbn].control);
+        if (!target.enabled || target.hmc || target.ssc != 0u) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::size_t DebugArchitecture::active_breakpoint_count() const noexcept {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+        if (breakpoint_slot_active(i)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::size_t DebugArchitecture::active_watchpoint_count() const noexcept {
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+        if (watchpoint_slot_active(i)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+const DebugEvent* DebugArchitecture::pending_event() const noexcept {
+    return pending_event_.has_value() ? &*pending_event_ : nullptr;
+}
+
+void DebugArchitecture::clear_pending_event() noexcept {
+    pending_event_.reset();
+}
+
+void DebugArchitecture::record_debug_event(const DebugEvent& event) const noexcept {
+    pending_event_ = event;
+    if (event.type != DebugEventType::None) {
+        ++debug_event_sequence_;
+    }
 }
 
 // --- Breakpoint Register Accessors ---
@@ -133,15 +320,21 @@ bool DebugArchitecture::evaluate_breakpoint_match(
     visited_mask |= (1u << slot_index);
 
     const auto& bp = breakpoints_[slot_index];
-    if (!bp.enabled()) {
+    const auto dec = decode_breakpoint_control(bp.control);
+    if (!dec.enabled) {
+        return false;
+    }
+    // Stage 39: an unsupported encoding never participates in matching, not even
+    // as a link target.
+    if (dec.hmc || dec.ssc != 0u) {
         return false;
     }
 
-    if (!privilege_mode_matches(bp.privilege_mode(), current_el)) {
+    if (!privilege_mode_matches(dec.privilege_mode, current_el)) {
         return false;
     }
 
-    const auto bt = bp.breakpoint_type();
+    const auto bt = dec.type;
     switch (bt) {
     case 0: // Unlinked instruction address match
         return bp.value == virtual_address;
@@ -150,7 +343,7 @@ bool DebugArchitecture::evaluate_breakpoint_match(
         if (bp.value != virtual_address) {
             return false;
         }
-        const auto lbn = bp.linked_breakpoint_number();
+        const auto lbn = dec.lbn;
         if (lbn >= kDebugBreakpointCount || lbn == slot_index) {
             // Unimplemented slot or self-referential link is invalid -> does not match
             return false;
@@ -158,7 +351,7 @@ bool DebugArchitecture::evaluate_breakpoint_match(
         return evaluate_breakpoint_match(lbn, virtual_address, current_el, visited_mask);
     }
 
-    case 3: // Linked Context ID match / secondary link target
+    case 3: // Linked Context ID match / secondary link target (target-only)
         return (bp.value == virtual_address || bp.value == 0);
 
     default:
@@ -179,16 +372,9 @@ std::optional<DebugEvent> DebugArchitecture::check_execution_breakpoint(
     // ARM architecture does not specify priority among multiple matches; we
     // use slot order as the tiebreaker (slot 0 has highest priority).
     for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
-        const auto& bp = breakpoints_[i];
-
-        // Skip disabled breakpoints.
-        if (!bp.enabled()) {
-            continue;
-        }
-
-        // BT 3 (Linked Context ID match) is a secondary target only; it never fires
-        // directly as a top-level primary breakpoint.
-        if (bp.breakpoint_type() != 0 && bp.breakpoint_type() != 1) {
+        // Stage 39: only fully-supported, enabled encodings may fire.  HMC/SSC/
+        // BT=2/BT=3/reserved encodings are inactive rather than silently ignored.
+        if (!breakpoint_slot_active(i)) {
             continue;
         }
 
@@ -197,6 +383,8 @@ std::optional<DebugEvent> DebugArchitecture::check_execution_breakpoint(
             event.type = DebugEventType::Breakpoint;
             event.address = virtual_address;
             event.slot_index = i;
+            event.source_el = current_el;
+            record_debug_event(event);
             return event;
         }
     }
@@ -267,69 +455,64 @@ std::optional<DebugEvent> DebugArchitecture::check_data_watchpoint(
 
     // Check each watchpoint in order; return the first match.
     for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
-        const auto& wp = watchpoints_[i];
-
-        // Skip disabled watchpoints.
-        if (!wp.enabled()) {
+        // Stage 39: only fully-supported, enabled encodings may fire.  A
+        // non-zero MASK, HMC, SSC, reserved LSC, or an invalid WT link makes the
+        // slot inactive instead of producing a false-positive watchpoint.
+        if (!watchpoint_slot_active(i)) {
             continue;
         }
+
+        const auto& wp = watchpoints_[i];
+        const auto dec = decode_watchpoint_control(wp.control);
 
         // Check load/store control filter.
-        const auto lsc = wp.load_store_control();
-        if (lsc == WatchpointLoadStoreControl::Neither) {
-            // Reserved value; treat as disabled.
+        if (dec.lsc == WatchpointLoadStoreControl::Load && access_type != DebugAccessType::Read) {
             continue;
         }
-        if (lsc == WatchpointLoadStoreControl::Load && access_type != DebugAccessType::Read) {
-            continue;
-        }
-        if (lsc == WatchpointLoadStoreControl::Store && access_type != DebugAccessType::Write) {
+        if (dec.lsc == WatchpointLoadStoreControl::Store && access_type != DebugAccessType::Write) {
             continue;
         }
         // WatchpointLoadStoreControl::Both matches both read and write.
 
         // Check privilege mode filter.
-        if (!privilege_mode_matches(wp.privilege_mode(), current_el)) {
+        if (!privilege_mode_matches(dec.privilege_mode, current_el)) {
             continue;
         }
 
-        // Phase 51: MASK field is reserved (always 0). We do not support address
-        // masking beyond BAS. If guest sets MASK != 0, we ignore it and use
-        // only BAS matching.
-
-        // Byte Address Select (BAS) matching.
-        if (!bas_matches(wp.bas(), wp.value, virtual_address, access_size)) {
+        // Byte Address Select (BAS) matching.  Address MASK is unmodeled and
+        // therefore the slot is inactive (see watchpoint_slot_active()).
+        if (!bas_matches(dec.bas, wp.value, virtual_address, access_size)) {
             continue;
         }
 
         // Stage 7: Linked watchpoint matching (WT == 1).
-        if (wp.is_linked()) {
-            const auto lbn = wp.linked_breakpoint_number();
+        if (dec.linked) {
+            const auto lbn = dec.lbn;
             if (lbn >= kDebugBreakpointCount) {
                 // Link to unimplemented breakpoint slot -> treated as disabled
                 continue;
             }
 
-            const auto& bp = breakpoints_[lbn];
-            if (!bp.enabled()) {
+            const auto bp_dec = decode_breakpoint_control(breakpoints_[lbn].control);
+            if (!bp_dec.enabled) {
                 // Linked breakpoint disabled -> watchpoint does not trigger
                 continue;
             }
 
-            if (!privilege_mode_matches(bp.privilege_mode(), current_el)) {
+            if (!privilege_mode_matches(bp_dec.privilege_mode, current_el)) {
                 // Privilege mode mismatch on linked breakpoint
                 continue;
             }
 
             // Linked breakpoint address match against instruction PC:
             // The instruction executing the memory access must match DBGBVR[lbn].
-            if (bp.value != instruction_pc) {
+            if (breakpoints_[lbn].value != instruction_pc) {
                 continue;
             }
 
             // If the linked breakpoint is itself linked in cascade, check its cascade:
-            if (bp.is_linked()) {
-                const auto cascade_lbn = bp.linked_breakpoint_number();
+            if (bp_dec.type == 1u) {
+                const auto cascade_lbn = bp_dec.lbn;
                 if (cascade_lbn >= kDebugBreakpointCount || cascade_lbn == lbn) {
                     continue;
                 }
@@ -346,6 +529,8 @@ std::optional<DebugEvent> DebugArchitecture::check_data_watchpoint(
         event.access = access_type;
         event.access_size = access_size;
         event.slot_index = i;
+        event.source_el = current_el;
+        record_debug_event(event);
         return event;
     }
 
@@ -361,6 +546,11 @@ std::string DebugArchitecture::inspect() const {
     stream << "  MDSCR_EL1: 0x" << std::hex << mdscr_el1_ << std::dec;
     stream << " (MDE=" << (monitor_debug_enabled() ? "enabled" : "disabled")
            << ", SS=" << (software_step_enabled() ? "enabled" : "disabled") << ")\n";
+    stream << "  MDCCINT_EL1: 0x" << std::hex << mdccint_el1_ << std::dec
+           << " (metadata only; no DCC peer in this model)\n";
+    stream << "  Active slots: breakpoints=" << active_breakpoint_count()
+           << " watchpoints=" << active_watchpoint_count()
+           << " debug-events=" << debug_event_sequence_ << "\n";
 
     stream << "  Breakpoints:\n";
     for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {

@@ -9,6 +9,19 @@ namespace winios::sndl {
 void set_active_recorder(SndlRecorder* recorder) noexcept;
 [[nodiscard]] SndlRecorder* get_active_recorder() noexcept;
 
+// Overrides the legacy global binding on this thread only. A null override
+// suppresses recording, including global recording, until the scope exits.
+class ScopedThreadRecorder {
+public:
+    explicit ScopedThreadRecorder(SndlRecorder* recorder) noexcept;
+    ~ScopedThreadRecorder();
+    ScopedThreadRecorder(const ScopedThreadRecorder&) = delete;
+    ScopedThreadRecorder& operator=(const ScopedThreadRecorder&) = delete;
+private:
+    SndlRecorder* previous_;
+    bool previous_override_;
+};
+
 // High-performance non-invasive hook points called from CPU, GICv3, and devices
 inline void hook_mmio_read(std::uint16_t core_id, std::uint64_t pc,
                            std::uint64_t ret_count, std::uint64_t paddr,

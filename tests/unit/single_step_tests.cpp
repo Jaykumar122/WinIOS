@@ -691,6 +691,9 @@ void test_28_simd_load_store() {
     CPU cpu;
     Memory mem(0x40000);
     setup_cpu(cpu, mem, 1, 0x10000);
+    // Stage 39: the SIMD store must not be trapped by CPACR_EL1.FPEN (added by
+    // the Phase 37 FP/SIMD access-control work after this test was written).
+    cpu.set_cpacr_el1(0x00300000ULL);
     cpu.set_program_counter(0x2000);
     // STR Q0, [X1] -> 0x3D000020u
     mem.write_u32(0x2000, 0x3D000020u);

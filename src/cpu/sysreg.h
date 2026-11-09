@@ -44,6 +44,7 @@ enum class SysRegId : std::uint16_t {
     PAR_EL1,
     ID_AA64MMFR0_EL1,
     DCZID_EL0,
+    CTR_EL0,
     MPIDR_EL1,
 
     // Generic Timers
@@ -137,6 +138,7 @@ enum class SysRegId : std::uint16_t {
 
     // Debug Architecture Registers
     MDSCR_EL1,
+    MDCCINT_EL1,
     DBGBVR0_EL1, DBGBVR1_EL1, DBGBVR2_EL1, DBGBVR3_EL1,
     DBGBCR0_EL1, DBGBCR1_EL1, DBGBCR2_EL1, DBGBCR3_EL1,
     DBGWVR0_EL1, DBGWVR1_EL1, DBGWVR2_EL1, DBGWVR3_EL1,

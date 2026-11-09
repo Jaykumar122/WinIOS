@@ -154,7 +154,7 @@ public:
 
     // Vector Base Address Register EL1.
     std::uint64_t get_vbar_el1() const noexcept { return vbar_el1_; }
-    void set_vbar_el1(std::uint64_t value) noexcept { vbar_el1_ = value; }
+    void set_vbar_el1(std::uint64_t value) noexcept { vbar_el1_ = value & ~0x7FFULL; }
 
     // Phase 36 / 52: Thread pointer system registers
     std::uint64_t get_tpidr_el0() const noexcept { return tpidr_el0_; }
@@ -451,6 +451,10 @@ public:
     }
     std::uint64_t exclusive_monitor_high_value() const noexcept {
         return exclusive_monitor_.high;
+    }
+    void set_exclusive_monitor(bool valid, std::uint64_t address, std::size_t size,
+                               std::uint64_t low, std::uint64_t high) noexcept {
+        exclusive_monitor_ = ExclusiveMonitor{valid, address, size, low, high};
     }
     void clear_exclusive_monitor() noexcept { exclusive_monitor_ = ExclusiveMonitor{}; }
 

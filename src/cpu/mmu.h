@@ -17,6 +17,13 @@ enum class TranslationRegime : std::uint8_t {
     EL2   = 2, // Stage-2 translation for EL1/0 under EL2
 };
 
+// Stage 60: AArch64 Translation Granules
+enum class GranuleType : std::uint8_t {
+    Granule4KB  = 0,
+    Granule16KB = 1,
+    Granule64KB = 2,
+};
+
 // Access type for translation requests.
 enum class AccessKind : std::uint8_t {
     Read    = 0,
@@ -39,6 +46,7 @@ enum class MmuFaultType : std::uint8_t {
     AccessFlag,
     Permission,
     ExternalWalk,
+    Alignment,
 };
 
 // Strongly-typed translation fault structure.
@@ -65,6 +73,8 @@ struct TranslationFault {
             return 0x0Cu + (level & 0x3u);
         case MmuFaultType::ExternalWalk:
             return 0x14u + (level & 0x3u);
+        case MmuFaultType::Alignment:
+            return 0x21u;
         }
         return 0x04u;
     }
@@ -155,6 +165,43 @@ public:
     bool is_alignment_check_enabled() const noexcept { return (sctlr_el1_ & 0x2ULL) != 0; }
     bool is_wxn_enabled() const noexcept { return (sctlr_el1_ & (1ULL << 19u)) != 0; }
 
+    // Stage 60: Translation Granule support
+    GranuleType get_tg0_granule() const noexcept {
+        const auto tg0 = (tcr_el1_ >> 14u) & 0x3u;
+        if (tg0 == 0b01) return GranuleType::Granule64KB;
+        if (tg0 == 0b10) return GranuleType::Granule16KB;
+        return GranuleType::Granule4KB;
+    }
+
+    GranuleType get_tg1_granule() const noexcept {
+        const auto tg1 = (tcr_el1_ >> 30u) & 0x3u;
+        if (tg1 == 0b01) return GranuleType::Granule16KB;
+        if (tg1 == 0b11) return GranuleType::Granule64KB;
+        return GranuleType::Granule4KB;
+    }
+
+    static constexpr std::uint64_t get_granule_size(GranuleType g) noexcept {
+        switch (g) {
+        case GranuleType::Granule16KB: return 16384ULL;
+        case GranuleType::Granule64KB: return 65536ULL;
+        default: return 4096ULL;
+        }
+    }
+
+    static bool validate_table_alignment(std::uint64_t base_addr, GranuleType g) noexcept {
+        const auto mask = get_granule_size(g) - 1ULL;
+        return (base_addr & mask) == 0;
+    }
+
+    // Granule-aware descriptor validation
+    bool validate_descriptor_for_granule(
+        unsigned level,
+        std::uint64_t desc,
+        GranuleType granule,
+        bool is_stage2,
+        DescriptorKind* out_kind = nullptr,
+        MmuFaultType* out_fault = nullptr) const noexcept;
+
     // Phase 45: Translation descriptor validation
     bool validate_descriptor(
         unsigned level,
@@ -179,6 +226,16 @@ public:
     void set_tlb_enabled(bool enabled) noexcept { tlb_enabled_ = enabled; }
     std::size_t get_tlb_entry_count() const noexcept;
     std::vector<TlbEntry> get_tlb_entries_copy() const noexcept;
+
+    // TLB Statistics (Stage 61)
+    std::uint64_t get_tlb_hits() const noexcept { return tlb_hits_; }
+    std::uint64_t get_tlb_misses() const noexcept { return tlb_misses_; }
+    std::uint64_t get_tlb_invalidations() const noexcept { return tlb_invalidations_; }
+    void reset_tlb_stats() noexcept {
+        tlb_hits_ = 0;
+        tlb_misses_ = 0;
+        tlb_invalidations_ = 0;
+    }
 
     // Address translation interface.
     // Handles Stage-1, Stage-2, and composite two-stage translation (VA -> IPA -> PA).
@@ -224,6 +281,9 @@ private:
     static constexpr std::size_t kTlbSize = 64;
     std::vector<TlbEntry> tlb_;
     bool tlb_enabled_{true};
+    std::uint64_t tlb_hits_{0};
+    std::uint64_t tlb_misses_{0};
+    std::uint64_t tlb_invalidations_{0};
 
     // Phase 43: serializes TLB lookup/insertion against cross-core TLBI
     // broadcasts (TLBI *IS), which run on the issuing core's thread.

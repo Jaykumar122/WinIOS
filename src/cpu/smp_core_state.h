@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cpu/cpu.h"
+#include "cpu/debug_architecture.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +11,73 @@
 namespace winios {
 
 using ::CPU;
+
+// -----------------------------------------------------------------------------
+// SmpDebugState: Stage 39 per-core architectural debug snapshot
+//
+// Captures the bounded debug subset modeled by DebugArchitecture.  It is part
+// of SmpCoreState so canonical hashing, equality, and SMP snapshot/replay all
+// observe debug configuration changes.
+// -----------------------------------------------------------------------------
+struct SmpDebugState {
+    std::uint64_t mdscr_el1{0};
+    std::uint64_t mdccint_el1{0};
+    std::uint64_t breakpoint_value[kDebugBreakpointCount]{};
+    std::uint32_t breakpoint_control[kDebugBreakpointCount]{};
+    std::uint64_t watchpoint_value[kDebugWatchpointCount]{};
+    std::uint32_t watchpoint_control[kDebugWatchpointCount]{};
+
+    bool operator==(const SmpDebugState& other) const noexcept {
+        if (mdscr_el1 != other.mdscr_el1 || mdccint_el1 != other.mdccint_el1) {
+            return false;
+        }
+        for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+            if (breakpoint_value[i] != other.breakpoint_value[i] ||
+                breakpoint_control[i] != other.breakpoint_control[i]) {
+                return false;
+            }
+        }
+        for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+            if (watchpoint_value[i] != other.watchpoint_value[i] ||
+                watchpoint_control[i] != other.watchpoint_control[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    bool operator!=(const SmpDebugState& other) const noexcept { return !(*this == other); }
+};
+
+struct SmpPmuState {
+    std::uint32_t pmcr{0};
+    std::uint32_t counter_enable{0};
+    std::uint32_t overflow_status{0};
+    std::uint32_t interrupt_enable{0};
+    std::uint32_t selector{0};
+    std::uint32_t user_enable{0};
+    std::uint64_t cycle_counter{0};
+    std::uint32_t cycle_filter{0};
+    std::uint64_t cycle_prescaler{0};
+    std::uint32_t event_counter[kNumEventCounters]{};
+    std::uint32_t event_type[kNumEventCounters]{};
+
+    bool operator==(const SmpPmuState& other) const noexcept {
+        if (pmcr != other.pmcr || counter_enable != other.counter_enable ||
+            overflow_status != other.overflow_status ||
+            interrupt_enable != other.interrupt_enable || selector != other.selector ||
+            user_enable != other.user_enable || cycle_counter != other.cycle_counter ||
+            cycle_filter != other.cycle_filter || cycle_prescaler != other.cycle_prescaler) {
+            return false;
+        }
+        for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+            if (event_counter[i] != other.event_counter[i] ||
+                event_type[i] != other.event_type[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
 
 // -----------------------------------------------------------------------------
 // CoreLifecycleState: Execution run-state of a virtual CPU core
@@ -93,8 +161,7 @@ struct SmpCoreState {
     std::uint64_t scr_el3{0x501ULL};
 
     // --- A4: Per-Core System Control Registers ---
-    std::uint64_t sctlr_el1{0};
-    std::uint64_t tcr_el1{0};
+    std::uint64_t sctlr_el1{0};    std::uint64_t tcr_el1{0};
     std::uint64_t ttbr0_el1{0};
     std::uint64_t ttbr1_el1{0};
     std::uint64_t mair_el1{0};
@@ -103,6 +170,10 @@ struct SmpCoreState {
     std::uint64_t tpidr_el0{0};
     std::uint64_t tpidr_el1{0};
     std::uint64_t tpidrro_el0{0};
+
+    // --- A6: Per-Core Architectural Debug State (Stage 39) ---
+    SmpDebugState debug{};
+    SmpPmuState pmu{};
 
     // --- Per-Core Timer Control State ---
     std::uint64_t cntp_cval_el0{0};

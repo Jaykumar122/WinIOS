@@ -7457,9 +7457,8 @@ void phase31_exclusive_unallocated_encodings() {
 
     const std::uint32_t rejected[] = {
 
-        0x08207C20u, // STXP with pair size field 0
-
-        0x48207C20u, // STXP with pair size field 1
+        0x08200020u, // CASB with reserved fixed bits
+        0x48200020u, // CASH with reserved fixed bits
 
         0xC8407C20u, // LDXR with op2 (Rs) != 11111
 

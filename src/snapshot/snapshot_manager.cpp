@@ -28,7 +28,7 @@ SnapshotResult SnapshotManager::capture_to_buffer(
     std::vector<PendingSection> pending;
 
     // 1. Primary CPU Core 0
-    pending.push_back({SnapshotSectionType::CpuState, 0, serialize_cpu_state(*context.primary_cpu)});
+    pending.push_back({SnapshotSectionType::CpuState, 0, serialize_cpu_state_with_retirement(*context.primary_cpu)});
     if (options.include_pmu) {
         pending.push_back({SnapshotSectionType::PmuState, 0, serialize_pmu_state(context.primary_cpu->get_pmu(), 0)});
     }
@@ -41,7 +41,7 @@ SnapshotResult SnapshotManager::capture_to_buffer(
         CPU* sec = context.secondary_cpus[i];
         if (sec) {
             const auto cid = static_cast<std::uint32_t>(i + 1);
-            pending.push_back({SnapshotSectionType::CpuState, cid, serialize_cpu_state(*sec)});
+            pending.push_back({SnapshotSectionType::CpuState, cid, serialize_cpu_state_with_retirement(*sec)});
             if (options.include_pmu) {
                 pending.push_back({SnapshotSectionType::PmuState, cid, serialize_pmu_state(sec->get_pmu(), cid)});
             }

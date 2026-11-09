@@ -62,8 +62,8 @@ public:
     [[nodiscard]] const Memory* memory() const noexcept { return memory_.get(); }
     [[nodiscard]] VirtualTime* virtual_time() noexcept { return vt_.get(); }
     [[nodiscard]] const VirtualTime* virtual_time() const noexcept { return vt_.get(); }
-    [[nodiscard]] GICv3* gic() noexcept { return gic_.get(); }
-    [[nodiscard]] const GICv3* gic() const noexcept { return gic_.get(); }
+    [[nodiscard]] GICv3* gic() noexcept { return cpu_ ? &cpu_->get_gic() : nullptr; }
+    [[nodiscard]] const GICv3* gic() const noexcept { return cpu_ ? &cpu_->get_gic() : nullptr; }
 
     [[nodiscard]] SmpReplayCoordinator* smp_coordinator() noexcept { return smp_coordinator_.get(); }
     [[nodiscard]] const SmpReplayCoordinator* smp_coordinator() const noexcept { return smp_coordinator_.get(); }
@@ -79,7 +79,7 @@ private:
     std::unique_ptr<CPU> cpu_;
     std::unique_ptr<Memory> memory_;
     std::unique_ptr<VirtualTime> vt_;
-    std::unique_ptr<GICv3> gic_;
+
     std::unique_ptr<trace::TraceManager> trace_mgr_;
 
     ReplayEventCursor cursor_;

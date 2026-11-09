@@ -44,7 +44,10 @@ stage21_benchmark/
 divergence_report.json
 
 
-# Exclude markdown report files
+# Exclude markdown report files and documentation directories
 *.md
+**/*.md
 !README.md
 !docs/progress.md
+reports/
+docs/campaign_*/

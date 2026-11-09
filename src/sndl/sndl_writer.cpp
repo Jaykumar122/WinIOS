@@ -217,7 +217,15 @@ SndlResult SndlWriter::finalize(SndlFinalizationStatus status, std::uint64_t tot
     }
 
     file_.flush();
+    if (!file_) {
+        failed_ = true;
+        return SndlResult::fail(SndlErrorCode::FileWriteFailed, "Failed to flush SNDL file");
+    }
     file_.close();
+    if (file_.fail()) {
+        failed_ = true;
+        return SndlResult::fail(SndlErrorCode::FileWriteFailed, "Failed to close SNDL file");
+    }
     finalized_ = true;
 
     return SndlResult::ok();

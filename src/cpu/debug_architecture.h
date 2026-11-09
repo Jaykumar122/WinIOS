@@ -4,10 +4,10 @@
 #include <optional>
 #include <string>
 
-// Phase 51: AArch64 Debug Architecture — hardware execution breakpoints and
-// data watchpoints. This subsystem provides per-core debug state, breakpoint
-// and watchpoint register management, address matching logic, and debug event
-// reporting.
+// Phase 52 Stage 39: bounded AArch64 architectural debug subsystem.
+// This subsystem provides per-core debug state, breakpoint and watchpoint
+// register management, address matching logic, control-encoding validation,
+// software single-step integration, and debug event reporting.
 //
 // This is the ARCHITECTURAL debug interface (guest-visible debug registers and
 // debug exceptions), separate from the software debugger (host-side stepping
@@ -20,15 +20,17 @@
 //   - Privilege/EL filtering
 //   - Load/Store/Both watchpoint types
 //   - Byte Address Select (BAS) for sub-word watchpoint matching
-//   - Debug enable/disable control
+//   - Debug enable/disable control (MDSCR_EL1.MDE)
+//   - Software step control (MDSCR_EL1.SS) with the CPU pipeline
+//   - MDCCINT_EL1 metadata (no DCC peer)
+//   - Explicit support classification of every control encoding
 //
-// Not implemented (reserved for future phases or marked unsupported):
+// Not implemented (documented limitations):
 //   - Physical address matching
-//   - Context ID matching
-//   - Linked breakpoints/watchpoints
-//   - External debug interface
-//   - Halting debug mode
-//   - Single-step (deferred to Stage 8)
+//   - Context ID matching / BT=2
+//   - HMC, SSC, and watchpoint MASK filtering
+//   - External debug interface / halting debug mode
+//   - Debug Communication Channel data transfer and interrupts
 
 namespace winios {
 
@@ -42,7 +44,7 @@ enum class DebugEventType : std::uint32_t {
     None = 0,
     Breakpoint = 1,
     Watchpoint = 2,
-    SoftwareStep = 3,  // Reserved; not implemented in Stage 2
+    SoftwareStep = 3,  // Stage 39: software single-step debug event
 };
 
 // Memory access type for watchpoint matching.
@@ -66,6 +68,42 @@ enum class WatchpointLoadStoreControl : std::uint32_t {
     Load = 1,     // Match load/read operations
     Store = 2,    // Match store/write operations
     Both = 3,     // Match both load and store operations
+};
+
+// Stage 39: support classification for a breakpoint/watchpoint control value.
+//
+// The architecture reserves several DBGBCR_EL1/DBGWCR_EL1 encodings that this
+// bounded implementation does not model (HMC, SSC, MASK, linked context ID
+// matching).  Rather than silently ignoring those fields - which would turn an
+// unsupported request into an unexpected debug exception - every control value
+// is classified and a slot whose encoding is not fully supported is marked
+// inactive.
+enum class DebugControlSupport : std::uint32_t {
+    Disabled = 0,          // E == 0: slot is architecturally disabled.
+    Supported = 1,         // Modeling exactly matches the requested encoding.
+    UnsupportedFeature = 2,// Recognized Arm feature outside this bounded subset.
+    ReservedEncoding = 3,  // Reserved/undefined field encoding (e.g. BT > 1).
+};
+
+[[nodiscard]] const char* debug_control_support_name(DebugControlSupport support) noexcept;
+
+// Stage 39: decoded view of a DBGBCR_EL1/DBGWCR_EL1 control value.
+// `active` is the single authoritative predicate used by the matching logic:
+// it is true only when the slot is enabled AND the entire encoding is modeled.
+struct DebugControlDecode {
+    bool enabled{false};
+    DebugPrivilegeMode privilege_mode{DebugPrivilegeMode::None};
+    bool hmc{false};                       // bit 13 (unmodeled)
+    std::uint8_t ssc{0};                    // bits [15:14] (unmodeled)
+    std::uint8_t bas{0};                    // breakpoints: [8:5]; watchpoints: [12:5]
+    std::uint8_t lbn{0};                    // bits [19:16]
+    std::uint8_t type{0};                   // breakpoints: BT [23:20]
+    std::uint8_t mask{0};                   // watchpoints: MASK [28:24] (unmodeled)
+    WatchpointLoadStoreControl lsc{WatchpointLoadStoreControl::Neither};
+    bool linked{false};                     // watchpoint WT (bit 20)
+    DebugControlSupport support{DebugControlSupport::Disabled};
+    bool active{false};
+    const char* reason{"disabled"};
 };
 
 // Breakpoint register state (DBGBVR<n>_EL1 and DBGBCR<n>_EL1).
@@ -154,6 +192,9 @@ struct DebugEvent {
     DebugAccessType access{DebugAccessType::Read}; // For watchpoints
     std::size_t access_size{0};       // For watchpoints (bytes)
     std::size_t slot_index{0};        // Which breakpoint/watchpoint fired
+    unsigned source_el{0};            // EL that generated the event
+    bool is_exclusive{false};         // Software-step exclusive marker
+    std::uint32_t esr{0};             // Syndrome, when supplied by the consumer
 
     bool is_valid() const noexcept { return type != DebugEventType::None; }
     void clear() noexcept { type = DebugEventType::None; }
@@ -185,6 +226,17 @@ public:
         return (mdscr_el1_ & 0x1u) != 0;
     }
 
+    // --- Debug Communication Channel Interrupt Enable (MDCCINT_EL1) ---
+    // Stage 39: bits [3:0] are modeled as guest-visible enables for the four
+    // debug communication channels.  The emulator has no external DCC peer, so
+    // these bits are metadata only and never generate an interrupt.  This is an
+    // explicit, documented limitation.
+    std::uint64_t get_mdccint_el1() const noexcept { return mdccint_el1_; }
+    void set_mdccint_el1(std::uint64_t value) noexcept;
+    bool dcc_interrupt_enabled(unsigned channel) const noexcept {
+        return channel < 4u && (mdccint_el1_ & (1ULL << channel)) != 0u;
+    }
+
     // --- Breakpoint Registers (DBGBVR/DBGBCR) ---
     // Read/write breakpoint value and control registers.
     // Throws std::out_of_range if index >= kDebugBreakpointCount.
@@ -200,6 +252,34 @@ public:
     void set_dbgwvr(std::size_t index, std::uint64_t value);
     std::uint32_t get_dbgwcr(std::size_t index) const;
     void set_dbgwcr(std::size_t index, std::uint32_t value);
+
+    // --- Stage 39: Control Decoding and Support Classification ---
+    // Decode a raw DBGBCR_EL1/DBGWCR_EL1 value without consulting slot context.
+    // The `active` field is the authoritative "may fire" predicate.  Note that
+    // linked breakpoints (BT == 1) require additional slot validation, so this
+    // static decode reports them as Supported while `breakpoint_slot_active()`
+    // performs the LBN checks.
+    [[nodiscard]] static DebugControlDecode decode_breakpoint_control(
+        std::uint32_t control) noexcept;
+    [[nodiscard]] static DebugControlDecode decode_watchpoint_control(
+        std::uint32_t control) noexcept;
+
+    // Slot-level activity, including link validation and reserved-field checks.
+    [[nodiscard]] bool breakpoint_slot_active(std::size_t index) const noexcept;
+    [[nodiscard]] bool watchpoint_slot_active(std::size_t index) const noexcept;
+    [[nodiscard]] std::size_t active_breakpoint_count() const noexcept;
+    [[nodiscard]] std::size_t active_watchpoint_count() const noexcept;
+
+    // --- Stage 39: Debug Event Accounting ---
+    // Matching records the most recent event (const-qualified because it only
+    // updates observation counters).  Consumers may also record software-step
+    // events explicitly via record_debug_event().
+    [[nodiscard]] const DebugEvent* pending_event() const noexcept;
+    [[nodiscard]] std::uint64_t debug_event_sequence() const noexcept {
+        return debug_event_sequence_;
+    }
+    void clear_pending_event() noexcept;
+    void record_debug_event(const DebugEvent& event) const noexcept;
 
     // --- Breakpoint Matching ---
     // Check if the given virtual address matches any enabled execution breakpoint
@@ -257,11 +337,18 @@ private:
     // Phase 51 Stage 2: only bit 15 (MDE) is modeled; other bits reserved.
     std::uint64_t mdscr_el1_{0};
 
+    // Stage 39: MDCCINT_EL1 metadata (bits [3:0], no interrupt generation).
+    std::uint64_t mdccint_el1_{0};
+
     // Four hardware execution breakpoints.
     BreakpointRegister breakpoints_[kDebugBreakpointCount]{};
 
     // Four hardware data watchpoints.
     WatchpointRegister watchpoints_[kDebugWatchpointCount]{};
+
+    // Stage 39: observation of the most recent debug event.
+    mutable std::optional<DebugEvent> pending_event_{};
+    mutable std::uint64_t debug_event_sequence_{0};
 };
 
 } // namespace winios

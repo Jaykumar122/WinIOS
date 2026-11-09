@@ -17,6 +17,15 @@ std::vector<std::uint8_t> serialize_core_directory(const std::vector<CoreDirecto
                                                         std::vector<CoreDirectoryEntry>& out_entries);
 
 // 2. Core Architectural State (Per-Core SmpCoreState)
+//
+// Stage 39 layout: the historical 1080-byte prefix is preserved byte-for-byte;
+// a 112-byte architectural-debug block is appended.  Deserialization accepts
+// the prefix alone (older snapshots) and ignores the debug block when absent.
+inline constexpr std::size_t kCoreArchLegacyPayloadSize = 1080;
+inline constexpr std::size_t kCoreArchDebugBlockSize = 144;
+inline constexpr std::size_t kCoreArchPmuBlockSize = 96;
+inline constexpr std::size_t kCoreArchPayloadSize =
+    kCoreArchLegacyPayloadSize + kCoreArchDebugBlockSize + kCoreArchPmuBlockSize; // 1320
 std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState& state);
 [[nodiscard]] SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std::size_t size,
                                                                  SmpCoreState& out_state);

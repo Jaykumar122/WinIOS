@@ -107,6 +107,25 @@ void ReplayStateHash::hash_cpu(const CPU& cpu,
     append_u64(cpu.get_ttbr1_el1());
     append_u64(cpu.get_tcr_el1());
     append_u64(cpu.get_mair_el1());
+    const auto& pmu = cpu.get_pmu();
+    append_u64(pmu.read_pmcr());
+    append_u64(pmu.read_pmcntenset());
+    append_u64(pmu.read_pmovsset());
+    append_u64(pmu.read_pmintenset());
+    append_u64(pmu.read_pmuserenr());
+    append_u64(pmu.read_pmselr());
+    append_u64(pmu.read_pmccfiltr());
+    append_u64(pmu.read_pmccntr());
+    for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+        append_u64(pmu.read_pmevcntr(i));
+        append_u64(pmu.read_pmevtyper(i));
+    }
+    append_u64(pmu.has_pending_interrupt() ? 1u : 0u);
+    append_u64(cpu.exclusive_monitor_valid() ? 1u : 0u);
+    append_u64(cpu.exclusive_monitor_address());
+    append_u64(static_cast<std::uint64_t>(cpu.exclusive_monitor_size()));
+    append_u64(cpu.exclusive_monitor_low_value());
+    append_u64(cpu.exclusive_monitor_high_value());
 
     const std::uint32_t yc1 = trace::calculate_crc32c(sys_buf.data(), sys_buf.size());
     const std::uint32_t yc2 = trace::calculate_crc32c(sys_buf.data(), sys_buf.size(), yc1);
@@ -134,17 +153,21 @@ std::uint64_t ReplayStateHash::hash_timers(const VirtualTime& vt, std::uint16_t 
     const auto& virt = vt.get_virt_timer(core_id);
     const auto& hp   = vt.get_cnthp_timer(core_id);
 
-    std::uint8_t buf[64]{};
+    std::uint8_t buf[96]{};
     trace::encode_u64_le(buf + 0,  phys.cval);
     trace::encode_u64_le(buf + 8,  virt.cval);
     trace::encode_u64_le(buf + 16, hp.cval);
     trace::encode_u64_le(buf + 24, vt.get_physical_counter());
     trace::encode_u64_le(buf + 32, vt.get_virtual_counter(core_id));
     trace::encode_u64_le(buf + 40, vt.get_frequency());
+    trace::encode_u64_le(buf + 48, vt.get_cntvoff_el2(core_id));
+    trace::encode_u64_le(buf + 56, vt.get_cntkctl_el1(core_id));
+    trace::encode_u64_le(buf + 64, vt.get_cnthctl_el2(core_id));
 
-    buf[48] = (phys.enable ? 1 : 0) | ((phys.imask ? 1 : 0) << 1) | ((phys.istatus ? 1 : 0) << 2);
-    buf[49] = (virt.enable ? 1 : 0) | ((virt.imask ? 1 : 0) << 1) | ((virt.istatus ? 1 : 0) << 2);
-    buf[50] = (hp.enable ? 1 : 0)   | ((hp.imask ? 1 : 0) << 1)   | ((hp.istatus ? 1 : 0) << 2);
+    buf[72] = (phys.enable ? 1 : 0) | ((phys.imask ? 1 : 0) << 1) | ((phys.istatus ? 1 : 0) << 2);
+    buf[73] = (virt.enable ? 1 : 0) | ((virt.imask ? 1 : 0) << 1) | ((virt.istatus ? 1 : 0) << 2);
+    buf[74] = (hp.enable ? 1 : 0)   | ((hp.imask ? 1 : 0) << 1)   | ((hp.istatus ? 1 : 0) << 2);
+    buf[75] = vt.is_core_offline(core_id) ? 1 : 0;
 
     const std::uint32_t c1 = trace::calculate_crc32c(buf, sizeof(buf));
     const std::uint32_t c2 = trace::calculate_crc32c(buf, sizeof(buf), c1);

@@ -27,7 +27,7 @@ void ReplaySession::cleanup() noexcept {
     cpu_.reset();
     memory_.reset();
     vt_.reset();
-    gic_.reset();
+
     state_ = ReplayLifecycleState::Idle;
 }
 
@@ -217,7 +217,7 @@ ReplayResult ReplaySession::prepare(
         cpu_ = std::make_unique<CPU>();
         memory_ = std::make_unique<Memory>(mem_bytes);
         vt_ = std::make_unique<VirtualTime>();
-        gic_ = std::make_unique<GICv3>();
+
 
         cpu_->bind_virtual_time(vt_.get(), config_.target_core_id);
     }
@@ -226,7 +226,7 @@ ReplayResult ReplaySession::prepare(
     restore_ctx.primary_cpu = cpu_.get();
     restore_ctx.memory = memory_.get();
     restore_ctx.virtual_time = vt_.get();
-    restore_ctx.gic = gic_.get();
+    restore_ctx.gic = gic();
 
     snapshot::SnapshotResult restore_res{};
     {
@@ -264,7 +264,7 @@ ReplayResult ReplaySession::prepare(
 
         // Initialize scheduler
         scheduler_ = std::make_unique<ReplayScheduler>(
-            *cpu_, *memory_, vt_.get(), gic_.get(),
+            *cpu_, *memory_, vt_.get(), gic(),
             cursor_, *router_, checkpoint_mgr_, config_, prof
         );
     }

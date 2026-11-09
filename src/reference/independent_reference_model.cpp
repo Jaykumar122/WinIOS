@@ -1430,4 +1430,215 @@ bool ReferenceSysRegModel::is_fp_simd_enabled(unsigned current_el, std::uint64_t
     return (fpen & 0x1u) != 0;
 }
 
+// -----------------------------------------------------------------------------
+// Reference Architectural Debug Model (Stage 39)
+// -----------------------------------------------------------------------------
+
+namespace {
+
+// Independent bit-field extraction helpers (no production code reuse).
+constexpr unsigned ref_bits(std::uint32_t value, unsigned lo, unsigned width) noexcept {
+    return (value >> lo) & ((1u << width) - 1u);
+}
+
+} // namespace
+
+ReferenceDebugControl ReferenceDebugModel::decode_breakpoint(std::uint32_t control) noexcept {
+    ReferenceDebugControl c;
+    c.enabled = (control & 0x1u) != 0u;
+    c.pmc = ref_bits(control, 1, 2);
+    c.hmc = (control & (1u << 13)) != 0u;
+    c.ssc = ref_bits(control, 14, 2);
+    c.bas = ref_bits(control, 5, 4);
+    c.lbn = ref_bits(control, 16, 4);
+    c.type = ref_bits(control, 20, 4);
+    c.mask = 0;
+    c.lsc = 0;
+
+    // A breakpoint can fire directly only for BT==0 or BT==1, with no HMC/SSC.
+    c.supported = c.enabled && !c.hmc && c.ssc == 0u && (c.type == 0u || c.type == 1u);
+    c.active = c.supported;
+    return c;
+}
+
+ReferenceDebugControl ReferenceDebugModel::decode_watchpoint(std::uint32_t control) noexcept {
+    ReferenceDebugControl c;
+    c.enabled = (control & 0x1u) != 0u;
+    c.pmc = ref_bits(control, 1, 2);
+    c.lsc = ref_bits(control, 3, 2);
+    c.bas = ref_bits(control, 5, 8);
+    c.hmc = (control & (1u << 13)) != 0u;
+    c.ssc = ref_bits(control, 14, 2);
+    c.lbn = ref_bits(control, 16, 4);
+    c.type = ref_bits(control, 20, 1);
+    c.mask = ref_bits(control, 24, 5);
+
+    c.supported = c.enabled && !c.hmc && c.ssc == 0u && c.mask == 0u && c.lsc != 0u;
+    c.active = c.supported;
+    return c;
+}
+
+bool ReferenceDebugModel::privilege_matches(unsigned pmc, unsigned el) noexcept {
+    switch (pmc & 0x3u) {
+    case 0u: return true;              // no filtering
+    case 1u: return el == 1u;
+    case 2u: return el == 0u;
+    case 3u: return el == 0u || el == 1u;
+    default: return false;
+    }
+}
+
+bool ReferenceDebugModel::bas_overlap(unsigned bas, std::uint64_t watchpoint_address,
+                                      std::uint64_t access_address,
+                                      std::size_t access_size) noexcept {
+    const std::uint64_t region = watchpoint_address & ~0x7ULL;
+    for (std::size_t i = 0; i < access_size; ++i) {
+        const std::uint64_t byte = access_address + i;
+        if ((byte & ~0x7ULL) != region) {
+            continue;
+        }
+        if ((bas & (1u << (byte & 0x7ULL))) != 0u) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int ReferenceDebugModel::match_breakpoint(const std::uint64_t* values,
+                                          const std::uint32_t* controls,
+                                          std::uint64_t address,
+                                          unsigned el) noexcept {
+    if (!values || !controls) {
+        return -1;
+    }
+    for (std::size_t i = 0; i < kBreakpoints; ++i) {
+        const auto c = decode_breakpoint(controls[i]);
+        if (!c.active || !privilege_matches(c.pmc, el)) {
+            continue;
+        }
+        if (values[i] != address) {
+            continue;
+        }
+        if (c.type == 0u) {
+            return static_cast<int>(i);
+        }
+        // BT==1: linked target must be a different implemented, enabled slot
+        // whose address also matches.
+        if (c.lbn >= kBreakpoints || c.lbn == i) {
+            continue;
+        }
+        const auto target = decode_breakpoint(controls[c.lbn]);
+        if (target.enabled && target.type == 0u &&
+            privilege_matches(target.pmc, el) &&
+            values[c.lbn] == address) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int ReferenceDebugModel::match_watchpoint(const std::uint64_t* watch_values,
+                                          const std::uint32_t* watch_controls,
+                                          const std::uint64_t* break_values,
+                                          const std::uint32_t* break_controls,
+                                          std::uint64_t address,
+                                          std::size_t access_size,
+                                          bool is_write,
+                                          unsigned el,
+                                          std::uint64_t instruction_pc) noexcept {
+    if (!watch_values || !watch_controls || !break_values || !break_controls) {
+        return -1;
+    }
+    for (std::size_t i = 0; i < kWatchpoints; ++i) {
+        const auto c = decode_watchpoint(watch_controls[i]);
+        if (!c.active || !privilege_matches(c.pmc, el)) {
+            continue;
+        }
+        // LSC: 1 = load, 2 = store, 3 = both.
+        if (c.lsc == 1u && is_write) {
+            continue;
+        }
+        if (c.lsc == 2u && !is_write) {
+            continue;
+        }
+        if (!bas_overlap(c.bas, watch_values[i], address, access_size)) {
+            continue;
+        }
+        if (c.type == 1u) { // WT linked
+            if (c.lbn >= kBreakpoints) {
+                continue;
+            }
+            const auto target = decode_breakpoint(break_controls[c.lbn]);
+            if (!target.enabled || target.hmc || target.ssc != 0u) {
+                continue;
+            }
+            if (!privilege_matches(target.pmc, el)) {
+                continue;
+            }
+            if (break_values[c.lbn] != instruction_pc) {
+                continue;
+            }
+            if (target.type == 1u) {
+                if (target.lbn >= kBreakpoints || target.lbn == c.lbn) {
+                    continue;
+                }
+                const auto cascade = decode_breakpoint(break_controls[target.lbn]);
+                if (!cascade.enabled || cascade.type != 0u ||
+                    !privilege_matches(cascade.pmc, el) ||
+                    break_values[target.lbn] != instruction_pc) {
+                    continue;
+                }
+            }
+        }
+        return static_cast<int>(i);
+    }
+    return -1;
+}
+
+std::uint32_t ReferenceDebugModel::breakpoint_esr(bool same_el) noexcept {
+    const std::uint32_t ec = same_el ? 0x31u : 0x30u;
+    return (ec << 26u) | (1u << 25u);
+}
+
+std::uint32_t ReferenceDebugModel::watchpoint_esr(bool same_el, bool is_write) noexcept {
+    const std::uint32_t ec = same_el ? 0x35u : 0x34u;
+    return (ec << 26u) | (1u << 25u) | (is_write ? (1u << 6u) : 0u) | 0x22u;
+}
+
+std::uint32_t ReferenceDebugModel::software_step_esr(bool same_el, bool is_exclusive) noexcept {
+    const std::uint32_t ec = same_el ? 0x33u : 0x32u;
+    return (ec << 26u) | (1u << 25u) | (is_exclusive ? (1u << 6u) : 0u) | 0x22u;
+}
+
+unsigned ReferenceDebugModel::target_el(unsigned source_el,
+                                        std::uint64_t mdcr_el2,
+                                        std::uint64_t mdcr_el3,
+                                        std::uint64_t hcr_el2) noexcept {
+    if (source_el >= 3u) {
+        return 3u;
+    }
+    if ((mdcr_el3 & (1ULL << 8u)) != 0u) {
+        return 3u;
+    }
+    if (source_el == 2u) {
+        return 2u;
+    }
+    if ((mdcr_el2 & (1ULL << 8u)) != 0u) {
+        return 2u;
+    }
+    if (source_el == 0u && (hcr_el2 & (1ULL << 27u)) != 0u) {
+        return 2u;
+    }
+    return 1u;
+}
+
+std::uint32_t ReferenceDebugModel::vector_offset(unsigned source_el,
+                                                 unsigned target_el,
+                                                 bool sp_sel) noexcept {
+    if (source_el < target_el) {
+        return 0x400u;
+    }
+    return sp_sel ? 0x200u : 0x000u;
+}
+
 } // namespace winios::reference

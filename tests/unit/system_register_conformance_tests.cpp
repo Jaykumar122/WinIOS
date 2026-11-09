@@ -434,7 +434,8 @@ bool test_snapshot_and_hash_invariants() {
     orig.tpidrro_el0 = 0xAABBCCDDEEFF0011ULL;
 
     const auto buf = winios::snapshot::serialize_core_architectural_state(orig);
-    TEST_ASSERT(buf.size() == 1080, "Serialized core state buffer must be 1080 bytes");
+    TEST_ASSERT(buf.size() == winios::snapshot::kCoreArchPayloadSize,
+                "Serialized core state includes legacy, debug, and PMU blocks");
 
     winios::SmpCoreState restored{};
     const auto res = winios::snapshot::deserialize_core_architectural_state(buf.data(), buf.size(), restored);

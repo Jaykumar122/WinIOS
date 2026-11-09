@@ -85,8 +85,11 @@ std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState&
     //   EL3: 8 + 4 + 4 + 8 + 8 + 8 = 40
     // Sysregs: 7 * 8 = 56
     // Timers: 8 + 4 + 4 + 8 + 4 + 4 = 32
-    // Total: 40 + 248 + 40 + 8 + 520 + 32 + 40 + 40 + 56 + 32 + 24 = 1080 bytes
-    constexpr std::size_t kPayloadSize = 1080;
+    // Thread pointers: 3 * 8 = 24
+    // Legacy total: 40 + 248 + 40 + 8 + 520 + 32 + 40 + 40 + 56 + 32 + 24 = 1080 bytes
+    // Stage 39 debug block: 8 (MDSCR) + 8 (MDCCINT) + 4*16 (breakpoints) + 4*16 (watchpoints) = 144 bytes
+    // Total: 1224 bytes
+    constexpr std::size_t kPayloadSize = kCoreArchPayloadSize;
     std::vector<std::uint8_t> buf(kPayloadSize, 0u);
     std::uint8_t* p = buf.data();
 
@@ -181,6 +184,40 @@ std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState&
     trace::encode_u64_le(p + 16, state.tpidrro_el0);
     p += 24;
 
+    // Stage 39: architectural debug block (112 bytes).
+    trace::encode_u64_le(p + 0, state.debug.mdscr_el1);
+    trace::encode_u64_le(p + 8, state.debug.mdccint_el1);
+    p += 16;
+    for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+        trace::encode_u64_le(p + 0, state.debug.breakpoint_value[i]);
+        trace::encode_u32_le(p + 8, state.debug.breakpoint_control[i]);
+        trace::encode_u32_le(p + 12, 0u);
+        p += 16;
+    }
+    for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+        trace::encode_u64_le(p + 0, state.debug.watchpoint_value[i]);
+        trace::encode_u32_le(p + 8, state.debug.watchpoint_control[i]);
+        trace::encode_u32_le(p + 12, 0u);
+        p += 16;
+    }
+
+    trace::encode_u32_le(p + 0, state.pmu.pmcr);
+    trace::encode_u32_le(p + 4, state.pmu.counter_enable);
+    trace::encode_u32_le(p + 8, state.pmu.overflow_status);
+    trace::encode_u32_le(p + 12, state.pmu.interrupt_enable);
+    trace::encode_u32_le(p + 16, state.pmu.selector);
+    trace::encode_u32_le(p + 20, state.pmu.user_enable);
+    trace::encode_u64_le(p + 24, state.pmu.cycle_counter);
+    trace::encode_u32_le(p + 32, state.pmu.cycle_filter);
+    trace::encode_u32_le(p + 36, 0u);
+    trace::encode_u64_le(p + 40, state.pmu.cycle_prescaler);
+    p += 48;
+    for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+        trace::encode_u32_le(p + 0, state.pmu.event_counter[i]);
+        trace::encode_u32_le(p + 4, state.pmu.event_type[i]);
+        p += 8;
+    }
+
     return buf;
 }
 
@@ -267,7 +304,7 @@ SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std
     out_state.cntv_ctl_el0 = trace::decode_u32_le(p + 24);
     p += 32;
 
-    if (size >= 1080) {
+    if (size >= kCoreArchLegacyPayloadSize) {
         out_state.tpidr_el0 = trace::decode_u64_le(p + 0);
         out_state.tpidr_el1 = trace::decode_u64_le(p + 8);
         out_state.tpidrro_el0 = trace::decode_u64_le(p + 16);
@@ -275,6 +312,44 @@ SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std
         out_state.tpidr_el0 = 0;
         out_state.tpidr_el1 = 0;
         out_state.tpidrro_el0 = 0;
+    }
+
+    // Stage 39: trailing debug block.  A legacy 1080-byte payload leaves the
+    // debug state at architectural reset values.
+    if (size >= kCoreArchPayloadSize) {
+        p += 24;
+        out_state.debug.mdscr_el1 = trace::decode_u64_le(p + 0);
+        out_state.debug.mdccint_el1 = trace::decode_u64_le(p + 8);
+        p += 16;
+        for (std::size_t i = 0; i < kDebugBreakpointCount; ++i) {
+            out_state.debug.breakpoint_value[i] = trace::decode_u64_le(p + 0);
+            out_state.debug.breakpoint_control[i] = trace::decode_u32_le(p + 8);
+            p += 16;
+        }
+        for (std::size_t i = 0; i < kDebugWatchpointCount; ++i) {
+            out_state.debug.watchpoint_value[i] = trace::decode_u64_le(p + 0);
+            out_state.debug.watchpoint_control[i] = trace::decode_u32_le(p + 8);
+            p += 16;
+        }
+
+        out_state.pmu.pmcr = trace::decode_u32_le(p + 0);
+        out_state.pmu.counter_enable = trace::decode_u32_le(p + 4);
+        out_state.pmu.overflow_status = trace::decode_u32_le(p + 8);
+        out_state.pmu.interrupt_enable = trace::decode_u32_le(p + 12);
+        out_state.pmu.selector = trace::decode_u32_le(p + 16);
+        out_state.pmu.user_enable = trace::decode_u32_le(p + 20);
+        out_state.pmu.cycle_counter = trace::decode_u64_le(p + 24);
+        out_state.pmu.cycle_filter = trace::decode_u32_le(p + 32);
+        out_state.pmu.cycle_prescaler = trace::decode_u64_le(p + 40);
+        p += 48;
+        for (std::size_t i = 0; i < kNumEventCounters; ++i) {
+            out_state.pmu.event_counter[i] = trace::decode_u32_le(p + 0);
+            out_state.pmu.event_type[i] = trace::decode_u32_le(p + 4);
+            p += 8;
+        }
+    } else {
+        out_state.debug = SmpDebugState{};
+        out_state.pmu = SmpPmuState{};
     }
 
     return SnapshotResult::ok();

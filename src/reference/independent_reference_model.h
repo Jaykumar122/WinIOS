@@ -413,4 +413,64 @@ public:
     static bool is_fp_simd_enabled(unsigned current_el, std::uint64_t cpacr_el1) noexcept;
 };
 
+// -----------------------------------------------------------------------------
+// Reference Architectural Debug Model (Stage 39)
+// -----------------------------------------------------------------------------
+// Independently decodes DBGBCR_EL1/DBGWCR_EL1, evaluates breakpoint and
+// watchpoint matches, and computes debug syndromes/vector routing.  It does not
+// call DebugArchitecture, CPU, or any production matching helper.
+struct ReferenceDebugControl {
+    bool enabled{false};
+    unsigned pmc{0};
+    bool hmc{false};
+    unsigned ssc{0};
+    unsigned bas{0};
+    unsigned lbn{0};
+    unsigned type{0};  // breakpoints: BT; watchpoints: WT
+    unsigned mask{0};
+    unsigned lsc{0};
+    bool supported{false};
+    bool active{false};
+};
+
+class ReferenceDebugModel {
+public:
+    static constexpr std::size_t kBreakpoints = 4;
+    static constexpr std::size_t kWatchpoints = 4;
+
+    static ReferenceDebugControl decode_breakpoint(std::uint32_t control) noexcept;
+    static ReferenceDebugControl decode_watchpoint(std::uint32_t control) noexcept;
+
+    static bool privilege_matches(unsigned pmc, unsigned el) noexcept;
+    static bool bas_overlap(unsigned bas, std::uint64_t watchpoint_address,
+                            std::uint64_t access_address, std::size_t access_size) noexcept;
+
+    // Returns the matching slot index, or -1 when no slot matches.
+    static int match_breakpoint(const std::uint64_t* values,
+                                const std::uint32_t* controls,
+                                std::uint64_t address,
+                                unsigned el) noexcept;
+    static int match_watchpoint(const std::uint64_t* watch_values,
+                                const std::uint32_t* watch_controls,
+                                const std::uint64_t* break_values,
+                                const std::uint32_t* break_controls,
+                                std::uint64_t address,
+                                std::size_t access_size,
+                                bool is_write,
+                                unsigned el,
+                                std::uint64_t instruction_pc) noexcept;
+
+    static std::uint32_t breakpoint_esr(bool same_el) noexcept;
+    static std::uint32_t watchpoint_esr(bool same_el, bool is_write) noexcept;
+    static std::uint32_t software_step_esr(bool same_el, bool is_exclusive) noexcept;
+
+    static unsigned target_el(unsigned source_el,
+                              std::uint64_t mdcr_el2,
+                              std::uint64_t mdcr_el3,
+                              std::uint64_t hcr_el2) noexcept;
+    static std::uint32_t vector_offset(unsigned source_el,
+                                       unsigned target_el,
+                                       bool sp_sel) noexcept;
+};
+
 } // namespace winios::reference

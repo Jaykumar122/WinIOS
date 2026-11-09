@@ -19,6 +19,7 @@ void MMU::reset() noexcept {
     hcr_el2_   = 0;
     vttbr_el2_ = 0;
     vtcr_el2_  = 0x80003550ULL;
+    reset_tlb_stats();
     invalidate_tlb_all();
 }
 
@@ -48,13 +49,19 @@ void MMU::set_tcr_el1(std::uint64_t val) noexcept {
 }
 
 void MMU::set_ttbr0_el1(std::uint64_t val) noexcept {
+    const bool base_changed = (ttbr0_el1_ & 0x0000FFFFFFFFFFFFULL) != (val & 0x0000FFFFFFFFFFFFULL);
     ttbr0_el1_ = val;
-    invalidate_tlb_all();
+    if (base_changed) {
+        invalidate_tlb_all();
+    }
 }
 
 void MMU::set_ttbr1_el1(std::uint64_t val) noexcept {
+    const bool base_changed = (ttbr1_el1_ & 0x0000FFFFFFFFFFFFULL) != (val & 0x0000FFFFFFFFFFFFULL);
     ttbr1_el1_ = val;
-    invalidate_tlb_all();
+    if (base_changed) {
+        invalidate_tlb_all();
+    }
 }
 
 void MMU::set_mair_el1(std::uint64_t val) noexcept {
@@ -81,6 +88,16 @@ bool MMU::validate_descriptor(
     bool is_stage2,
     DescriptorKind* out_kind,
     MmuFaultType* out_fault) const noexcept {
+    return validate_descriptor_for_granule(level, desc, GranuleType::Granule4KB, is_stage2, out_kind, out_fault);
+}
+
+bool MMU::validate_descriptor_for_granule(
+    unsigned level,
+    std::uint64_t desc,
+    GranuleType granule,
+    bool is_stage2,
+    DescriptorKind* out_kind,
+    MmuFaultType* out_fault) const noexcept {
 
     // Bit 0: Valid bit. If 0, descriptor is invalid -> Translation fault
     if ((desc & 0x1ULL) == 0) {
@@ -96,6 +113,99 @@ bool MMU::validate_descriptor(
         if (out_kind) *out_kind = DescriptorKind::Invalid;
         if (out_fault) *out_fault = MmuFaultType::AddressSize;
         return false;
+    }
+
+    if (granule == GranuleType::Granule16KB) {
+        switch (level) {
+        case 1:
+            if (type_bits == 0x1ULL) {
+                // Level 1 Block (32GB): bits [34:14] must be 0
+                if ((desc & 0x00000007FFFC000ULL) != 0) {
+                    if (out_kind) *out_kind = DescriptorKind::Invalid;
+                    if (out_fault) *out_fault = MmuFaultType::AddressSize;
+                    return false;
+                }
+                if (out_kind) *out_kind = DescriptorKind::Block;
+                return true;
+            }
+            if (type_bits == 0x3ULL) {
+                if (out_kind) *out_kind = DescriptorKind::Table;
+                return true;
+            }
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+
+        case 2:
+            if (type_bits == 0x1ULL) {
+                // Level 2 Block (32MB): bits [24:14] must be 0
+                if ((desc & 0x0000000001FFC000ULL) != 0) {
+                    if (out_kind) *out_kind = DescriptorKind::Invalid;
+                    if (out_fault) *out_fault = MmuFaultType::AddressSize;
+                    return false;
+                }
+                if (out_kind) *out_kind = DescriptorKind::Block;
+                return true;
+            }
+            if (type_bits == 0x3ULL) {
+                if (out_kind) *out_kind = DescriptorKind::Table;
+                return true;
+            }
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+
+        case 3:
+            if (type_bits == 0x3ULL) {
+                if (out_kind) *out_kind = DescriptorKind::Page;
+                return true;
+            }
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+
+        default:
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+        }
+    }
+
+    if (granule == GranuleType::Granule64KB) {
+        switch (level) {
+        case 2:
+            if (type_bits == 0x1ULL) {
+                // Level 2 Block (512MB): bits [28:16] must be 0
+                if ((desc & 0x000000001FFF0000ULL) != 0) {
+                    if (out_kind) *out_kind = DescriptorKind::Invalid;
+                    if (out_fault) *out_fault = MmuFaultType::AddressSize;
+                    return false;
+                }
+                if (out_kind) *out_kind = DescriptorKind::Block;
+                return true;
+            }
+            if (type_bits == 0x3ULL) {
+                if (out_kind) *out_kind = DescriptorKind::Table;
+                return true;
+            }
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+
+        case 3:
+            if (type_bits == 0x3ULL) {
+                if (out_kind) *out_kind = DescriptorKind::Page;
+                return true;
+            }
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+
+        default:
+            if (out_kind) *out_kind = DescriptorKind::Invalid;
+            if (out_fault) *out_fault = MmuFaultType::Translation;
+            return false;
+        }
     }
 
     switch (level) {
@@ -176,6 +286,7 @@ bool MMU::validate_descriptor(
 void MMU::invalidate_tlb_all() noexcept {
     std::lock_guard<std::recursive_mutex> lock(tlb_mutex_);
     tlb_.clear();
+    ++tlb_invalidations_;
 }
 
 void MMU::invalidate_tlb_va(std::uint64_t va, std::uint16_t asid, bool /*last_level_only*/) noexcept {
@@ -188,6 +299,7 @@ void MMU::invalidate_tlb_va(std::uint64_t va, std::uint16_t asid, bool /*last_le
             ++it;
         }
     }
+    ++tlb_invalidations_;
 }
 
 void MMU::invalidate_tlb_asid(std::uint16_t asid) noexcept {
@@ -199,6 +311,7 @@ void MMU::invalidate_tlb_asid(std::uint16_t asid) noexcept {
             ++it;
         }
     }
+    ++tlb_invalidations_;
 }
 
 void MMU::invalidate_tlb_vaa(std::uint64_t va, bool /*last_level_only*/) noexcept {
@@ -211,6 +324,7 @@ void MMU::invalidate_tlb_vaa(std::uint64_t va, bool /*last_level_only*/) noexcep
             ++it;
         }
     }
+    ++tlb_invalidations_;
 }
 
 void MMU::invalidate_tlb_vmid(std::uint16_t vmid) noexcept {
@@ -222,6 +336,7 @@ void MMU::invalidate_tlb_vmid(std::uint16_t vmid) noexcept {
             ++it;
         }
     }
+    ++tlb_invalidations_;
 }
 
 void MMU::invalidate_tlb_ipas2(std::uint64_t ipa, std::uint16_t vmid) noexcept {
@@ -234,6 +349,7 @@ void MMU::invalidate_tlb_ipas2(std::uint64_t ipa, std::uint16_t vmid) noexcept {
             ++it;
         }
     }
+    ++tlb_invalidations_;
 }
 
 std::size_t MMU::get_tlb_entry_count() const noexcept {
@@ -340,11 +456,13 @@ std::optional<std::uint64_t> MMU::translate(
                         *out_is_device = entry.is_device;
                     }
                     s1_hit = true;
+                    ++tlb_hits_;
                     break;
                 }
             }
         }
         if (!s1_hit) {
+            ++tlb_misses_;
             auto s1_res = walk_stage1(memory, virtual_address, access, current_el, out_fault, out_is_device);
             if (!s1_res.has_value()) {
                 if (out_fault) {
@@ -403,12 +521,14 @@ std::optional<std::uint64_t> MMU::translate(
                 const std::uint64_t offset = ipa & ~entry.page_mask;
                 final_pa = (entry.physical_page << 12u) | offset;
                 s2_hit = true;
+                ++tlb_hits_;
                 break;
             }
         }
     }
 
     if (!s2_hit) {
+        ++tlb_misses_;
         auto s2_res = walk_stage2(memory, ipa, access, out_fault);
         if (!s2_res.has_value()) {
             if (out_fault) {
@@ -488,8 +608,271 @@ std::optional<std::uint64_t> MMU::walk_stage1(
     const std::uint16_t vmid = static_cast<std::uint16_t>((vttbr_el2_ >> 48u) & 0xFFFFu);
 
     const std::uint64_t ttbr = is_ttbr1 ? ttbr1_el1_ : ttbr0_el1_;
+    const auto granule = is_ttbr1 ? get_tg1_granule() : get_tg0_granule();
 
-    // Extract Level 0 base table physical address from TTBR
+    // Stage 60: 16KB Translation Granule walk
+    if (granule == GranuleType::Granule16KB) {
+        if (!validate_table_alignment(ttbr & 0x0000FFFFFFFFFFFFULL, GranuleType::Granule16KB)) {
+            return make_fault(MmuFaultType::Alignment, 1);
+        }
+        std::uint64_t table_pa = ttbr & 0x0000FFFFFFFFC000ULL;
+        const std::size_t mem_size = memory.size();
+
+        const unsigned tsz = is_ttbr1
+            ? static_cast<unsigned>((tcr_el1_ >> 16u) & 0x3Fu)
+            : static_cast<unsigned>(tcr_el1_ & 0x3Fu);
+        const unsigned va_bits = (tsz >= 16u && tsz <= 39u) ? (64u - tsz) : 36u;
+
+        if (va_bits > 36u) {
+            // Level 0 walk for 48-bit address space
+            if (va_bits == 48u) {
+                const std::uint64_t l0_idx = (eff_va >> 47u) & 0x1u;
+                const std::uint64_t l0_entry_addr = table_pa + l0_idx * 8u;
+                if (l0_entry_addr + 8u > mem_size || l0_entry_addr < table_pa) {
+                    return make_fault(MmuFaultType::ExternalWalk, 0);
+                }
+                const std::uint64_t l0_desc = memory.read_u64(static_cast<std::size_t>(l0_entry_addr));
+                if ((l0_desc & 0x3u) != 0x3u) {
+                    return make_fault(MmuFaultType::Translation, 0);
+                }
+                table_pa = l0_desc & 0x0000FFFFFFFFC000ULL;
+            }
+            // Level 1 walk
+            const std::uint64_t l1_idx = (eff_va >> 36u) & 0x7FFu;
+            const std::uint64_t l1_entry_addr = table_pa + l1_idx * 8u;
+            if (l1_entry_addr + 8u > mem_size || l1_entry_addr < table_pa) {
+                return make_fault(MmuFaultType::ExternalWalk, 1);
+            }
+            const std::uint64_t l1_desc = memory.read_u64(static_cast<std::size_t>(l1_entry_addr));
+            if ((l1_desc & 0x3u) != 0x3u) {
+                return make_fault(MmuFaultType::Translation, 1);
+            }
+            table_pa = l1_desc & 0x0000FFFFFFFFC000ULL;
+        }
+
+        // Level 2 (32MB block or pointer to L3 table)
+        const std::uint64_t l2_idx = (eff_va >> 25u) & 0x7FFu;
+        const std::uint64_t l2_entry_addr = table_pa + l2_idx * 8u;
+        if (l2_entry_addr + 8u > mem_size || l2_entry_addr < table_pa) {
+            return make_fault(MmuFaultType::ExternalWalk, 2);
+        }
+        const std::uint64_t l2_desc = memory.read_u64(static_cast<std::size_t>(l2_entry_addr));
+        DescriptorKind l2_kind = DescriptorKind::Invalid;
+        MmuFaultType l2_fault = MmuFaultType::Translation;
+        if (!validate_descriptor_for_granule(2, l2_desc, GranuleType::Granule16KB, false, &l2_kind, &l2_fault)) {
+            return make_fault(l2_fault, 2);
+        }
+
+        if (l2_kind == DescriptorKind::Block) {
+            if (((l2_desc >> 10u) & 0x1u) == 0) return make_fault(MmuFaultType::AccessFlag, 2);
+            const std::uint8_t ap = static_cast<std::uint8_t>((l2_desc >> 6u) & 0x3u);
+            const bool el0_acc = (ap & 0x1u) != 0;
+            const bool read_only = (ap & 0x2u) != 0;
+            if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 2);
+            if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 2);
+            const bool uxn = ((l2_desc >> 54u) & 0x1u) != 0;
+            const bool pxn = ((l2_desc >> 53u) & 0x1u) != 0;
+            if (access == AccessKind::Execute) {
+                if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 2);
+                if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 2);
+            }
+            const std::uint8_t attr_idx = static_cast<std::uint8_t>((l2_desc >> 2u) & 7u);
+            const std::uint8_t attr_byte = get_mair_attribute(attr_idx);
+            const bool is_dev = is_device_attribute(attr_byte);
+            if (out_is_device) *out_is_device = is_dev;
+
+            const std::uint64_t block_pa = (l2_desc & 0x0000FFFFFE000000ULL) | (eff_va & 0x01FFFFFFULL);
+            if (tlb_enabled_) {
+                TlbEntry entry;
+                entry.valid = true;
+                entry.virtual_page = (eff_va & 0xFFFFFFFFFE000000ULL) >> 12u;
+                entry.physical_page = (block_pa & 0xFFFFFFFFFE000000ULL) >> 12u;
+                entry.page_mask = 0xFFFFFFFFFE000000ULL;
+                entry.asid = asid;
+                entry.vmid = vmid;
+                entry.el0_accessible = el0_acc;
+                entry.writable = !read_only;
+                entry.executable_el0 = !uxn;
+                entry.executable_el1 = !pxn;
+                entry.non_global = ((l2_desc >> 11u) & 1u) != 0;
+                entry.attr_indx = attr_idx;
+                entry.shareability = static_cast<std::uint8_t>((l2_desc >> 8u) & 3u);
+                entry.is_device = is_dev;
+                if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
+                tlb_.push_back(entry);
+            }
+            return block_pa;
+        }
+
+        // Level 3 (16KB page)
+        const std::uint64_t l3_table_pa = l2_desc & 0x0000FFFFFFFFC000ULL;
+        const std::uint64_t l3_idx = (eff_va >> 14u) & 0x7FFu;
+        const std::uint64_t l3_entry_addr = l3_table_pa + l3_idx * 8u;
+        if (l3_entry_addr + 8u > mem_size || l3_entry_addr < l3_table_pa) {
+            return make_fault(MmuFaultType::ExternalWalk, 3);
+        }
+        const std::uint64_t l3_desc = memory.read_u64(static_cast<std::size_t>(l3_entry_addr));
+        DescriptorKind l3_kind = DescriptorKind::Invalid;
+        MmuFaultType l3_fault = MmuFaultType::Translation;
+        if (!validate_descriptor_for_granule(3, l3_desc, GranuleType::Granule16KB, false, &l3_kind, &l3_fault)) {
+            return make_fault(l3_fault, 3);
+        }
+        if (((l3_desc >> 10u) & 0x1u) == 0) return make_fault(MmuFaultType::AccessFlag, 3);
+        const std::uint8_t ap = static_cast<std::uint8_t>((l3_desc >> 6u) & 0x3u);
+        const bool el0_acc = (ap & 0x1u) != 0;
+        const bool read_only = (ap & 0x2u) != 0;
+        if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 3);
+        if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 3);
+        const bool uxn = ((l3_desc >> 54u) & 0x1u) != 0;
+        const bool pxn = ((l3_desc >> 53u) & 0x1u) != 0;
+        if (access == AccessKind::Execute) {
+            if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 3);
+            if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 3);
+        }
+        const std::uint8_t attr_idx = static_cast<std::uint8_t>((l3_desc >> 2u) & 7u);
+        const std::uint8_t attr_byte = get_mair_attribute(attr_idx);
+        const bool is_dev = is_device_attribute(attr_byte);
+        if (out_is_device) *out_is_device = is_dev;
+
+        const std::uint64_t page_pa = (l3_desc & 0x0000FFFFFFFFC000ULL) | (eff_va & 0x3FFFULL);
+        if (tlb_enabled_) {
+            TlbEntry entry;
+            entry.valid = true;
+            entry.virtual_page = (eff_va & 0xFFFFFFFFFFFFC000ULL) >> 12u;
+            entry.physical_page = (page_pa & 0xFFFFFFFFFFFFC000ULL) >> 12u;
+            entry.page_mask = 0xFFFFFFFFFFFFC000ULL;
+            entry.asid = asid;
+            entry.vmid = vmid;
+            entry.el0_accessible = el0_acc;
+            entry.writable = !read_only;
+            entry.executable_el0 = !uxn;
+            entry.executable_el1 = !pxn;
+            entry.non_global = ((l3_desc >> 11u) & 1u) != 0;
+            entry.attr_indx = attr_idx;
+            entry.shareability = static_cast<std::uint8_t>((l3_desc >> 8u) & 3u);
+            entry.is_device = is_dev;
+            if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
+            tlb_.push_back(entry);
+        }
+        return page_pa;
+    }
+
+    // Stage 60: 64KB Translation Granule walk
+    if (granule == GranuleType::Granule64KB) {
+        if (!validate_table_alignment(ttbr & 0x0000FFFFFFFFFFFFULL, GranuleType::Granule64KB)) {
+            return make_fault(MmuFaultType::Alignment, 2);
+        }
+        std::uint64_t table_pa = ttbr & 0x0000FFFFFFFF0000ULL;
+        const std::size_t mem_size = memory.size();
+
+        // Level 2 (512MB block or pointer to L3 table)
+        const std::uint64_t l2_idx = (eff_va >> 29u) & 0x1FFFu;
+        const std::uint64_t l2_entry_addr = table_pa + l2_idx * 8u;
+        if (l2_entry_addr + 8u > mem_size || l2_entry_addr < table_pa) {
+            return make_fault(MmuFaultType::ExternalWalk, 2);
+        }
+        const std::uint64_t l2_desc = memory.read_u64(static_cast<std::size_t>(l2_entry_addr));
+        DescriptorKind l2_kind = DescriptorKind::Invalid;
+        MmuFaultType l2_fault = MmuFaultType::Translation;
+        if (!validate_descriptor_for_granule(2, l2_desc, GranuleType::Granule64KB, false, &l2_kind, &l2_fault)) {
+            return make_fault(l2_fault, 2);
+        }
+
+        if (l2_kind == DescriptorKind::Block) {
+            if (((l2_desc >> 10u) & 0x1u) == 0) return make_fault(MmuFaultType::AccessFlag, 2);
+            const std::uint8_t ap = static_cast<std::uint8_t>((l2_desc >> 6u) & 0x3u);
+            const bool el0_acc = (ap & 0x1u) != 0;
+            const bool read_only = (ap & 0x2u) != 0;
+            if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 2);
+            if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 2);
+            const bool uxn = ((l2_desc >> 54u) & 0x1u) != 0;
+            const bool pxn = ((l2_desc >> 53u) & 0x1u) != 0;
+            if (access == AccessKind::Execute) {
+                if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 2);
+                if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 2);
+            }
+            const std::uint8_t attr_idx = static_cast<std::uint8_t>((l2_desc >> 2u) & 7u);
+            const std::uint8_t attr_byte = get_mair_attribute(attr_idx);
+            const bool is_dev = is_device_attribute(attr_byte);
+            if (out_is_device) *out_is_device = is_dev;
+
+            const std::uint64_t block_pa = (l2_desc & 0x0000FFFFE0000000ULL) | (eff_va & 0x1FFFFFFFULL);
+            if (tlb_enabled_) {
+                TlbEntry entry;
+                entry.valid = true;
+                entry.virtual_page = (eff_va & 0xFFFFFFFFE0000000ULL) >> 12u;
+                entry.physical_page = (block_pa & 0xFFFFFFFFE0000000ULL) >> 12u;
+                entry.page_mask = 0xFFFFFFFFE0000000ULL;
+                entry.asid = asid;
+                entry.vmid = vmid;
+                entry.el0_accessible = el0_acc;
+                entry.writable = !read_only;
+                entry.executable_el0 = !uxn;
+                entry.executable_el1 = !pxn;
+                entry.non_global = ((l2_desc >> 11u) & 1u) != 0;
+                entry.attr_indx = attr_idx;
+                entry.shareability = static_cast<std::uint8_t>((l2_desc >> 8u) & 3u);
+                entry.is_device = is_dev;
+                if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
+                tlb_.push_back(entry);
+            }
+            return block_pa;
+        }
+
+        // Level 3 (64KB page)
+        const std::uint64_t l3_table_pa = l2_desc & 0x0000FFFFFFFF0000ULL;
+        const std::uint64_t l3_idx = (eff_va >> 16u) & 0x1FFFu;
+        const std::uint64_t l3_entry_addr = l3_table_pa + l3_idx * 8u;
+        if (l3_entry_addr + 8u > mem_size || l3_entry_addr < l3_table_pa) {
+            return make_fault(MmuFaultType::ExternalWalk, 3);
+        }
+        const std::uint64_t l3_desc = memory.read_u64(static_cast<std::size_t>(l3_entry_addr));
+        DescriptorKind l3_kind = DescriptorKind::Invalid;
+        MmuFaultType l3_fault = MmuFaultType::Translation;
+        if (!validate_descriptor_for_granule(3, l3_desc, GranuleType::Granule64KB, false, &l3_kind, &l3_fault)) {
+            return make_fault(l3_fault, 3);
+        }
+        if (((l3_desc >> 10u) & 0x1u) == 0) return make_fault(MmuFaultType::AccessFlag, 3);
+        const std::uint8_t ap = static_cast<std::uint8_t>((l3_desc >> 6u) & 0x3u);
+        const bool el0_acc = (ap & 0x1u) != 0;
+        const bool read_only = (ap & 0x2u) != 0;
+        if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 3);
+        if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 3);
+        const bool uxn = ((l3_desc >> 54u) & 0x1u) != 0;
+        const bool pxn = ((l3_desc >> 53u) & 0x1u) != 0;
+        if (access == AccessKind::Execute) {
+            if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 3);
+            if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 3);
+        }
+        const std::uint8_t attr_idx = static_cast<std::uint8_t>((l3_desc >> 2u) & 7u);
+        const std::uint8_t attr_byte = get_mair_attribute(attr_idx);
+        const bool is_dev = is_device_attribute(attr_byte);
+        if (out_is_device) *out_is_device = is_dev;
+
+        const std::uint64_t page_pa = (l3_desc & 0x0000FFFFFFFF0000ULL) | (eff_va & 0xFFFFULL);
+        if (tlb_enabled_) {
+            TlbEntry entry;
+            entry.valid = true;
+            entry.virtual_page = (eff_va & 0xFFFFFFFFFFFF0000ULL) >> 12u;
+            entry.physical_page = (page_pa & 0xFFFFFFFFFFFF0000ULL) >> 12u;
+            entry.page_mask = 0xFFFFFFFFFFFF0000ULL;
+            entry.asid = asid;
+            entry.vmid = vmid;
+            entry.el0_accessible = el0_acc;
+            entry.writable = !read_only;
+            entry.executable_el0 = !uxn;
+            entry.executable_el1 = !pxn;
+            entry.non_global = ((l3_desc >> 11u) & 1u) != 0;
+            entry.attr_indx = attr_idx;
+            entry.shareability = static_cast<std::uint8_t>((l3_desc >> 8u) & 3u);
+            entry.is_device = is_dev;
+            if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
+            tlb_.push_back(entry);
+        }
+        return page_pa;
+    }
+
+    // Default 4KB Granule Walk
     std::uint64_t table_pa = ttbr & 0x0000FFFFFFFFF000ULL;
     const std::size_t mem_size = memory.size();
 

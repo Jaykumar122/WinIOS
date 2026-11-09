@@ -485,7 +485,7 @@ bool test_stage37_snapshot_replay() {
 
     // Serialize
     const auto buf = serialize_core_architectural_state(state1);
-    TEST_ASSERT(buf.size() == 1080, "Serialized core state must be 1080 bytes");
+    TEST_ASSERT(buf.size() == kCoreArchPayloadSize, "Serialized core state includes legacy, debug, and PMU blocks");
 
     // Deserialize into state2
     SmpCoreState state2;
@@ -551,10 +551,10 @@ bool test_stage37_fuzz() {
 
     // 3. Snapshot Truncation / Corruption Fuzzing (Seed 0x534E4150 = "SNAP", 1000 iterations)
     std::mt19937_64 rng_snap(0x534E4150ULL);
-    std::vector<std::uint8_t> fuzz_buf(1080);
+    std::vector<std::uint8_t> fuzz_buf(1240);
     for (int i = 0; i < 1000; ++i) {
         for (auto& b : fuzz_buf) b = static_cast<std::uint8_t>(rng_snap() & 0xFFu);
-        const std::size_t test_len = static_cast<std::size_t>(rng_snap() % 1200u);
+        const std::size_t test_len = static_cast<std::size_t>(rng_snap() % 1240u);
         SmpCoreState fstate;
         const auto sres = deserialize_core_architectural_state(fuzz_buf.data(), test_len, fstate);
         if (test_len < 1056) {

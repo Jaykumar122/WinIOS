@@ -53,7 +53,9 @@ constexpr std::uint32_t kPMCEID0Value =
     (1u << 10u) | // 0x000A EXC_RETURN
     (1u << 16u) | // 0x0010 BR_IMMED_RETIRED
     (1u << 17u) | // 0x0011 CPU_CYCLES
-    (1u << 19u);  // 0x0013 MEM_ACCESS
+    (1u << 19u) | // 0x0013 MEM_ACCESS
+    (1u << 22u) | // 0x0016 L1D_CACHE_ACCESS
+    (1u << 23u);  // 0x0017 L1D_CACHE_WRITE
 constexpr std::uint32_t kPMCEID1Value = 0x00000000u;
 
 class PMU {
@@ -121,6 +123,9 @@ public:
 
     // Interrupt status
     [[nodiscard]] bool has_pending_interrupt() const noexcept;
+
+    [[nodiscard]] std::uint64_t cycle_prescaler() const noexcept { return cycle_prescaler_; }
+    void set_cycle_prescaler(std::uint64_t value) noexcept { cycle_prescaler_ = value % 64u; }
 
     // Filter verification helper
     [[nodiscard]] static bool is_counting_permitted(std::uint32_t filter, unsigned current_el) noexcept;
