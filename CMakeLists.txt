@@ -1068,6 +1068,18 @@ if(BUILD_TESTING)
     add_test(NAME stage199_replay_and_reliability_tests COMMAND stage199_replay_and_reliability_tests)
     set_tests_properties(stage199_replay_and_reliability_tests PROPERTIES TIMEOUT 60)
 
+    add_executable(stage_r3_real_artifact_execution_tests tests/unit/stage_r3_real_artifact_execution_tests.cpp)
+    target_link_libraries(stage_r3_real_artifact_execution_tests PRIVATE winios_core)
+    winios_set_warnings(stage_r3_real_artifact_execution_tests)
+    add_test(NAME stage_r3_real_artifact_execution_tests COMMAND stage_r3_real_artifact_execution_tests)
+    set_tests_properties(stage_r3_real_artifact_execution_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(adr_adrp_conformance_tests tests/unit/adr_adrp_conformance_tests.cpp)
+    target_link_libraries(adr_adrp_conformance_tests PRIVATE winios_core)
+    winios_set_warnings(adr_adrp_conformance_tests)
+    add_test(NAME adr_adrp_conformance_tests COMMAND adr_adrp_conformance_tests)
+    set_tests_properties(adr_adrp_conformance_tests PROPERTIES TIMEOUT 60)
+
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)
     winios_set_warnings(stage53_manifest_tests)

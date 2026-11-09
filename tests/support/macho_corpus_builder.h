@@ -14,6 +14,7 @@ namespace winios::corpus {
 // -----------------------------------------------------------------------------
 struct MachOCorpusEntry {
     std::string                name;
+    std::string                classification{"SYNTHETIC-GUEST-VERIFIED"};
     std::string                description;
     std::string                provenance;
     std::string                license;

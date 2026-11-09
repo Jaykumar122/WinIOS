@@ -39,7 +39,8 @@ secrets.json
 *.wsnap
 *.sndl
 *.wtr
-artifacts/
+/artifacts/
+!tests/artifacts/
 stage21_benchmark/
 divergence_report.json
 

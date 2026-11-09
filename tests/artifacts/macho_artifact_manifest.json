@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WinIOS Genuine Independently-Compiled Mach-O Artifact Manifest",
+  "version": "1.0.0",
+  "provenance_policy": "STRICT_INDEPENDENT_TOOLCHAIN_ONLY",
+  "artifacts": [
+    {
+      "artifact_id": "REAL-001",
+      "file_name": "hello_arm64",
+      "relative_path": "tests/artifacts/bin/hello_arm64",
+      "sha256": "63db88c178786e58321279ca993ef936802231768954bb5d655cb4a45c9c8e9c",
+      "size_bytes": 49976,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/hello_arm64.S",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + lld/Mach-O backend)",
+        "command_line": "zig cc -target aarch64-macos -nostdlib -Wl,-e,_start tests/artifacts/src/hello_arm64.S -o tests/artifacts/bin/hello_arm64",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "cpu_subtype": "CPU_SUBTYPE_ARM64_ALL (0x00000000)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "min_os_version": "15.0.0",
+      "sdk_version": "0.0.0",
+      "entry_point": {
+        "kind": "LC_MAIN (0x80000028)",
+        "entryoff": "0x13f8",
+        "stacksize": "0x1000000",
+        "virtual_address": "0x1000013f8"
+      },
+      "load_commands": [
+        "LC_SEGMENT_64 (__PAGEZERO)",
+        "LC_SEGMENT_64 (__TEXT)",
+        "LC_SEGMENT_64 (__DATA_CONST)",
+        "LC_SEGMENT_64 (__DATA)",
+        "LC_SEGMENT_64 (__LINKEDIT)",
+        "LC_DYLD_INFO_ONLY (0x80000022)",
+        "LC_FUNCTION_STARTS (0x26)",
+        "LC_DATA_IN_CODE (0x29)",
+        "LC_SYMTAB (0x2)",
+        "LC_DYSYMTAB (0xb)",
+        "LC_LOAD_DYLINKER (/usr/lib/dyld)",
+        "LC_MAIN (0x80000028)",
+        "LC_SOURCE_VERSION (0x2a)",
+        "LC_BUILD_VERSION (0x32)",
+        "LC_LOAD_DYLIB (/usr/lib/libSystem.B.dylib)"
+      ],
+      "segments": [
+        {
+          "name": "__PAGEZERO",
+          "vmaddr": "0x00000000",
+          "vmsize": "0x100000000",
+          "fileoff": "0x0",
+          "filesize": "0x0",
+          "initprot": "---"
+        },
+        {
+          "name": "__TEXT",
+          "vmaddr": "0x100000000",
+          "vmsize": "0x141c",
+          "fileoff": "0x0",
+          "filesize": "0x141c",
+          "initprot": "r-x",
+          "sections": [
+            {
+              "name": "__text",
+              "addr": "0x1000013f8",
+              "size": "0x24",
+              "offset": "0x13f8"
+            }
+          ]
+        },
+        {
+          "name": "__DATA_CONST",
+          "vmaddr": "0x100004000",
+          "vmsize": "0x8",
+          "fileoff": "0x4000",
+          "filesize": "0x8",
+          "initprot": "rw-",
+          "sections": [
+            {
+              "name": "__got",
+              "addr": "0x100004000",
+              "size": "0x8",
+              "offset": "0x4000"
+            }
+          ]
+        },
+        {
+          "name": "__DATA",
+          "vmaddr": "0x100008000",
+          "vmsize": "0x1f",
+          "fileoff": "0x8000",
+          "filesize": "0x1f",
+          "initprot": "rw-",
+          "sections": [
+            {
+              "name": "__data",
+              "addr": "0x100008000",
+              "size": "0x1f",
+              "offset": "0x8000"
+            }
+          ]
+        },
+        {
+          "name": "__LINKEDIT",
+          "vmaddr": "0x10000c000",
+          "vmsize": "0x4000",
+          "fileoff": "0xc000",
+          "filesize": "0x338",
+          "initprot": "r--"
+        }
+      ],
+      "dependencies": [
+        "/usr/lib/dyld",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "required_syscalls": [
+        "SYS_write (4)",
+        "SYS_exit (1)"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "guest_instructions_retired": 9,
+        "exit_code": 0,
+        "captured_stdout": "Hello from real Mach-O\n",
+        "bsd_syscalls_handled": 2,
+        "test_suite": "tests/unit/stage_r3_real_artifact_execution_tests.cpp"
+      }
+    }
+  ]
+}

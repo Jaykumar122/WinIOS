@@ -32,6 +32,7 @@ bool test_corpus_catalog_integrity() {
         TEST_ASSERT(!e.description.empty(), "Entry must have a description");
         TEST_ASSERT(!e.provenance.empty(), "Entry must have documented provenance");
         TEST_ASSERT(!e.license.empty(), "Entry must have documented license");
+        TEST_ASSERT(e.classification == "SYNTHETIC-GUEST-VERIFIED", "Entry classification must be SYNTHETIC-GUEST-VERIFIED");
         TEST_ASSERT(e.cputype == 0x0100000Cu, "CPU type must be ARM64 (0x0100000C)");
         TEST_ASSERT(e.filetype == 2, "Filetype must be MH_EXECUTE (2)");
         TEST_ASSERT(e.file_size > 0 && e.file_size == e.binary_data.size(), "Size matches binary data");

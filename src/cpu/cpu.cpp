@@ -2878,6 +2878,13 @@ std::string decode_disassembly(std::uint32_t instruction) {
         }
         return stream.str();
     }
+    if ((instruction & 0x1F000000u) == 0x10000000u) {
+        const bool is_page = (instruction & 0x80000000u) != 0;
+        const auto destination = instruction & 0x1Fu;
+        std::ostringstream stream;
+        stream << (is_page ? "ADRP " : "ADR ") << register_name(destination, false);
+        return stream.str();
+    }
     if ((instruction & kMovzMask) == kMovz64) {
         const auto destination = instruction & 0x1Fu;
         const auto halfword = (instruction >> 21u) & 0x3u;
@@ -5265,6 +5272,28 @@ void CPU::step(Memory& guest_memory) {
         }
         program_counter_ = checked_add_address(
             instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+    // PC-relative addressing: ADR and ADRP
+    if ((instruction & 0x1F000000u) == 0x10000000u) {
+        const bool is_page = (instruction & 0x80000000u) != 0;
+        const std::uint32_t destination = instruction & 0x1Fu;
+        const std::uint64_t immlo = (instruction >> 29u) & 0x3u;
+        const std::uint64_t immhi = (instruction >> 5u) & 0x7FFFFu;
+        std::int64_t imm = static_cast<std::int64_t>((immhi << 2u) | immlo);
+        if ((imm & (1LL << 20u)) != 0) {
+            imm |= ~((1LL << 21u) - 1);
+        }
+        std::uint64_t result_val = 0;
+        if (is_page) {
+            imm <<= 12u;
+            result_val = (instruction_address & ~0xFFFULL) + static_cast<std::uint64_t>(imm);
+        } else {
+            result_val = instruction_address + static_cast<std::uint64_t>(imm);
+        }
+        write_width_result(*this, destination, result_val, true, false);
+        program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
         emit_trace();
         return;
     }
