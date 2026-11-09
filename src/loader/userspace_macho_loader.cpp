@@ -156,6 +156,25 @@ bool UserspaceMachOLoader::parse_metadata(
                     has_text_seg = true;
                 }
 
+                if (seg->nsects > 0) {
+                    std::size_t expected_size = sizeof(MachOSegment64Raw) + seg->nsects * sizeof(MachOSection64Raw);
+                    if (cmd->cmdsize >= expected_size) {
+                        const auto* sects = reinterpret_cast<const MachOSection64Raw*>(bytes + cmd_offset + sizeof(MachOSegment64Raw));
+                        for (std::uint32_t sec_idx = 0; sec_idx < seg->nsects; ++sec_idx) {
+                            const auto& sec = sects[sec_idx];
+                            std::uint32_t sec_type = sec.flags & 0xFFu;
+                            if (sec_type == 0x09u || std::strncmp(sec.sectname, "__mod_init_func", 15) == 0) {
+                                if (sec.offset + sec.size <= size) {
+                                    for (std::uint64_t off = 0; off + 8 <= sec.size; off += 8) {
+                                        std::uint64_t fn_ptr = *reinterpret_cast<const std::uint64_t*>(bytes + sec.offset + off);
+                                        out_result.mod_init_funcs.push_back(fn_ptr);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 out_result.segments.push_back(std::move(s));
                 break;
             }
@@ -218,6 +237,19 @@ bool UserspaceMachOLoader::parse_metadata(
                     out_result.has_code_signature = true;
                     out_result.code_signature_offset = cs->dataoff;
                     out_result.code_signature_size = cs->datasize;
+                }
+                break;
+            }
+            case 0x8000001cu: { // LC_RPATH
+                if (cmd->cmdsize > 12) {
+                    std::uint32_t stroff = *reinterpret_cast<const std::uint32_t*>(bytes + cmd_offset + 8);
+                    if (stroff < cmd->cmdsize && (cmd_offset + stroff < cmds_end)) {
+                        const char* s = reinterpret_cast<const char*>(bytes + cmd_offset + stroff);
+                        std::size_t maxlen = cmd->cmdsize - stroff;
+                        std::size_t slen = 0;
+                        while (slen < maxlen && s[slen] != '\0') slen++;
+                        out_result.rpaths.push_back(std::string(s, slen));
+                    }
                 }
                 break;
             }

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <fstream>
 #include <set>
 #include <sstream>
 
@@ -48,6 +49,8 @@ void DyldEngine::register_builtin_system_libraries() {
     libsystem.exports["___stack_chk_fail"]   = 0x0000000180001300ULL;
     libsystem.exports["___stack_chk_guard"]  = 0x0000000180001340ULL;
     libsystem.exports["dyld_stub_binder"]    = 0x0000000180001380ULL;
+    libsystem.exports["__tlv_bootstrap"]     = 0x0000000180001400ULL;
+    libsystem.exports["___tlv_bootstrap"]    = 0x0000000180001400ULL;
     register_module(std::move(libsystem));
 
     // 2. CoreFoundation Framework
@@ -540,6 +543,41 @@ bool DyldEngine::parse_binding_stream(
     }
 
     return true;
+}
+
+std::string DyldEngine::resolve_rpath_path(
+    std::string_view install_name,
+    const std::vector<std::string>& rpaths,
+    std::string_view executable_dir,
+    std::string_view loader_dir) {
+
+    if (!install_name.starts_with("@rpath/")) {
+        return std::string(install_name);
+    }
+
+    std::string_view suffix = install_name.substr(7);
+
+    for (const auto& rp : rpaths) {
+        std::string candidate_dir = rp;
+        if (candidate_dir.starts_with("@executable_path")) {
+            candidate_dir.replace(0, 16, executable_dir);
+        } else if (candidate_dir.starts_with("@loader_path")) {
+            candidate_dir.replace(0, 12, loader_dir);
+        }
+
+        std::string candidate_path = candidate_dir;
+        if (!candidate_path.empty() && candidate_path.back() != '/' && candidate_path.back() != '\\') {
+            candidate_path += '/';
+        }
+        candidate_path += std::string(suffix);
+
+        std::ifstream check(candidate_path, std::ios::binary);
+        if (check.good()) {
+            return candidate_path;
+        }
+    }
+
+    return "";
 }
 
 namespace {

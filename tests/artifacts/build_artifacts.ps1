@@ -70,3 +70,67 @@ Write-Host "Successfully built $outMain ($lenMain bytes, SHA256: $hashMain)"
 # Stack protector artifacts
 Build-Artifact -Name "stack_safe_arm64" -Source "stack_safe_arm64.c" -ExtraFlags @("-fno-sanitize=undefined", "-fstack-protector-all")
 Build-Artifact -Name "stack_smash_arm64" -Source "stack_smash_arm64.c" -ExtraFlags @("-fno-sanitize=undefined", "-fstack-protector-all")
+
+# REAL-006: compute_ios_O2 (iOS Target: PLATFORM_IOS = 2)
+$srcIos = Join-Path $srcDir "compute_arm64.c"
+$outIos = Join-Path $binDir "compute_ios_O2"
+Write-Host "Building genuine iOS-target Mach-O executable: $srcIos -> $outIos"
+& zig cc -target aarch64-ios -nostdlib -fno-sanitize=undefined -fno-stack-protector -O2 "-Wl,-e,_start" $srcIos -o $outIos
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to compile $srcIos with zig cc for iOS"
+    exit $LASTEXITCODE
+}
+$hashIos = (Get-FileHash -Algorithm SHA256 $outIos).Hash.ToLower()
+$lenIos = (Get-Item $outIos).Length
+Write-Host "Successfully built $outIos ($lenIos bytes, SHA256: $hashIos)"
+
+# Three-Image Dependency Chain Artifacts
+$srcLeaf = Join-Path $srcDir "libleaf.c"
+$outLeaf = Join-Path $binDir "libleaf.dylib"
+Write-Host "Building libleaf.dylib: $srcLeaf -> $outLeaf"
+& zig cc -target aarch64-macos -dynamiclib -nostdlib -fno-sanitize=undefined -install_name @rpath/libleaf.dylib $srcLeaf -o $outLeaf
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libleaf.dylib"; exit $LASTEXITCODE }
+
+$srcMid = Join-Path $srcDir "libmid.c"
+$outMid = Join-Path $binDir "libmid.dylib"
+Write-Host "Building libmid.dylib: $srcMid -> $outMid"
+& zig cc -target aarch64-macos -dynamiclib -nostdlib -fno-sanitize=undefined -install_name @rpath/libmid.dylib -L $binDir -lleaf "-Wl,-rpath,@loader_path" $srcMid -o $outMid
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libmid.dylib"; exit $LASTEXITCODE }
+
+$srcChain = Join-Path $srcDir "main_chain.c"
+$outChain = Join-Path $binDir "main_chain"
+Write-Host "Building main_chain: $srcChain -> $outChain"
+& zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined "-Wl,-e,_start" -L $binDir -lmid "-Wl,-rpath,@executable_path" $srcChain -o $outChain
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile main_chain"; exit $LASTEXITCODE }
+
+# Initializers and TLV Artifacts (Stage T3)
+$srcCtorLeaf = Join-Path $srcDir "ctor_leaf.c"
+$outCtorLeaf = Join-Path $binDir "libctor_leaf.dylib"
+Write-Host "Building libctor_leaf.dylib: $srcCtorLeaf -> $outCtorLeaf"
+& zig cc -target aarch64-macos -dynamiclib -nostdlib -fno-sanitize=undefined -fno-stack-protector -install_name @rpath/libctor_leaf.dylib $srcCtorLeaf -o $outCtorLeaf
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libctor_leaf.dylib"; exit $LASTEXITCODE }
+
+$srcCtorMid = Join-Path $srcDir "ctor_mid.c"
+$outCtorMid = Join-Path $binDir "libctor_mid.dylib"
+Write-Host "Building libctor_mid.dylib: $srcCtorMid -> $outCtorMid"
+& zig cc -target aarch64-macos -dynamiclib -nostdlib -fno-sanitize=undefined -fno-stack-protector -install_name @rpath/libctor_mid.dylib -L $binDir -lctor_leaf "-Wl,-rpath,@loader_path" $srcCtorMid -o $outCtorMid
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libctor_mid.dylib"; exit $LASTEXITCODE }
+
+$srcCtorMain = Join-Path $srcDir "ctor_main.c"
+$outCtorMain = Join-Path $binDir "ctor_main"
+Write-Host "Building ctor_main: $srcCtorMain -> $outCtorMain"
+& zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector "-Wl,-e,_start" -L $binDir -lctor_mid -lctor_leaf "-Wl,-rpath,@executable_path" $srcCtorMain -o $outCtorMain
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile ctor_main"; exit $LASTEXITCODE }
+
+$srcTlvMain = Join-Path $srcDir "tlv_main.c"
+$outTlvMain = Join-Path $binDir "tlv_main"
+Write-Host "Building tlv_main: $srcTlvMain -> $outTlvMain"
+& zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector "-Wl,-e,_start" $srcTlvMain -o $outTlvMain
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile tlv_main"; exit $LASTEXITCODE }
+
+# ARM64e / PAC Probe Artifact (Stage T4)
+$srcPacProbe = Join-Path $srcDir "pac_probe.S"
+$outPacProbe = Join-Path $binDir "pac_probe"
+Write-Host "Building pac_probe: $srcPacProbe -> $outPacProbe"
+& zig cc -target aarch64-macos -mcpu=apple_a16 -nostdlib "-Wl,-e,_start" $srcPacProbe -o $outPacProbe
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile pac_probe"; exit $LASTEXITCODE }

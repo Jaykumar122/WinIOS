@@ -282,6 +282,13 @@ public:
         std::vector<DyldBindingRecord>& out_bindings,
         std::string& out_error);
 
+    // Resolve @rpath, @executable_path, @loader_path references
+    [[nodiscard]] static std::string resolve_rpath_path(
+        std::string_view install_name,
+        const std::vector<std::string>& rpaths,
+        std::string_view executable_dir,
+        std::string_view loader_dir);
+
 private:
     std::vector<DyldLoadedModule> modules_;
 };

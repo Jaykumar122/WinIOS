@@ -117,6 +117,21 @@ struct MachOLinkeditDataRaw {
     std::uint32_t dataoff{0};
     std::uint32_t datasize{0};
 };
+
+struct MachOSection64Raw {
+    char          sectname[16]{0};
+    char          segname[16]{0};
+    std::uint64_t addr{0};
+    std::uint64_t size{0};
+    std::uint32_t offset{0};
+    std::uint32_t align{0};
+    std::uint32_t reloff{0};
+    std::uint32_t nreloc{0};
+    std::uint32_t flags{0};
+    std::uint32_t reserved1{0};
+    std::uint32_t reserved2{0};
+    std::uint32_t reserved3{0};
+};
 #pragma pack(pop)
 
 // -----------------------------------------------------------------------------
@@ -186,7 +201,9 @@ struct UserspaceLoadResult {
     bool                     is_pie{false};
     std::string              dylinker_path;
     std::vector<UserspaceDylibDep> dylibs;
+    std::vector<std::string> rpaths;
     std::vector<UserspaceSegment>  segments;
+    std::vector<std::uint64_t> mod_init_funcs;
     std::string              min_os_version;
     std::string              sdk_version;
     bool                     has_code_signature{false};
