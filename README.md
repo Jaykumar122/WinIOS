@@ -1,133 +1,138 @@
-# WinIOS: AArch64 C++20 Execution Environment & Deterministic SMP Replay Architecture
+# WinIOS: AArch64 / Darwin Virtual Platform & Execution Environment
 
-[![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](https://www.microsoft.com/windows)
-[![Tests](https://img.shields.io/badge/CTest-63%2F63%20Passing%20(100%25)-brightgreen.svg)]()
-[![Deterministic SMP Replay](https://img.shields.io/badge/SMP%20Replay-4--Core%20Verified%20(Bit--Identical)-success.svg)]()
+[![C++20](https://img.shields.io/badge/C%2B%2B-20%20(MSVC)-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B20)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2011%20x64-0078D6.svg)](https://www.microsoft.com/windows)
+[![Compiler Policy](https://img.shields.io/badge/Compiler-%2FW4%20%2FWX%20%2Fpermissive---purple.svg)]()
+[![Target](https://img.shields.io/badge/Target-iPhone%2015%20(iPhone15%2C4%20%2F%20D37AP%20%2F%20A16%20T8120)-orange.svg)]()
+[![Tests](https://img.shields.io/badge/CTest-152%2B%20Suites%20Passing%20(100%25)-brightgreen.svg)]()
+[![Execution](https://img.shields.io/badge/Execution-Pure%20Guest%20CPU%20(EL0)-success.svg)]()
 
-WinIOS is an experimental, high-assurance AArch64 (ARM64) interpreter, system emulation environment, and deterministic symmetric multiprocessing (SMP) execution and record/replay platform engineered in modern C++20 for Windows.
-
----
-
-## About This Project
-
-WinIOS provides a mathematically reproducible, cycle-disciplined foundation for AArch64 research on Windows. Designed from first principles with an emphasis on strict determinism, formal state verification, and total session isolation, WinIOS eliminates undefined host dependencies by routing all architectural time, memory ordering, and asynchronous external events through an authoritative single-host-thread scheduler and recording pipeline.
-
-### Core Architecture Highlights
-
-- **AArch64 Core Engine:** Full 64-bit architectural state ($X0..X30$, $SP$, $PC$, $NZCV$, $DAIF$, $PSTATE$) supporting user, kernel, hypervisor, and secure monitor privilege modes (EL0, EL1, EL2, EL3).
-- **Virtual Memory & MMU:** Multi-level translation table walks (4KB granule), Stage-1 and Stage-2 translation, translation caching, access permissions, memory attributes, and fault reporting.
-- **System IP & Peripherals:** ARM Generic Interrupt Controller v3 (GICv3 SPI/PPI/SGI), ARM Generic Timers (`CNTPCT_EL0`, `CNTVCT_EL0`, `CNTFRQ_EL0`), Performance Monitors Unit (PMU), and PSCI power state coordination.
-- **Deterministic SMP Replay Engine:** Genuine 1-core, 2-core, and 4-core multi-core deterministic replay driven by `.sndl v2` event capture and `.wsnap v2` architectural snapshots. Guaranteed 100% bit-identical canonical cluster state hashes across repeated executions ($H_{\text{rep}}^{(1..10)} = \text{0xb8e9040fc54a7535}$).
-- **Hardware-Assisted Debug Architecture:** Hardware breakpoints, data watchpoints, software stepping, and linked context-aware debug events.
-- **Diagnostic Tracing Subsystem (`.wtr v1`):** Lock-free, zero-allocation circular ring buffers serializing instruction traces, memory accesses, register mutations, sysreg accesses, and interrupt lifecycles.
-- **Architectural Snapshot Engine (`.wsnap v1 & v2`):** Point-in-time state serialization covering complete cluster state, register contexts, and zstd-compressed physical RAM with CRC32C and Blake3 canonical state hashing.
-- **Nondeterministic Event Logging (`.sndl v1 & v2`):** Bounded streaming binary event ledger capturing MMIO reads, entropy/RNG queries, external interrupts, virtual timers, and load/store exclusive monitor outcomes.
+WinIOS is an experimental, high-assurance AArch64 (ARM64 / ARM64e) interpreter, Darwin userspace execution environment, and deterministic virtual platform engineered in modern C++20 for Windows 11 x64.
 
 ---
 
-## Architectural Topology
+## 1. About This Project
 
-```
+WinIOS provides an instruction-accurate, cycle-disciplined foundation for AArch64 and Apple Darwin software execution directly on Windows. Designed from first principles with an emphasis on strict determinism, formal state verification, and memory safety, WinIOS models the hardware identity and execution environment of modern Apple silicon devices—specifically targeting the **iPhone 15 (`iPhone15,4` / `D37AP` / Apple A16 Bionic `T8120` / ARM64e)**.
+
+The platform eliminates undefined host dependencies by routing all architectural time, memory transitions, and userspace traps through an authoritative virtual CPU and runtime coordination pipeline.
+
+---
+
+## 2. Core Architectural Subsystems
+
+### 2.1 Darwin Userspace Engine (`DarwinUserspaceEngine`)
+- **EL0 Virtual CPU Execution:** Executes guest ARM64 opcodes step-by-step through `Arm64CpuCore` without host callbacks or synthetic shortcuts.
+- **Darwin Stack Frame Construction:** Formats standard 16-byte aligned userspace initial stack frames containing `argc`, `argv`, `envp`, and the `apple` vector (`execpath`, `stack_guard`, `entropy`).
+- **Instruction Accounting:** Explicit tracking of `guest_instructions_retired` at EL0, cleanly decoupled from host-side loader and trap overhead.
+
+### 2.2 Mach-O Loader & Virtual Memory Model
+- **16 KB Page Granule:** Strict enforcement of Apple's 16 KB virtual memory page size (`0x4000`).
+- **W^X Memory Enforcement:** Strict permission transitions preventing concurrent write and execute privileges:
+  - `__TEXT`: Read + Execute (`PROT_READ | PROT_EXEC`).
+  - `__DATA`: Read + Write (`PROT_READ | PROT_WRITE`).
+  - `__LINKEDIT`: Read-only (`PROT_READ`).
+- **ASLR Engine:** Deterministic base slide calculations applied across all loaded segments and dynamic libraries.
+
+### 2.3 ARM64e Chained Fixups & PAC Decoupling
+- **Apple Specification Conformance:** Parser fully conforms to Apple Darwin `mach-o/fixup-chains.h`.
+- **Supported Pointer Formats:** `DYLD_CHAINED_PTR_64`, `DYLD_CHAINED_PTR_64_OFFSET`, `DYLD_CHAINED_PTR_ARM64E`, `DYLD_CHAINED_PTR_ARM64E_USERLAND`, and `DYLD_CHAINED_PTR_ARM64E_USERLAND24`.
+- **Software PAC Handling:** Pointer Authentication Code (PAC) diversity and signature tags are unchained and verified in software without requiring host hardware PAC extensions.
+- **Defensive Unchaining:** Circular pointer chain detection to prevent infinite loops on corrupted or adversarial images.
+
+### 2.4 Dynamic Linking & Multi-Image Execution Pipeline
+- **Export Trie Traversal:** Resolves symbols from Mach-O LC_DYLD_INFO and LC_DYLD_EXPORTS_TRIE segments.
+- **Ordinal Binding:** Dynamically binds two-level namespace ordinal imports against dependent dynamic libraries (`.dylib`).
+- **Cross-Image Branch Tracking:** Verified cross-binary instruction jumping (`BLR`/`RET`) across disparate virtual memory regions with register integrity (`LR` / `X30` preserved).
+
+### 2.5 Darwin Syscall & Mach IPC ABI
+- **Unified Exception Trap:** Uses `SVC #0x80` exception syndrome (`0x15`).
+- **ABI Conventions:**
+  - **BSD Syscalls:** Register $X16 > 0$. Arguments in $X0..X5$. Errors returned in $X0$ with the `NZCV` Carry flag set ($C = 1$). Success returns with $C = 0$.
+  - **Mach Traps:** Register $X16 < 0$ (e.g. $X16 = -31$ for `mach_msg_trap`, $X16 = -26$ for `mach_reply_port`).
+- **Mach IPC Subsystem:** Concrete implementation of Mach ports, port rights, message queueing, and `mach_msg` buffer staging. Hardened against out-of-bounds pointers and buffer overruns.
+- **Darwin VFS:** POSIX/Darwin file descriptor isolation starting at fd 3 (`0, 1, 2` reserved for standard streams), sandbox path isolation, and atomic file operations.
+
+### 2.6 Virtual Platform & Apple Hardware Profiles
+- **Hardware Profile:** iPhone 15 (`D37AP`, Apple A16 Bionic `T8120`, 6 cores: 2 Everest performance + 4 Sawtooth efficiency cores).
+- **DeviceTree:** Apple DeviceTree traversal, node parsing, and property decoding.
+- **Interrupt & Power Management:** Apple Interrupt Controller 2 (AIC2) interrupt routing and Apple Power Manager (PMGR) device state modeling.
+- **Storage Subsystem:** Apple ANS2 NVMe storage interface and APFS container parsing foundations.
+
+---
+
+## 3. Architectural Topology
+
+```text
 +---------------------------------------------------------------------------------------+
-|                                 SmpReplayCoordinator                                  |
-|   - Replay State Machine (Uninitialized -> Prepared -> Replaying -> Completed)        |
-|   - Multi-Core Capability Gate (1-Core, 2-Core, 4-Core Opt-In; 8-Core Strict Reject)  |
-|   - Clock Source Virtualization: DeterministicVirtualClock (BLK-SMP-04 Resolved)      |
-|   - DMA Capability Protection (BLK-SMP-03 Active Blocker Mitigation)                  |
+|                                WinIOS Virtual Platform                                |
+|   Target: iPhone 15 (iPhone15,4 / D37AP / Apple A16 Bionic T8120 / ARM64e)            |
 +-------------------------------------------+-------------------------------------------+
                                             |
-                +---------------------------+---------------------------+
-                |                                                       |
-                v                                                       v
-     +--------------------+                                  +--------------------+
-     |   .wsnap v2 File   |                                  |   .sndl v2 File    |
-     | (Cluster RAM & Reg)|                                  | (Recorded Events)  |
-     +----------+---------+                                  +----------+---------+
-                |                                                       |
-                v                                                       v
-     +----------------------+                                +----------------------+
-     |  SmpSnapshotRestorer |                                |  SndlV2ReplayReader  |
-     |  - Cluster Memory    |                                |  - Bounded Streaming |
-     |  - Per-Core State    |                                |  - CRC32C Validation |
-     |  - Initial Hash (H0) |                                +----------+-----------+
-     +----------------------+                                           |
-                                                                        v
-                                                             +----------------------+
-                                                             | SmpReplayEventCursor |
-                                                             | - Monotonic Ordering |
-                                                             | - Lookahead Peek     |
-                                                             +----------+-----------+
-                                                                        |
-     +------------------------------------------------------------------+
-     |
-     v
+                 +--------------------------+---------------------------+
+                 |                                                      |
+                 v                                                      v
+   +---------------------------+                          +---------------------------+
+   |   Mach-O / dyld Engine    |                          |  Apple Hardware Profiles  |
+   | - 16KB W^X Page Granule   |                          | - DeviceTree Traversal    |
+   | - ARM64e Chained Fixups   |                          | - AIC2 Interrupt Model    |
+   | - Export Trie & ASLR      |                          | - PMGR Power Coordination |
+   | - Multi-Image Binding     |                          | - ANS2 NVMe & APFS Parser |
+   +-------------+-------------+                          +-------------+-------------+
+                 |                                                      |
+                 +--------------------------+---------------------------+
+                                            |
+                                            v
 +---------------------------------------------------------------------------------------+
-| Four-Core Deterministic Scheduler & Replay Execution Loop (Single Host Thread)        |
+|                         DarwinUserspaceEngine (Guest EL0 CPU)                         |
 |                                                                                       |
-| 1. Authoritative SmpScheduler selects active core in [0..3] via Round-Robin.          |
-| 2. Event cursor validates CoreSelected and QuantumStart matches.                      |
-| 3. Step active core instructions, advancing R_core[i] and global R_global.            |
-| 4. Deterministic event injection (MMIO, Entropy, IRQ, Timers, Store-Exclusive).       |
-| 5. Validate QuantumEnd and EarlyTruncation bounds.                                    |
-| 6. Compute final canonical multicore hash at completion: H_rep == H_expected.         |
+| 1. Setup canonical Darwin stack frame (argc, argv, envp, apple vector).               |
+| 2. Fetch ARM64 opcodes from guest virtual memory (__TEXT segment).                    |
+| 3. Step instructions via Arm64CpuCore, advancing guest_instructions_retired.          |
+| 4. Trap SVC #0x80 exceptions:                                                         |
+|    - If X16 > 0  --> Dispatch to DarwinBsdSubsystem (open, read, write, exit, etc.)  |
+|    - If X16 < 0  --> Dispatch to MachIpcSubsystem (mach_msg_trap, ports, IPC queues)  |
+| 5. Return status via Apple calling convention (X0 result, NZCV Carry flag on error).  |
 +---------------------------------------------------------------------------------------+
 ```
 
 ---
 
-## Subsystem Architecture & Features
-
-### 1. AArch64 Processor & Memory
-- **Registers:** 31 64-bit general purpose registers (`X0`..`X30`), dedicated stack pointer (`SP`), program counter (`PC`), and processor state flags (`PSTATE`/`NZCV`).
-- **Memory Operations:** Endian-safe byte, halfword, word, and doubleword accesses with bounds enforcement.
-- **MMU Subsystem:** 4-level paging (L0..L3), page table walker, Stage 1 / Stage 2 translation, translation lookaside buffers (TLB), memory protection, and Data/Instruction Abort routing.
-- **Exclusive Monitor (`SmpExclusiveMonitorManager`):** 64-byte granule tracking for `LDXR`/`STXR` synchronization across cores. Cross-core stores invalidate active reservations deterministically.
-
-### 2. Privilege Levels & System Control
-- **Exception Levels:** Discrete modeling of EL0 (Application), EL1 (OS Kernel), EL2 (Hypervisor), and EL3 (Secure Monitor).
-- **System Registers:** Architectural access checks for `SCTLR_EL1`, `TTBR0/1_EL1`, `TCR_EL1`, `MAIR_EL1`, `VBAR_EL1`, `ESR_EL1`, `FAR_EL1`, `CPACR_EL1`, `CNTV_CTL_EL0`, and generic timer registers.
-- **GICv3 Controller:** Distributed interrupt controller handling Software Generated Interrupts (SGI 0..15), Private Peripheral Interrupts (PPI 16..31), and Shared Peripheral Interrupts (SPI 32..1019).
-- **Virtual Time Engine:** All architectural time sources are driven strictly by retired instruction counts ($\text{VirtualTicks} = \sum R_{\text{core}}[i]$), ensuring absolute host-independence.
-
-### 3. Record & Replay Pipeline
-- **SNDL v2 Wire Format:** 80-byte aligned binary event record format encoding sequence numbers, event types, core IDs, local retirement timestamps ($R_{\text{core}}$), global retirement timestamps ($R_{\text{global}}$), payloads, and CRC32C integrity hashes.
-- **Streaming Replay Cursor:** Zero-copy lookahead cursor buffering event streams and verifying monotonic progression.
-- **Capability Gating:** Replay core topologies are strictly checked. Single-core, two-core, and four-core topologies are fully validated; unsupported eight-core configurations are rejected with `ReplayErrorCode::UnsupportedConfiguration`.
-- **Divergence Detection:** Immediate halt upon first divergence, recording full diagnostic telemetry: core ID, program counter, instruction word, retirement count, expected hash vs actual hash.
-
----
-
-## Repository Layout
+## 4. Repository Layout
 
 ```text
 WinIOS/
-├── CMakeLists.txt              # Top-level build configuration (MSVC / C++20)
+├── CMakeLists.txt              # Top-level build configuration (MSVC C++20, /W4 /WX)
 ├── README.md                   # Project overview, architecture, and guides
-├── PHASE52_STAGE27_REPORT.md   # Stage 27 verification and conformance report
-├── PHASE52_STAGE27_ARCHITECTURE.md # Detailed 4-core replay architecture specification
+├── .gitignore                  # Git ignore rules (excluding reports, docs, artifacts)
 ├── src/
-│   ├── cpu/                    # AArch64 CPU, MMU, GICv3, PMU, PSCI, SMP Cluster
-│   ├── memory/                 # Physical memory model, bounds checking, paging
-│   ├── trace/                  # .wtr diagnostic tracing pipeline & ring buffer
-│   ├── snapshot/               # .wsnap v1 & v2 cluster snapshot engine
-│   ├── sndl/                   # .sndl v1 & v2 nondeterministic event recording
-│   ├── replay/                 # SmpReplayCoordinator, cursor, and replay sessions
-│   └── main.cpp                # System demonstration entry point
-├── tests/
-│   ├── unit/                   # Unit test suites (CPU, MMU, SMP, Replay, etc.)
-│   └── integration/            # Multi-component integration test pipelines
-├── tools/                      # Offline analysis utilities & trace inspectors
-└── docs/                       # Phased architecture and audit deliverables
+│   ├── app/                    # Session CLIs (Darwin boot, Linux boot, ELF session)
+│   ├── cpu/                    # AArch64 CPU core, MMU, sysreg, PAC, debug architecture
+│   ├── device/                 # Apple AIC, ANS2, DeviceTree, PMGR, virtual UART
+│   ├── firmware/               # Virtual firmware, Apple boot-args, boot configuration
+│   ├── fs/                     # APFS parser, Darwin VFS, file descriptors
+│   ├── graphics/               # WindowServer, display surfaces, framebuffer presentation
+│   ├── loader/                 # Mach-O loader, chained fixups, dyld, real artifact harness
+│   ├── memory/                 # Physical memory maps, bounds checking, 16KB paging
+│   ├── reference/              # Independent architectural reference models
+│   ├── replay/                 # Deterministic replay coordinator, session state hashing
+│   ├── runtime/                # DarwinUserspaceEngine, Mach IPC, BSD syscalls, IOKit
+│   ├── snapshot/               # Architectural snapshot serializer (.wsnap)
+│   ├── sndl/                   # Nondeterministic event recording pipeline (.sndl)
+│   └── trace/                  # Execution diagnostics, instruction trace inspector (.wtr)
+└── tests/
+    ├── unit/                   # Unit test suites (152+ suites across Stages 105-200)
+    ├── integration/            # Multi-component integration test pipelines
+    └── support/                # Mach-O corpus builders and test fixtures
 ```
 
 ---
 
-## Building and Running
+## 5. Building and Running
 
 ### Prerequisites
-- **Operating System:** Windows 10/11 x86_64
-- **Compiler:** Visual Studio 2022/2026 (MSVC with full C++20 standard conformance)
+- **Operating System:** Windows 10/11 x64 (Windows 11 Pro recommended)
+- **Toolchain:** Visual Studio 2022 or 2026 (MSVC C++20 with strict `/W4 /WX /permissive-` policy)
 - **Build System:** CMake 3.25 or higher
 
 ### Build Instructions (PowerShell)
@@ -136,71 +141,52 @@ WinIOS/
 # 1. Configure the build directory
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64
 
-# 2. Compile the project (Release or Debug)
+# 2. Compile the project in Release configuration (0 warnings treated as errors)
 cmake --build build --config Release
 
-# 3. Run the demonstration executable
-.\build\Release\win_ios.exe
+# 3. Compile the project in Debug configuration
+cmake --build build --config Debug
 ```
 
 ---
 
-## Running Test Suites
+## 6. Running Test Suites
 
-WinIOS maintains 63 CTest targets with a **100% pass rate** in both Release and Debug configurations:
+WinIOS maintains 152+ CTest test targets with a **100% pass rate** in both Release and Debug configurations:
 
 ```powershell
 # Run the complete test suite
 ctest --test-dir build -C Release --output-on-failure
 
-# Execute the 4-core deterministic replay test suite (18 test groups)
-.\build\Release\smp_four_core_replay_tests.exe
+# Execute the latest Darwin execution verification suites (Stages 170-199)
+ctest --test-dir build -C Release -R "stage1[7-9][0-9]_.*" --output-on-failure
 
-# Execute the 4-core deterministic replay benchmark
-.\build\Release\smp_four_core_replay_benchmark.exe
+# Run the deterministic replay and reliability test executable directly
+.\build\Release\stage199_replay_and_reliability_tests.exe
 ```
 
-### Four-Core Replay Test Matrix (18 Groups)
+---
 
-| Group | Focus Area | Verification Result |
-|:---:|---|:---:|
-| **1** | Four-Core Capability Gate (`allow_four_core_replay`) | **PASS** |
-| **2** | Snapshot Restoration (`.wsnap v2`) & Canonical Hash $H_0$ | **PASS** |
-| **3** | Four-Core Event Cursor Monotonicity & Lookahead | **PASS** |
-| **4** | Four-Core Scheduler Replay Coordination & Slices | **PASS** |
-| **5** | Global Retirement Synchronization ($R_{\text{global}}$) | **PASS** |
-| **6** | Per-Core Retirement Synchronization ($R_{\text{core}}[0..3]$) | **PASS** |
-| **7** | Shared Memory Interleaving & Determinism | **PASS** |
-| **8** | Exclusive Monitor Contention (64-byte granule, `LDXR`/`STXR`) | **PASS** |
-| **9** | Multi-Core External Interrupt Replay (GICv3 SPI/PPI) | **PASS** |
-| **10** | Virtual Generic Timer Replay (`CNTPCT`/`CNTVCT`) | **PASS** |
-| **11** | MMIO and Entropy Input Replay | **PASS** |
-| **12** | DMA Capability Protection & Rejection (BLK-SMP-03) | **PASS** |
-| **13** | Host Clock Virtualization & Rejection (BLK-SMP-04) | **PASS** |
-| **14** | Repeated Replay (10 Runs Bit-Identical Hash Match) | **PASS** |
-| **15** | Eight-Core Replay Rejection (`UnsupportedConfiguration`) | **PASS** |
-| **16** | Divergence Detection & Failure Injection | **PASS** |
-| **17** | Two-Core Replay Regression Conformance | **PASS** |
-| **18** | Single-Core Replay Session Regression Conformance | **PASS** |
+## 7. Execution Capability & Hardware Boundary Matrix
+
+| Capability | Status | Implementation Details / Hardware Boundary |
+| :--- | :---: | :--- |
+| **Synthetic ARM64 Execution** | **OPERATIONAL** | Pure virtual CPU instruction stepping at EL0/EL1 |
+| **Open-Source Mach-O Admission** | **OPERATIONAL** | Full LC command parsing from standard LLVM/Clang outputs |
+| **Open-Source Mach-O Execution** | **OPERATIONAL** | Pure EL0 execution without host callbacks (e.g. 405 instructions retired in `corpus_math_compute`) |
+| **Multi-Image Dynamic Linking** | **OPERATIONAL** | Tri-image call chain (`Main` $\to$ `libMath` $\to$ `libSystem`) with genuine `BLR`/`RET` |
+| **ARM64e Chained Fixups & PAC** | **OPERATIONAL** | Apple `fixup-chains.h` unchaining and software PAC verification |
+| **dyld Shared Cache (Levels 1–3)** | **OPERATIONAL** | Header parsing (`dyld_v1  arm64e`), mapping validation, image cataloging |
+| **Monolithic dyld Shared Cache (Level 7)** | **BLOCKED** | Requires complete Objective-C selector and class relocation infrastructure |
+| **Genuine Encrypted Apple Binaries** | **BLOCKED** | Protected by `LC_ENCRYPTION_INFO_64` requiring Apple Secure Enclave (SEP) hardware GID keys |
+| **Stock Apple Kernel Collections** | **BLOCKED** | Encapsulated in Image4 manifests tied to hardware TrustChain and personalized APTickets |
 
 ---
 
-## Performance Benchmarks
+## 8. License & Attribution
 
-Measured using `smp_four_core_replay_benchmark.exe` (Release build, MSVC /O2, x86_64):
+This project is an independent research endeavor focused on processor architecture, operating system runtime emulation, and high-assurance execution engineering on Windows. 
 
-| Metric | Target / Budget | Measured Result | Performance Margin |
-|---|---|---|---|
-| **Event Replay Throughput** | $> 100,000$ events/s | **161,660 events/s** | **+61.66% above budget** |
-| **Replay Execution Speed** | $> 4.0$ MIPS | **5.39 MIPS** | **+34.75% above budget** |
-| **Scheduler Coordination Overhead** | $< 100\%$ | **84.93 %** | **Well within 100% budget** |
-| **Snapshot Restore (4 Cores + 4MB RAM)** | $< 15.0$ ms | **10.80 ms** | **28.0% faster than budget** |
-| **Final Canonical Hash Computation** | $< 5.0$ ms | **1.88 ms** | **62.4% faster than budget** |
-| **Replay Memory Delta (Heap RSS)** | $< 16.0$ MB | **4.10 MB** | **74.37% below budget** |
-| **Final Canonical Hash Match** | Exact Match | **0xd6266bced108ef0b** | **100% BIT-IDENTICAL** |
-
----
-
-## License & Attribution
-
-This project is an independent research endeavor focused on processor architecture, deterministic execution, and emulation engineering. ARM and AArch64 are registered trademarks of Arm Limited.
+- Apple, iPhone, iOS, Darwin, XNU, and macOS are registered trademarks of Apple Inc.
+- ARM, AArch64, and ARM64 are registered trademarks of Arm Limited.
+- This platform does not ship with, decrypt, or distribute proprietary Apple firmware or copyrighted system artifacts.
