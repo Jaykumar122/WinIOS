@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WinIOS Genuine Independently-Compiled Mach-O Artifact Manifest",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "provenance_policy": "STRICT_INDEPENDENT_TOOLCHAIN_ONLY",
   "artifacts": [
     {
@@ -48,72 +48,6 @@
         "LC_BUILD_VERSION (0x32)",
         "LC_LOAD_DYLIB (/usr/lib/libSystem.B.dylib)"
       ],
-      "segments": [
-        {
-          "name": "__PAGEZERO",
-          "vmaddr": "0x00000000",
-          "vmsize": "0x100000000",
-          "fileoff": "0x0",
-          "filesize": "0x0",
-          "initprot": "---"
-        },
-        {
-          "name": "__TEXT",
-          "vmaddr": "0x100000000",
-          "vmsize": "0x141c",
-          "fileoff": "0x0",
-          "filesize": "0x141c",
-          "initprot": "r-x",
-          "sections": [
-            {
-              "name": "__text",
-              "addr": "0x1000013f8",
-              "size": "0x24",
-              "offset": "0x13f8"
-            }
-          ]
-        },
-        {
-          "name": "__DATA_CONST",
-          "vmaddr": "0x100004000",
-          "vmsize": "0x8",
-          "fileoff": "0x4000",
-          "filesize": "0x8",
-          "initprot": "rw-",
-          "sections": [
-            {
-              "name": "__got",
-              "addr": "0x100004000",
-              "size": "0x8",
-              "offset": "0x4000"
-            }
-          ]
-        },
-        {
-          "name": "__DATA",
-          "vmaddr": "0x100008000",
-          "vmsize": "0x1f",
-          "fileoff": "0x8000",
-          "filesize": "0x1f",
-          "initprot": "rw-",
-          "sections": [
-            {
-              "name": "__data",
-              "addr": "0x100008000",
-              "size": "0x1f",
-              "offset": "0x8000"
-            }
-          ]
-        },
-        {
-          "name": "__LINKEDIT",
-          "vmaddr": "0x10000c000",
-          "vmsize": "0x4000",
-          "fileoff": "0xc000",
-          "filesize": "0x338",
-          "initprot": "r--"
-        }
-      ],
       "dependencies": [
         "/usr/lib/dyld",
         "/usr/lib/libSystem.B.dylib"
@@ -131,6 +65,181 @@
         "captured_stdout": "Hello from real Mach-O\n",
         "bsd_syscalls_handled": 2,
         "test_suite": "tests/unit/stage_r3_real_artifact_execution_tests.cpp"
+      }
+    },
+    {
+      "artifact_id": "REAL-002",
+      "file_name": "compute_arm64_O0",
+      "relative_path": "tests/artifacts/bin/compute_arm64_O0",
+      "sha256": "9f196ce18d96a7574cb7c117505042b4e69be4924769cf2d3926eb36115f6652",
+      "size_bytes": 51328,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/compute_arm64.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + lld/Mach-O backend)",
+        "command_line": "zig cc -target aarch64-macos -nostdlib -O0 -fno-sanitize=undefined -Wl,-e,_start tests/artifacts/src/compute_arm64.c -o tests/artifacts/bin/compute_arm64_O0",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "cpu_subtype": "CPU_SUBTYPE_ARM64_ALL (0x00000000)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "min_os_version": "15.0.0",
+      "sdk_version": "0.0.0",
+      "entry_point": {
+        "kind": "LC_MAIN (0x80000028)",
+        "entryoff": "0x1ba8",
+        "stacksize": "0x1000000",
+        "virtual_address": "0x100001ba8"
+      },
+      "dependencies": [
+        "/usr/lib/dyld",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "required_syscalls": [
+        "SYS_write (4)",
+        "SYS_exit (1)"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "guest_instructions_retired": 830,
+        "exit_code": 0,
+        "captured_stdout": "COMPUTE_OK: 0xCAFEBABE13438009\n",
+        "bsd_syscalls_handled": 4,
+        "test_suite": "tests/unit/stage_s1_compiler_generated_execution_tests.cpp"
+      }
+    },
+    {
+      "artifact_id": "REAL-003",
+      "file_name": "compute_arm64_O2",
+      "relative_path": "tests/artifacts/bin/compute_arm64_O2",
+      "sha256": "c0d45d62d1fbe2fb7ae0fec179301c70b07e2fd4b76fe29dbf9716209c091dd7",
+      "size_bytes": 50864,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/compute_arm64.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + lld/Mach-O backend)",
+        "command_line": "zig cc -target aarch64-macos -nostdlib -O2 -Wl,-e,_start tests/artifacts/src/compute_arm64.c -o tests/artifacts/bin/compute_arm64_O2",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "cpu_subtype": "CPU_SUBTYPE_ARM64_ALL (0x00000000)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "min_os_version": "15.0.0",
+      "sdk_version": "0.0.0",
+      "entry_point": {
+        "kind": "LC_MAIN (0x80000028)",
+        "entryoff": "0x182c",
+        "stacksize": "0x1000000",
+        "virtual_address": "0x10000182c"
+      },
+      "dependencies": [
+        "/usr/lib/dyld",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "required_syscalls": [
+        "SYS_write (4)",
+        "SYS_exit (1)"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "guest_instructions_retired": 161,
+        "exit_code": 0,
+        "captured_stdout": "COMPUTE_OK: 0xCAFEBABE13438009\n",
+        "bsd_syscalls_handled": 4,
+        "test_suite": "tests/unit/stage_s1_compiler_generated_execution_tests.cpp"
+      }
+    },
+    {
+      "artifact_id": "REAL-004",
+      "file_name": "libmathreal.dylib",
+      "relative_path": "tests/artifacts/bin/libmathreal.dylib",
+      "sha256": "5d6be8ac5379b472c955350591f839903a700bccc8cd6bdd185ac06f8ead8331",
+      "size_bytes": 50144,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/libmathreal.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + lld/Mach-O backend)",
+        "command_line": "zig cc -target aarch64-macos -dynamiclib -nostdlib -fno-sanitize=undefined -install_name /usr/lib/libmathreal.dylib tests/artifacts/src/libmathreal.c -o tests/artifacts/bin/libmathreal.dylib",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "cpu_subtype": "CPU_SUBTYPE_ARM64_ALL (0x00000000)",
+      "file_type": "MH_DYLIB (6)",
+      "platform": "PLATFORM_MACOS (1)",
+      "min_os_version": "15.0.0",
+      "sdk_version": "0.0.0",
+      "exported_symbols": [
+        "_real_add",
+        "_real_read_global",
+        "_g_real_magic"
+      ],
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "test_suite": "tests/unit/stage_s2_real_dylib_execution_tests.cpp"
+      }
+    },
+    {
+      "artifact_id": "REAL-005",
+      "file_name": "main_with_dylib",
+      "relative_path": "tests/artifacts/bin/main_with_dylib",
+      "sha256": "f4ea6b73091a142636200fdf999f665f06ff8c0db4b3618d76b2b8af94a2cc44",
+      "size_bytes": 50784,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/main_with_dylib.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + lld/Mach-O backend)",
+        "command_line": "zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -Wl,-e,_start -L tests/artifacts/bin -lmathreal tests/artifacts/src/main_with_dylib.c -o tests/artifacts/bin/main_with_dylib",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "cpu_subtype": "CPU_SUBTYPE_ARM64_ALL (0x00000000)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "min_os_version": "15.0.0",
+      "sdk_version": "0.0.0",
+      "entry_point": {
+        "kind": "LC_MAIN (0x80000028)",
+        "entryoff": "0x1854",
+        "stacksize": "0x1000000",
+        "virtual_address": "0x100001854"
+      },
+      "dependencies": [
+        "/usr/lib/dyld",
+        "/usr/lib/libSystem.B.dylib",
+        "/usr/lib/libmathreal.dylib"
+      ],
+      "required_syscalls": [
+        "SYS_write (4)",
+        "SYS_exit (1)"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "guest_instructions_retired": 494,
+        "exit_code": 0,
+        "captured_stdout": "DYLIB_OK: 0x0A11C001CAFEBAE8\n",
+        "bsd_syscalls_handled": 4,
+        "test_suite": "tests/unit/stage_s2_real_dylib_execution_tests.cpp"
       }
     }
   ]

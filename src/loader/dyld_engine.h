@@ -274,6 +274,14 @@ public:
         std::vector<DyldSymtabSymbolInfo>& out_symbols,
         std::string& out_error);
 
+    // Parse modern or classic LC_DYLD_INFO / LC_DYLD_INFO_ONLY binding opcodes
+    [[nodiscard]] static bool parse_binding_stream(
+        const void* data,
+        std::size_t size,
+        const std::vector<std::uint64_t>& segment_vmaddrs,
+        std::vector<DyldBindingRecord>& out_bindings,
+        std::string& out_error);
+
 private:
     std::vector<DyldLoadedModule> modules_;
 };

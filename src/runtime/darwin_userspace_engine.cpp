@@ -155,6 +155,7 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
 
     cpu_.reset();
     cpu_.set_architectural_exceptions(true);
+    cpu_.set_cpacr_el1(0x00300000); // Full FP/SIMD access (FPEN=11) for Darwin userspace
     cpu_.set_current_el(0); // EL0 Userspace
     cpu_.set_program_counter(target_entry);
     cpu_.set_stack_pointer(initial_sp);
@@ -171,6 +172,11 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
     log_event(result, ExecutionOrigin::Guest, PipelineExecutionStage::UserspaceEntry, target_entry,
               "Transitioned to EL0: PC=0x" + std::to_string(target_entry) +
               ", SP=0x" + std::to_string(initial_sp));
+
+    // Optional pre-execution hook (e.g. dyld dynamic symbol binding after mapping)
+    if (config.pre_execution_hook) {
+        config.pre_execution_hook(memory_);
+    }
 
     // 5. Instruction execution step loop
     while (result.guest_instructions_retired < config.max_instructions) {

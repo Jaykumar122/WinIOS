@@ -45,6 +45,9 @@ void DyldEngine::register_builtin_system_libraries() {
     libsystem.exports["_write"]              = 0x0000000180001240ULL;
     libsystem.exports["_read"]               = 0x0000000180001280ULL;
     libsystem.exports["_getpid"]             = 0x00000001800012C0ULL;
+    libsystem.exports["___stack_chk_fail"]   = 0x0000000180001300ULL;
+    libsystem.exports["___stack_chk_guard"]  = 0x0000000180001340ULL;
+    libsystem.exports["dyld_stub_binder"]    = 0x0000000180001380ULL;
     register_module(std::move(libsystem));
 
     // 2. CoreFoundation Framework
@@ -213,6 +216,27 @@ inline void write_uleb128(std::vector<std::uint8_t>& buf, std::uint64_t val) {
     } while (val != 0);
 }
 
+inline std::int64_t read_sleb128(const std::uint8_t*& p, const std::uint8_t* end) noexcept {
+    std::int64_t result = 0;
+    int shift = 0;
+    std::uint8_t byte = 0;
+    while (p < end) {
+        byte = *p++;
+        result |= static_cast<std::int64_t>(byte & 0x7Fu) << shift;
+        shift += 7;
+        if ((byte & 0x80u) == 0) {
+            break;
+        }
+        if (shift >= 64) {
+            break;
+        }
+    }
+    if ((shift < 64) && ((byte & 0x40u) != 0)) {
+        result |= -(1LL << shift);
+    }
+    return result;
+}
+
 } // anonymous namespace
 
 bool DyldEngine::parse_export_trie(
@@ -373,6 +397,146 @@ bool DyldEngine::parse_symbol_table(
         }
 
         out_symbols.push_back(std::move(sym));
+    }
+
+    return true;
+}
+
+bool DyldEngine::parse_binding_stream(
+    const void* data,
+    std::size_t size,
+    const std::vector<std::uint64_t>& segment_vmaddrs,
+    std::vector<DyldBindingRecord>& out_bindings,
+    std::string& out_error) {
+
+    if (!data || size == 0) {
+        return true;
+    }
+
+    const auto* p = static_cast<const std::uint8_t*>(data);
+    const auto* end = p + size;
+
+    std::uint32_t seg_index = 0;
+    std::uint64_t seg_offset = 0;
+    std::string symbol_name;
+    std::int64_t addend = 0;
+    std::uint32_t dylib_ordinal = 0;
+    bool is_weak = false;
+
+    while (p < end) {
+        std::uint8_t opcode_byte = *p++;
+        std::uint8_t opcode = opcode_byte & 0xF0u;
+        std::uint8_t imm = opcode_byte & 0x0Fu;
+
+        switch (opcode) {
+            case 0x00u: // BIND_OPCODE_DONE
+                break;
+
+            case 0x10u: // BIND_OPCODE_SET_DYLIB_ORDINAL_IMM
+                dylib_ordinal = imm;
+                break;
+
+            case 0x20u: // BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB
+                dylib_ordinal = static_cast<std::uint32_t>(read_uleb128(p, end));
+                break;
+
+            case 0x30u: // BIND_OPCODE_SET_DYLIB_SPECIAL_IMM
+                if (imm == 0) {
+                    dylib_ordinal = 0;
+                } else {
+                    dylib_ordinal = static_cast<std::uint32_t>(static_cast<std::int8_t>(0xF0u | imm));
+                }
+                break;
+
+            case 0x40u: { // BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM
+                is_weak = ((imm & 0x1u) != 0);
+                symbol_name.clear();
+                while (p < end && *p != '\0') {
+                    symbol_name.push_back(static_cast<char>(*p++));
+                }
+                if (p < end && *p == '\0') {
+                    p++;
+                }
+                break;
+            }
+
+            case 0x50u: // BIND_OPCODE_SET_TYPE_IMM
+                // imm is bind type (1 = POINTER)
+                break;
+
+            case 0x60u: // BIND_OPCODE_SET_ADDEND_SLEB
+                addend = read_sleb128(p, end);
+                break;
+
+            case 0x70u: // BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
+                seg_index = imm;
+                seg_offset = read_uleb128(p, end);
+                break;
+
+            case 0x80u: // BIND_OPCODE_ADD_ADDR_ULEB
+                seg_offset += read_uleb128(p, end);
+                break;
+
+            case 0x90u: { // BIND_OPCODE_DO_BIND
+                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                out_bindings.push_back(DyldBindingRecord{
+                    symbol_name,
+                    base + seg_offset,
+                    addend,
+                    dylib_ordinal,
+                    is_weak
+                });
+                seg_offset += sizeof(void*);
+                break;
+            }
+
+            case 0xA0u: { // BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB
+                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                out_bindings.push_back(DyldBindingRecord{
+                    symbol_name,
+                    base + seg_offset,
+                    addend,
+                    dylib_ordinal,
+                    is_weak
+                });
+                seg_offset += sizeof(void*) + read_uleb128(p, end);
+                break;
+            }
+
+            case 0xB0u: { // BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED
+                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                out_bindings.push_back(DyldBindingRecord{
+                    symbol_name,
+                    base + seg_offset,
+                    addend,
+                    dylib_ordinal,
+                    is_weak
+                });
+                seg_offset += sizeof(void*) + (static_cast<std::uint64_t>(imm) * sizeof(void*));
+                break;
+            }
+
+            case 0xC0u: { // BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB
+                std::uint64_t count = read_uleb128(p, end);
+                std::uint64_t skip = read_uleb128(p, end);
+                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                for (std::uint64_t i = 0; i < count; ++i) {
+                    out_bindings.push_back(DyldBindingRecord{
+                        symbol_name,
+                        base + seg_offset,
+                        addend,
+                        dylib_ordinal,
+                        is_weak
+                    });
+                    seg_offset += sizeof(void*) + skip;
+                }
+                break;
+            }
+
+            default:
+                out_error = "Unknown dyld binding opcode: 0x" + std::to_string(opcode);
+                return false;
+        }
     }
 
     return true;

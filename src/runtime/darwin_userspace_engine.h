@@ -72,6 +72,7 @@ struct DarwinPipelineConfig {
     std::vector<std::string> argv;
     std::vector<std::string> envp;
     bool enable_trace{true};
+    std::function<void(Memory&)> pre_execution_hook;
 };
 
 // -----------------------------------------------------------------------------
