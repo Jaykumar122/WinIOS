@@ -67,9 +67,11 @@ $hashMain = (Get-FileHash -Algorithm SHA256 $outMain).Hash.ToLower()
 $lenMain = (Get-Item $outMain).Length
 Write-Host "Successfully built $outMain ($lenMain bytes, SHA256: $hashMain)"
 
-# Stack protector artifacts
-Build-Artifact -Name "stack_safe_arm64" -Source "stack_safe_arm64.c" -ExtraFlags @("-fno-sanitize=undefined", "-fstack-protector-all")
-Build-Artifact -Name "stack_smash_arm64" -Source "stack_smash_arm64.c" -ExtraFlags @("-fno-sanitize=undefined", "-fstack-protector-all")
+# Stack protector artifacts (C `_start` symbol is `__start` on Mach-O)
+& zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fstack-protector-all "-Wl,-e,__start" (Join-Path $srcDir "stack_safe_arm64.c") -o (Join-Path $binDir "stack_safe_arm64")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile stack_safe_arm64"; exit $LASTEXITCODE }
+& zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fstack-protector-all "-Wl,-e,__start" (Join-Path $srcDir "stack_smash_arm64.c") -o (Join-Path $binDir "stack_smash_arm64")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile stack_smash_arm64"; exit $LASTEXITCODE }
 
 # REAL-006: compute_ios_O2 (iOS Target: PLATFORM_IOS = 2)
 $srcIos = Join-Path $srcDir "compute_arm64.c"
@@ -134,3 +136,30 @@ $outPacProbe = Join-Path $binDir "pac_probe"
 Write-Host "Building pac_probe: $srcPacProbe -> $outPacProbe"
 & zig cc -target aarch64-macos -mcpu=apple_a16 -nostdlib "-Wl,-e,_start" $srcPacProbe -o $outPacProbe
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile pac_probe"; exit $LASTEXITCODE }
+
+# Campaign 191-U / 191-V Stage U1-U3 + V0 Artifacts
+& zig cc -target aarch64-macos -O2 -nostdlib -fno-builtin -fno-stack-protector -mno-unaligned-access "-Wl,-e,_start" "-Wl,-pagezero_size,0x02000000" (Join-Path $srcDir "minidyld.c") -o (Join-Path $binDir "minidyld")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile minidyld"; exit $LASTEXITCODE }
+
+& zig cc -target aarch64-macos -dynamiclib -O2 -nostdlib -fno-builtin -fno-stack-protector -mstrict-align -install_name /usr/lib/libSystem.B.dylib "-Wl,-undefined,dynamic_lookup" (Join-Path $srcDir "libsystem_lite.c") -o (Join-Path $binDir "libSystem.B.dylib")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libSystem.B.dylib"; exit $LASTEXITCODE }
+
+& zig cc -target aarch64-macos -O2 -fstack-protector-strong (Join-Path $srcDir "stdio_heap_app.c") -o (Join-Path $binDir "stdio_heap_app")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile stdio_heap_app"; exit $LASTEXITCODE }
+
+& zig cc -target aarch64-macos -O2 -fstack-protector-strong (Join-Path $srcDir "stack_smash_libc_app.c") -o (Join-Path $binDir "stack_smash_libc_app")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile stack_smash_libc_app"; exit $LASTEXITCODE }
+
+& zig cc -target aarch64-macos -O2 -mstrict-align -fstack-protector-strong (Join-Path $srcDir "mach_client.c") -o (Join-Path $binDir "mach_client")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile mach_client"; exit $LASTEXITCODE }
+
+# Stage V0: Real iOS Chained-Fixups Artifacts (libioschain.dylib + ios_chain_app)
+& zig cc -target aarch64-ios -dynamiclib -O2 -nostdlib -fno-sanitize=undefined -fno-stack-protector -install_name /usr/lib/libioschain.dylib (Join-Path $srcDir "libioschain.c") -o (Join-Path $binDir "libioschain.dylib")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libioschain.dylib"; exit $LASTEXITCODE }
+
+$rawIosChain = Join-Path $binDir "ios_chain_app.raw"
+& zig cc -target aarch64-ios -O2 -nostdlib -fno-sanitize=undefined -fno-stack-protector "-Wl,-e,_start" -L $binDir -lioschain (Join-Path $srcDir "ios_chain_app.c") -o $rawIosChain
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile ios_chain_app"; exit $LASTEXITCODE }
+& python (Join-Path (Split-Path -Parent $scriptDir) "tools\convert_to_chained_fixups.py") $rawIosChain (Join-Path $binDir "ios_chain_app")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to convert ios_chain_app to chained fixups"; exit $LASTEXITCODE }
+Remove-Item -Force $rawIosChain -ErrorAction SilentlyContinue

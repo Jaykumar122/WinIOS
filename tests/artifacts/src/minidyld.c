@@ -168,7 +168,12 @@ static inline uint64_t map_vaddr(uint64_t addr) {
 #define LC_DYLD_INFO         0x22u
 #define LC_DYLD_INFO_ONLY    (0x22u | 0x80000000u)
 #define LC_MAIN              (0x28u | 0x80000000u)
+#define LC_DYLD_CHAINED_FIXUPS (0x34u | 0x80000000u)
 #define LC_UNIXTHREAD        0x05u
+
+#define DYLD_CHAINED_PTR_64         2u
+#define DYLD_CHAINED_PTR_START_NONE 0xFFFFu
+#define DYLD_CHAINED_PTR_START_MULTI 0x8000u
 
 struct mach_header_64 {
     uint32_t magic;
@@ -252,6 +257,23 @@ struct entry_point_command {
     uint32_t cmdsize;
     uint64_t entryoff;
     uint64_t stacksize;
+};
+
+struct linkedit_data_command {
+    uint32_t cmd;
+    uint32_t cmdsize;
+    uint32_t dataoff;
+    uint32_t datasize;
+};
+
+struct dyld_chained_fixups_header {
+    uint32_t fixups_version;
+    uint32_t starts_offset;
+    uint32_t imports_offset;
+    uint32_t symbols_offset;
+    uint32_t imports_count;
+    uint32_t imports_format;
+    uint32_t symbols_format;
 };
 
 /* -------------------------------------------------------------------------
@@ -351,6 +373,10 @@ struct __attribute__((aligned(16))) LoadedDylib {
     size_t   bind_size;
     const uint8_t* lazy_bind_bytes;
     size_t   lazy_bind_size;
+    const uint8_t* chained_bytes;
+    size_t   chained_size;
+    int      local_dylibs[16];
+    int      num_local_dylibs;
     uint64_t mod_init_funcs[8];
     int      num_mod_init;
 };
@@ -575,6 +601,117 @@ static int apply_bindings(const uint8_t* p, size_t size, const uint64_t* seg_vma
     return 0;
 }
 
+static uint16_t read_u16_unaligned(const uint8_t* p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static uint32_t read_u32_unaligned(const uint8_t* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static uint64_t read_u64_unaligned(const uint8_t* p) {
+    return (uint64_t)read_u32_unaligned(p) | ((uint64_t)read_u32_unaligned(p + 4) << 32);
+}
+
+static uint64_t find_symbol_for_ordinal(const char* name, uint8_t lib_ordinal, const int* local_dylibs, int num_local_dylibs) {
+    if (lib_ordinal > 0 && (int)lib_ordinal <= num_local_dylibs) {
+        int idx = local_dylibs[(int)lib_ordinal - 1];
+        if (idx >= 0 && idx < g_num_dylibs && g_dylibs[idx].export_trie && g_dylibs[idx].export_trie_size > 0) {
+            uint64_t addr = trie_lookup(g_dylibs[idx].export_trie, g_dylibs[idx].export_trie_size, name);
+            if (addr != 0) {
+                return g_dylibs[idx].base_addr + addr;
+            }
+        }
+    }
+    return find_symbol(name);
+}
+
+static void apply_chained_fixups(const uint8_t* fixups, size_t size, uint64_t image_ram_base,
+                                 const int* local_dylibs, int num_local_dylibs) {
+    if (!fixups || size < sizeof(struct dyld_chained_fixups_header)) return;
+    struct dyld_chained_fixups_header hdr;
+    mini_memcpy(&hdr, fixups, sizeof(hdr));
+    if (hdr.fixups_version != 0 && hdr.fixups_version != 1) {
+        mini_print("minidyld: invalid chained fixups version\n");
+        sys_exit(125);
+    }
+    if (hdr.starts_offset == 0 || hdr.starts_offset + 4 > size) return;
+
+    uint32_t seg_count = read_u32_unaligned(fixups + hdr.starts_offset);
+    for (uint32_t seg_idx = 0; seg_idx < seg_count; ++seg_idx) {
+        size_t off_pos = (size_t)hdr.starts_offset + 4 + (size_t)seg_idx * 4;
+        if (off_pos + 4 > size) break;
+        uint32_t seg_info_off = read_u32_unaligned(fixups + off_pos);
+        if (seg_info_off == 0) continue;
+
+        size_t seg_off = (size_t)hdr.starts_offset + (size_t)seg_info_off;
+        if (seg_off + 22 > size) break;
+        const uint8_t* segp = fixups + seg_off;
+        uint16_t page_size = read_u16_unaligned(segp + 4);
+        uint16_t ptr_fmt   = read_u16_unaligned(segp + 6);
+        uint64_t segment_offset = read_u64_unaligned(segp + 8);
+        uint16_t page_count = read_u16_unaligned(segp + 20);
+
+        if (ptr_fmt != DYLD_CHAINED_PTR_64) {
+            mini_print("minidyld: unsupported chained pointer format\n");
+            sys_exit(125);
+        }
+
+        for (uint16_t p = 0; p < page_count; ++p) {
+            if (seg_off + 22 + (size_t)p * 2 + 2 > size) break;
+            uint16_t pstart = read_u16_unaligned(segp + 22 + (size_t)p * 2);
+            if (pstart == DYLD_CHAINED_PTR_START_NONE) continue;
+            pstart &= (uint16_t)(~DYLD_CHAINED_PTR_START_MULTI);
+
+            uint64_t loc = image_ram_base + segment_offset + ((uint64_t)p * (uint64_t)page_size) + (uint64_t)pstart;
+            for (int guard = 0; guard < 4096; ++guard) {
+                uint64_t raw = *(const uint64_t*)loc;
+                uint64_t next = (raw >> 51) & 0xFFFULL;
+                int is_bind = (int)((raw >> 63) & 1ULL);
+
+                if (is_bind) {
+                    uint32_t ordinal = (uint32_t)(raw & 0xFFFFFFULL);
+                    uint64_t addend = (raw >> 24) & 0xFFULL;
+                    if (ordinal >= hdr.imports_count || (size_t)hdr.imports_offset + ((size_t)ordinal + 1) * 4 > size) {
+                        mini_print("minidyld: chained import ordinal OOB\n");
+                        sys_exit(126);
+                    }
+                    uint32_t imp_word = read_u32_unaligned(fixups + hdr.imports_offset + (size_t)ordinal * 4);
+                    uint8_t lib_ord = (uint8_t)(imp_word & 0xFFu);
+                    uint8_t weak    = (uint8_t)((imp_word >> 8) & 1u);
+                    uint32_t name_off = (imp_word >> 9) & 0x7FFFFFu;
+                    if ((size_t)hdr.symbols_offset + (size_t)name_off >= size) {
+                        mini_print("minidyld: chained symbol offset OOB\n");
+                        sys_exit(126);
+                    }
+                    const char* sym = (const char*)(fixups + hdr.symbols_offset + name_off);
+                    uint64_t resolved = find_symbol_for_ordinal(sym, lib_ord, local_dylibs, num_local_dylibs);
+                    if (resolved == 0) {
+                        if (weak) {
+                            *(uint64_t*)loc = 0;
+                        } else {
+                            mini_print("minidyld: undefined chained symbol: ");
+                            mini_print(sym);
+                            mini_print("\n");
+                            sys_exit(127);
+                        }
+                    } else {
+                        *(uint64_t*)loc = resolved + addend;
+                    }
+                } else {
+                    uint64_t target = raw & 0xFFFFFFFFFULL;
+                    uint64_t high8  = (raw >> 36) & 0xFFULL;
+                    uint64_t patched = ((high8 << 56) | map_vaddr(target)) + image_ram_base;
+                    *(uint64_t*)loc = patched;
+                }
+
+                if (next == 0) break;
+                loc += next * 4;
+            }
+        }
+    }
+}
+
 /* -------------------------------------------------------------------------
  * Load Single Dylib from VFS
  * ------------------------------------------------------------------------- */
@@ -722,16 +859,21 @@ static int load_dylib(const char* path) {
                 const char* rpath = (const char*)p + rp->path_offset;
                 add_rpath(rpath);
             }
-        } else if (lc->cmd == LC_DYLD_INFO_ONLY || lc->cmd == LC_DYLD_INFO) {
-            const struct dyld_info_command* info = (const struct dyld_info_command*)p;
-            if (info->export_size > 0 || info->bind_size > 0 || info->lazy_bind_size > 0 || info->rebase_size > 0) {
-                // Export trie / dyld opcodes reside in __LINKEDIT segment
-                for (const uint8_t* q = cmds_buf; q + sizeof(struct load_command) <= cmds_end; ) {
-                    const struct load_command* qlc = (const struct load_command*)q;
-                    if (qlc->cmd == LC_SEGMENT_64) {
-                        const struct segment_command_64* qseg = (const struct segment_command_64*)q;
-                        if (mini_strcmp(qseg->segname, "__LINKEDIT") == 0) {
-                            uint64_t linkedit_base = dylib->base_addr + qseg->vmaddr;
+        } else if (lc->cmd == LC_DYLD_INFO_ONLY || lc->cmd == LC_DYLD_INFO || lc->cmd == LC_DYLD_CHAINED_FIXUPS) {
+            for (const uint8_t* q = cmds_buf; q + sizeof(struct load_command) <= cmds_end; ) {
+                const struct load_command* qlc = (const struct load_command*)q;
+                if (qlc->cmd == LC_SEGMENT_64) {
+                    const struct segment_command_64* qseg = (const struct segment_command_64*)q;
+                    if (mini_strcmp(qseg->segname, "__LINKEDIT") == 0) {
+                        uint64_t linkedit_base = dylib->base_addr + qseg->vmaddr;
+                        if (lc->cmd == LC_DYLD_CHAINED_FIXUPS) {
+                            const struct linkedit_data_command* ld = (const struct linkedit_data_command*)p;
+                            if (ld->datasize > 0) {
+                                dylib->chained_bytes = (const uint8_t*)(linkedit_base + ld->dataoff - qseg->fileoff);
+                                dylib->chained_size = ld->datasize;
+                            }
+                        } else {
+                            const struct dyld_info_command* info = (const struct dyld_info_command*)p;
                             if (info->export_size > 0) {
                                 dylib->export_trie = (const uint8_t*)(linkedit_base + info->export_off - qseg->fileoff);
                                 dylib->export_trie_size = info->export_size;
@@ -748,11 +890,11 @@ static int load_dylib(const char* path) {
                                 dylib->lazy_bind_bytes = (const uint8_t*)(linkedit_base + info->lazy_bind_off - qseg->fileoff);
                                 dylib->lazy_bind_size = info->lazy_bind_size;
                             }
-                            break;
                         }
+                        break;
                     }
-                    q += qlc->cmdsize;
                 }
+                q += qlc->cmdsize;
             }
         }
 
@@ -763,7 +905,10 @@ static int load_dylib(const char* path) {
 
     // Recursively load transitive dependencies
     for (int s = 0; s < num_sub_dylibs; ++s) {
-        load_dylib(sub_dylibs[s]);
+        int sub_idx = load_dylib(sub_dylibs[s]);
+        if (dylib->num_local_dylibs < 16) {
+            dylib->local_dylibs[dylib->num_local_dylibs++] = sub_idx;
+        }
     }
 
     if (g_num_init_order < MAX_DYLIBS) {
@@ -803,11 +948,14 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
     size_t main_bind_size = 0;
     const uint8_t* main_lazy_bytes = (const uint8_t*)0;
     size_t main_lazy_size = 0;
+    const uint8_t* main_chained_bytes = (const uint8_t*)0;
+    size_t main_chained_size = 0;
 
     __attribute__((aligned(16))) uint64_t main_mod_init[8] = {0};
     int num_main_mod_init = 0;
 
     __attribute__((aligned(16))) char main_dylibs[16][128];
+    __attribute__((aligned(16))) int main_local_dylibs[16];
     int num_main_dylibs = 0;
 
     uint64_t linkedit_vmaddr = 0;
@@ -868,6 +1016,12 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
                 main_lazy_size = info->lazy_bind_size;
                 main_lazy_bytes = (const uint8_t*)(linkedit_vmaddr + info->lazy_bind_off - linkedit_fileoff);
             }
+        } else if (lc->cmd == LC_DYLD_CHAINED_FIXUPS) {
+            const struct linkedit_data_command* ld = (const struct linkedit_data_command*)p;
+            if (ld->datasize > 0) {
+                main_chained_size = ld->datasize;
+                main_chained_bytes = (const uint8_t*)(linkedit_vmaddr + ld->dataoff - linkedit_fileoff);
+            }
         }
 
         p += lc->cmdsize;
@@ -875,11 +1029,15 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
 
     // Step 1: Load all dependent dylibs
     for (int d = 0; d < num_main_dylibs; ++d) {
-        load_dylib(main_dylibs[d]);
+        main_local_dylibs[d] = load_dylib(main_dylibs[d]);
     }
 
-    // Step 2: Apply rebases and bindings for all loaded dylibs
+    // Step 2: Apply rebases, bindings, and chained fixups for all loaded dylibs
     for (int i = 0; i < g_num_dylibs; ++i) {
+        if (g_dylibs[i].chained_bytes && g_dylibs[i].chained_size > 0) {
+            apply_chained_fixups(g_dylibs[i].chained_bytes, g_dylibs[i].chained_size,
+                                 g_dylibs[i].base_addr, g_dylibs[i].local_dylibs, g_dylibs[i].num_local_dylibs);
+        }
         if (g_dylibs[i].rebase_bytes && g_dylibs[i].rebase_size > 0) {
             apply_rebases(g_dylibs[i].rebase_bytes, g_dylibs[i].rebase_size,
                           g_dylibs[i].seg_vmaddrs, g_dylibs[i].num_segs, g_dylibs[i].base_addr);
@@ -894,7 +1052,10 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
         }
     }
 
-    // Step 3: Apply bindings for main executable
+    // Step 3: Apply bindings / chained fixups for main executable
+    if (main_chained_bytes && main_chained_size > 0) {
+        apply_chained_fixups(main_chained_bytes, main_chained_size, main_text_vmaddr, main_local_dylibs, num_main_dylibs);
+    }
     if (main_bind_bytes && main_bind_size > 0) {
         apply_bindings(main_bind_bytes, main_bind_size, main_seg_vmaddrs, num_main_segs, 0);
     }

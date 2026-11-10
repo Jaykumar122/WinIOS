@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WinIOS Genuine Independently-Compiled Mach-O Artifact Manifest",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "provenance_policy": "STRICT_INDEPENDENT_TOOLCHAIN_ONLY",
   "artifacts": [
     {
@@ -65,7 +65,17 @@
         "captured_stdout": "Hello from real Mach-O\n",
         "bsd_syscalls_handled": 2,
         "test_suite": "tests/unit/stage_r3_real_artifact_execution_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "efa04c2",
+          "sha256": "63db88c178786e58321279ca993ef936802231768954bb5d655cb4a45c9c8e9c",
+          "size_bytes": 49976,
+          "note": "Initial REAL-001 artifact"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-002",
@@ -111,7 +121,17 @@
         "captured_stdout": "COMPUTE_OK: 0xCAFEBABE13438009\n",
         "bsd_syscalls_handled": 4,
         "test_suite": "tests/unit/stage_s1_compiler_generated_execution_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "5f59d6c",
+          "sha256": "9f196ce18d96a7574cb7c117505042b4e69be4924769cf2d3926eb36115f6652",
+          "size_bytes": 51328,
+          "note": "Initial REAL-002 artifact (Note: 191-T doc mistakenly typed 487 insns; true count 830)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-003",
@@ -157,7 +177,17 @@
         "captured_stdout": "COMPUTE_OK: 0xCAFEBABE13438009\n",
         "bsd_syscalls_handled": 4,
         "test_suite": "tests/unit/stage_s1_compiler_generated_execution_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "5f59d6c",
+          "sha256": "c0d45d62d1fbe2fb7ae0fec179301c70b07e2fd4b76fe29dbf9716209c091dd7",
+          "size_bytes": 50864,
+          "note": "Canonical git disk binary (191-T doc quoted ephemeral CWD hash 30a21f64f4c2...)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-004",
@@ -193,7 +223,17 @@
       "execution_status": true,
       "execution_evidence": {
         "test_suite": "tests/unit/stage_s2_real_dylib_execution_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "5f59d6c",
+          "sha256": "5d6be8ac5379b472c955350591f839903a700bccc8cd6bdd185ac06f8ead8331",
+          "size_bytes": 50144,
+          "note": "Canonical git disk binary (191-T doc quoted ephemeral hash 0e38a2e584ec...)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-005",
@@ -240,7 +280,17 @@
         "captured_stdout": "DYLIB_OK: 0x0A11C001CAFEBAE8\n",
         "bsd_syscalls_handled": 4,
         "test_suite": "tests/unit/stage_s2_real_dylib_execution_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "5f59d6c",
+          "sha256": "f4ea6b73091a142636200fdf999f665f06ff8c0db4b3618d76b2b8af94a2cc44",
+          "size_bytes": 50784,
+          "note": "Canonical git disk binary (191-T doc quoted ephemeral hash 9478f796245e...)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-006",
@@ -286,7 +336,17 @@
         "captured_stdout": "COMPUTE_OK: 0xCAFEBABE13438009\n",
         "bsd_syscalls_handled": 4,
         "test_suite": "tests/unit/stage_t1_ios_target_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "60ef08485cacbf23238616c725740bbc17a8ba729a44e5eaa33ab8d1b893df02",
+          "size_bytes": 50545,
+          "note": "Initial iOS-target artifact"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-007",
@@ -321,7 +381,17 @@
         "host_caller": "libmid.dylib / main_chain",
         "symbol_called": "_leaf_mul",
         "test_suite": "tests/unit/stage_t2_three_image_chain_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "9dcf41e11ad65d815a42b2e9bda2a351750a0cc38d7f04f6b5461664e33a2a2d",
+          "size_bytes": 49952,
+          "note": "Initial 3-image leaf"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-008",
@@ -361,7 +431,17 @@
         "host_caller": "main_chain",
         "symbol_called": "_mid_compute",
         "test_suite": "tests/unit/stage_t2_three_image_chain_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "218803ae3ade56294bddf187da391fa455b3d103b73437a58b2183630511afbb",
+          "size_bytes": 50048,
+          "note": "Initial 3-image mid"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-009",
@@ -409,7 +489,17 @@
         "captured_stdout": "CHAIN_OK: 142\n",
         "bsd_syscalls_handled": 2,
         "test_suite": "tests/unit/stage_t2_three_image_chain_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "f8aba05b9396ded14b8cd235b5c4168f34155cc6c57fd3b42072cccecb96e6ed",
+          "size_bytes": 50232,
+          "note": "Initial 3-image main"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-010",
@@ -448,7 +538,17 @@
       "execution_evidence": {
         "constructor_invoked": "_leaf_ctor",
         "test_suite": "tests/unit/stage_t3_initializers_and_tlv_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "0957ed9a0623e42b81fc5dcb0132ed9359c5def19379d151e469e0f82bc5e47b",
+          "size_bytes": 50192,
+          "note": "Initial ctor leaf"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-011",
@@ -486,7 +586,17 @@
       "execution_evidence": {
         "constructor_invoked": "_mid_ctor",
         "test_suite": "tests/unit/stage_t3_initializers_and_tlv_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "68fb1a8d51d652ffdfe350100f0597239d022a06fb8aedbb907ec9ba3e3bbe3a",
+          "size_bytes": 50176,
+          "note": "Initial ctor mid"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-012",
@@ -531,7 +641,17 @@
         "captured_stdout": "CTOR_CHAIN_OK: 1-2-3\n",
         "bsd_syscalls_handled": 2,
         "test_suite": "tests/unit/stage_t3_initializers_and_tlv_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "939e0c46660983ddd6dede4f9e0a1813909b222b727bf0edebc42431fc8165a0",
+          "size_bytes": 50632,
+          "note": "Initial ctor main"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-013",
@@ -573,7 +693,17 @@
         "captured_stdout": "TLV_OK: 456\n",
         "bsd_syscalls_handled": 2,
         "test_suite": "tests/unit/stage_t3_initializers_and_tlv_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "3b55bffe76a164a95a1aabc88a0d0b68ad21208590e74defeb8d5c665ff56ad7",
+          "size_bytes": 50376,
+          "note": "Initial TLV main"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-014",
@@ -617,7 +747,17 @@
         "exit_code": 0,
         "bsd_syscalls_handled": 1,
         "test_suite": "tests/unit/stage_t4_arm64e_probe_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "a5f1b41",
+          "sha256": "070697ed02bf823d60b604e30d438731907fac93b7d92cb6e9861936efd953cc",
+          "size_bytes": 49928,
+          "note": "Initial ARM64e PAC hint probe"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-015",
@@ -649,7 +789,17 @@
       "execution_evidence": {
         "exit_code": 0,
         "test_suite": "tests/unit/stage_s3_stack_protector_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "5f59d6c",
+          "sha256": "41975920f085ab59c81ffeb8611d5f135054f70ecd4c1fdf8a11320ea669b7ed",
+          "size_bytes": 50256,
+          "note": "Committed in 5f59d6c; manifest entry added in d2b2983"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-016",
@@ -680,14 +830,24 @@
       "execution_status": true,
       "execution_evidence": {
         "test_suite": "tests/unit/stage_s3_stack_protector_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "5f59d6c",
+          "sha256": "ee4621fb8237ed50f802332e1c8fb32e90eb8dff27bf1de9b1baa6e73be11f29",
+          "size_bytes": 50272,
+          "note": "Committed in 5f59d6c; manifest entry added in d2b2983"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-017",
       "file_name": "minidyld",
       "relative_path": "tests/artifacts/bin/minidyld",
-      "sha256": "ca28f68b19f6d6150511c629914dd90e750dd2180580476c7eb102d6c5bcd838",
-      "size_bytes": 67320,
+      "sha256": "02d6002816ede71f2cd80c453ae072aecc406ae65f57ab5d02c8c08b949a3891",
+      "size_bytes": 67512,
       "classification": "REAL-ARTIFACT-EXECUTED",
       "license": "MIT",
       "provenance": {
@@ -701,9 +861,9 @@
       "platform": "PLATFORM_MACOS (1)",
       "entry_point": {
         "kind": "LC_MAIN (0x80000028)",
-        "entryoff": "0x3c1c",
+        "entryoff": "0x414c",
         "stacksize": "0x1000000",
-        "virtual_address": "0x02003c1c"
+        "virtual_address": "0x0200414c"
       },
       "dependencies": [],
       "required_syscalls": [
@@ -720,7 +880,23 @@
       "execution_status": true,
       "execution_evidence": {
         "test_suite": "tests/unit/stage_u1_guest_minidyld_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "d2b2983",
+          "sha256": "ca28f68b19f6d6150511c629914dd90e750dd2180580476c7eb102d6c5bcd838",
+          "size_bytes": 67320,
+          "note": "Campaign 191-U initial committed minidyld (Stage U1 with apply_rebases)"
+        },
+        {
+          "commit": "Stage V0",
+          "sha256": "02d6002816ede71f2cd80c453ae072aecc406ae65f57ab5d02c8c08b949a3891",
+          "size_bytes": 67512,
+          "note": "Campaign 191-V Stage V0: added guest LC_DYLD_CHAINED_FIXUPS (DYLD_CHAINED_PTR_64)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-018",
@@ -789,7 +965,17 @@
       "execution_status": true,
       "execution_evidence": {
         "test_suite": "tests/unit/stage_u2_libsystem_lite_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "d2b2983",
+          "sha256": "eb2050ee18f1dd86ff54c06692764c11582e8afd8a8b7a2796a6c78e49e141ac",
+          "size_bytes": 70960,
+          "note": "Campaign 191-U compiled libsystem_lite (-mstrict-align)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-019",
@@ -826,7 +1012,17 @@
         "exit_code": 0,
         "bsd_syscalls_handled": 24,
         "test_suite": "tests/unit/stage_u2_libsystem_lite_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "d2b2983",
+          "sha256": "2442509602e4faa265e1f9f43ee55e5698dd862a7cc213bf9cb4ce8da6964f65",
+          "size_bytes": 51024,
+          "note": "Campaign 191-U standard C stdio/heap app"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     },
     {
       "artifact_id": "REAL-020",
@@ -864,7 +1060,17 @@
         "captured_stdout": "BEFORE_SMASH\n",
         "captured_stderr": "*** stack smashing detected ***: terminated\n",
         "test_suite": "tests/unit/stage_u2_libsystem_lite_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "d2b2983",
+          "sha256": "be8983f853fe8f36ce96e91f44a88c023da6e31ebaa41a300f95d1a8dfa54d54",
+          "size_bytes": 50392,
+          "note": "Campaign 191-U standard C stack smash test"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
     },
     {
       "artifact_id": "REAL-021",
@@ -911,7 +1117,106 @@
         "bsd_syscalls_handled": 18,
         "captured_stdout": "MACH_PORTS task=70101,70101 thread=70103 svc=70102 reply=259\nROUNDTRIP_OK seq=43 body=PONG_TO_REPLY_PORT\nERR_CODES dest=0x10000003 empty=0x10004003\nMACH_CLIENT_PASS\n",
         "test_suite": "tests/unit/stage_u3_real_mach_trap_tests.cpp"
-      }
+      },
+      "hash_history": [
+        {
+          "commit": "d2b2983",
+          "sha256": "e74593b477900d9d44a4089e96baf853259f1db31e363d05aaec2c2e41364a58",
+          "size_bytes": 50888,
+          "note": "Campaign 191-U compiled XNU Mach trap client (-mstrict-align)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "hand-written"
+    },
+    {
+      "artifact_id": "REAL-022",
+      "file_name": "libioschain.dylib",
+      "relative_path": "tests/artifacts/bin/libioschain.dylib",
+      "sha256": "a599f9544df847682c77b95cdb30ea79a1537df5c9b1de5e34fe31f767948422",
+      "size_bytes": 49713,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/libioschain.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-ios -dynamiclib -O2 -nostdlib -fno-sanitize=undefined -fno-stack-protector -install_name /usr/lib/libioschain.dylib tests/artifacts/src/libioschain.c -o tests/artifacts/bin/libioschain.dylib",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_DYLIB (6)",
+      "platform": "PLATFORM_IOS (2)",
+      "install_name": "/usr/lib/libioschain.dylib",
+      "exported_symbols": [
+        "_g_ios_chain_bias",
+        "_ios_chain_add"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "test_suite": "tests/unit/stage_v0_chained_fixups_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V0",
+          "sha256": "a599f9544df847682c77b95cdb30ea79a1537df5c9b1de5e34fe31f767948422",
+          "size_bytes": 49713,
+          "note": "Campaign 191-V Stage V0 initial build"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-023",
+      "file_name": "ios_chain_app",
+      "relative_path": "tests/artifacts/bin/ios_chain_app",
+      "sha256": "5f9aac3db3b3c672d13c6dab3d8ea4437e8d28ebda22d8fab03a1727ab3f841e",
+      "size_bytes": 50368,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/ios_chain_app.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker) + tests/tools/convert_to_chained_fixups.py",
+        "command_line": "zig cc -target aarch64-ios -O2 -nostdlib -fno-sanitize=undefined -fno-stack-protector -Wl,-e,_start -L tests/artifacts/bin -lioschain tests/artifacts/src/ios_chain_app.c -o ios_chain_app.raw && python tests/tools/convert_to_chained_fixups.py ios_chain_app.raw tests/artifacts/bin/ios_chain_app",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "post_processor_note": "Zig 0.17.0 emits LC_DYLD_INFO_ONLY; convert_to_chained_fixups.py translates compiler rebase/bind records into LC_DYLD_CHAINED_FIXUPS (DYLD_CHAINED_PTR_64) and zeros LC_DYLD_INFO_ONLY rebase/bind/lazy fields.",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_IOS (2)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib",
+        "/usr/lib/libioschain.dylib"
+      ],
+      "chained_fixups": {
+        "pointer_format": "DYLD_CHAINED_PTR_64 (2)",
+        "rebases": 3,
+        "binds": 1,
+        "other_formats": "UNTESTED"
+      },
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "guest_instructions_retired": 4578,
+        "exit_code": 0,
+        "captured_stdout": "IOS_CHAIN: 107,214,656,23\n",
+        "test_suite": "tests/unit/stage_v0_chained_fixups_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V0",
+          "sha256": "5f9aac3db3b3c672d13c6dab3d8ea4437e8d28ebda22d8fab03a1727ab3f841e",
+          "size_bytes": 50368,
+          "note": "Campaign 191-V Stage V0 initial build"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     }
   ]
 }

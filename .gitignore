@@ -50,5 +50,7 @@ divergence_report.json
 **/*.md
 !README.md
 !docs/progress.md
+!docs/campaign_191_200/
+!docs/campaign_191_200/*.md
+docs/campaign_191_200/macho_artifact_manifest.json
 reports/
-docs/campaign_*/

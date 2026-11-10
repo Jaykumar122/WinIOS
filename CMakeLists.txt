@@ -1140,6 +1140,12 @@ if(BUILD_TESTING)
     add_test(NAME stage_u3_real_mach_trap_tests COMMAND stage_u3_real_mach_trap_tests)
     set_tests_properties(stage_u3_real_mach_trap_tests PROPERTIES TIMEOUT 60)
 
+    add_executable(stage_v0_chained_fixups_tests tests/unit/stage_v0_chained_fixups_tests.cpp)
+    target_link_libraries(stage_v0_chained_fixups_tests PRIVATE winios_core)
+    winios_set_warnings(stage_v0_chained_fixups_tests)
+    add_test(NAME stage_v0_chained_fixups_tests COMMAND stage_v0_chained_fixups_tests)
+    set_tests_properties(stage_v0_chained_fixups_tests PROPERTIES TIMEOUT 60)
+
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)
     winios_set_warnings(stage53_manifest_tests)
