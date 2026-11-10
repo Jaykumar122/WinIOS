@@ -72,6 +72,218 @@ void DarwinUserspaceEngine::log_event(
     result.trace.push_back(std::move(ev));
 }
 
+std::uint64_t DarwinUserspaceEngine::compute_effective_stack_top(
+    std::uint64_t requested) const noexcept {
+    const std::size_t num_l3 = std::max<std::size_t>(
+        1u, (memory_.size() + 0x01FFFFFFULL) / 0x02000000ULL);
+    const std::uint64_t pt_bytes = (1ULL + static_cast<std::uint64_t>(num_l3)) * 0x4000ULL;
+    std::uint64_t effective = (requested <= memory_.size())
+                                  ? requested
+                                  : (memory_.size() & ~0xFULL);
+    if (memory_.size() >= pt_bytes + 0x20000ULL) {
+        const std::uint64_t pt_base = (memory_.size() - pt_bytes) & ~0x3FFFULL;
+        if (effective > pt_base) {
+            effective = pt_base;
+        }
+    }
+    return effective & ~0xFULL;
+}
+
+void DarwinUserspaceEngine::map_userspace_pages(
+    std::uint64_t start_va,
+    std::size_t len,
+    bool writable,
+    bool executable,
+    bool el0_accessible,
+    bool is_device) {
+    if (!userspace_mmu_active_ || len == 0 || pt_num_l3_ == 0) {
+        return;
+    }
+    constexpr std::uint64_t kPageSize = 0x4000ULL;
+    constexpr std::uint64_t kPageMask = ~(kPageSize - 1ULL);
+    const std::uint64_t aligned_start = start_va & kPageMask;
+    const std::uint64_t raw_end = start_va + static_cast<std::uint64_t>(len);
+    const std::uint64_t aligned_end =
+        (raw_end < start_va) ? pt_l2_pa_ : ((raw_end + kPageSize - 1ULL) & kPageMask);
+    const std::uint64_t limit = std::min<std::uint64_t>(aligned_end, pt_l2_pa_);
+
+    // ARMv8-A Stage 1 L3 16KB descriptor (SCTLR_EL1.WXN=1 enforced).
+    const bool uxn = !el0_accessible || !executable || writable;
+    const bool pxn = el0_accessible || !executable || writable;
+    std::uint8_t ap = 0b11u; // EL0+EL1 RO
+    if (el0_accessible) {
+        ap = writable ? 0b01u : 0b11u;
+    } else {
+        ap = writable ? 0b00u : 0b10u; // EL1 only
+    }
+    const std::uint8_t attr_idx = is_device ? 1u : 0u;
+
+    for (std::uint64_t va = aligned_start; va < limit; va += kPageSize) {
+        const std::uint64_t l2_idx = (va >> 25u) & 0x7FFULL;
+        const std::uint64_t l3_idx = (va >> 14u) & 0x7FFULL;
+        if (l2_idx >= pt_num_l3_) {
+            break;
+        }
+        const std::uint64_t desc =
+            (va & 0x0000FFFFFFFFC000ULL)
+            | 0x3ULL
+            | (static_cast<std::uint64_t>(attr_idx) << 2u)
+            | (static_cast<std::uint64_t>(ap) << 6u)
+            | (1ULL << 10u) // AF=1
+            | (uxn ? (1ULL << 54u) : 0ULL)
+            | (pxn ? (1ULL << 53u) : 0ULL);
+        const std::uint64_t entry_addr = pt_l3_base_pa_ + l2_idx * kPageSize + l3_idx * 8u;
+        memory_.write_u64(static_cast<std::size_t>(entry_addr), desc);
+    }
+    cpu_.get_mmu().invalidate_tlb_all();
+}
+
+void DarwinUserspaceEngine::unmap_userspace_pages(std::uint64_t start_va, std::size_t len) {
+    if (!userspace_mmu_active_ || len == 0 || pt_num_l3_ == 0) {
+        return;
+    }
+    constexpr std::uint64_t kPageSize = 0x4000ULL;
+    constexpr std::uint64_t kPageMask = ~(kPageSize - 1ULL);
+    const std::uint64_t aligned_start = start_va & kPageMask;
+    const std::uint64_t raw_end = start_va + static_cast<std::uint64_t>(len);
+    const std::uint64_t aligned_end =
+        (raw_end < start_va) ? pt_l2_pa_ : ((raw_end + kPageSize - 1ULL) & kPageMask);
+    const std::uint64_t limit = std::min<std::uint64_t>(aligned_end, pt_l2_pa_);
+
+    for (std::uint64_t va = aligned_start; va < limit; va += kPageSize) {
+        const std::uint64_t l2_idx = (va >> 25u) & 0x7FFULL;
+        const std::uint64_t l3_idx = (va >> 14u) & 0x7FFULL;
+        if (l2_idx >= pt_num_l3_) {
+            break;
+        }
+        const std::uint64_t entry_addr = pt_l3_base_pa_ + l2_idx * kPageSize + l3_idx * 8u;
+        memory_.write_u64(static_cast<std::size_t>(entry_addr), 0ULL);
+    }
+    cpu_.get_mmu().invalidate_tlb_all();
+}
+
+void DarwinUserspaceEngine::configure_userspace_mmu(
+    const loader::UserspaceLoadResult& main_load,
+    const loader::UserspaceLoadResult* dyld_load,
+    std::uint64_t stack_top,
+    std::uint64_t vbar_target,
+    bool is_dyld_session) {
+
+    userspace_mmu_active_ = false;
+    pt_num_l3_ = std::max<std::size_t>(
+        1u, (memory_.size() + 0x01FFFFFFULL) / 0x02000000ULL);
+    const std::uint64_t pt_bytes = (1ULL + static_cast<std::uint64_t>(pt_num_l3_)) * 0x4000ULL;
+    if (memory_.size() < pt_bytes + 0x20000ULL) {
+        return; // Tiny synthetic RAM fallback
+    }
+
+    constexpr std::uint64_t kPageSize = 0x4000ULL;
+    pt_l2_pa_ = (memory_.size() - pt_bytes) & ~0x3FFFULL;
+    pt_l3_base_pa_ = pt_l2_pa_ + kPageSize;
+
+    // Zero all page tables cleanly (leaves unmapped holes faulting cleanly)
+    for (std::uint64_t off = 0; off < pt_bytes; off += 8u) {
+        memory_.write_u64(static_cast<std::size_t>(pt_l2_pa_ + off), 0ULL);
+    }
+    // Wire L2 entries -> 16 KB L3 tables covering [0, pt_num_l3_ * 32 MB)
+    for (std::size_t i = 0; i < pt_num_l3_; ++i) {
+        const std::uint64_t l3_pa = pt_l3_base_pa_ + static_cast<std::uint64_t>(i) * kPageSize;
+        memory_.write_u64(static_cast<std::size_t>(pt_l2_pa_ + i * 8u), l3_pa | 0x3ULL);
+    }
+
+    userspace_mmu_active_ = true;
+
+    auto read_l3_pte = [&](std::uint64_t va_page) -> std::uint64_t {
+        const std::uint64_t l2_idx = (va_page >> 25u) & 0x7FFULL;
+        const std::uint64_t l3_idx = (va_page >> 14u) & 0x7FFULL;
+        if (l2_idx >= pt_num_l3_) return 0ULL;
+        return memory_.read_u64(static_cast<std::size_t>(
+            pt_l3_base_pa_ + l2_idx * kPageSize + l3_idx * 8u));
+    };
+
+    auto map_segments_at = [&](const loader::UserspaceLoadResult& load, std::uint64_t slide, bool apply_mod) {
+        for (const auto& seg : load.segments) {
+            if (seg.is_pagezero || seg.vmsize == 0) {
+                continue;
+            }
+            const std::uint64_t raw_addr = slide + seg.vmaddr;
+            const std::uint64_t target_addr = apply_mod
+                ? ((raw_addr < memory_.size()) ? raw_addr : (raw_addr % memory_.size()))
+                : raw_addr;
+            const bool exec = (seg.initprot & 4u) != 0;
+            const bool write = (seg.initprot & 2u) != 0;
+            map_userspace_pages(target_addr, static_cast<std::size_t>(seg.vmsize),
+                                write && !exec, exec, true, false);
+        }
+    };
+
+    // Map main executable (and minidyld if present) using exact Mach-O initprot W^X permissions.
+    map_segments_at(main_load, 0ULL, true);
+    if (dyld_load != nullptr) {
+        map_segments_at(*dyld_load, 0ULL, true);
+    }
+
+    // Legacy single-image tests (e.g. stage_s2, stage_t2, stage_t3) pre-load dylibs at 0x20000+0x10000*i.
+    if (!is_dyld_session) {
+        for (std::uint64_t base = 0x20000ULL; base < 0x100000ULL && base + 0x4000ULL <= pt_l2_pa_; base += 0x10000ULL) {
+            if (memory_.read_u32(static_cast<std::size_t>(base)) == 0xFEEDFACFu) {
+                std::vector<std::uint8_t> dylib_hdr(0x4000u);
+                for (std::size_t k = 0; k < dylib_hdr.size(); ++k) {
+                    dylib_hdr[k] = memory_.read_u8(static_cast<std::size_t>(base + k));
+                }
+                loader::UserspaceLoadResult dylib_load;
+                if (loader::UserspaceMachOLoader::parse_metadata(dylib_hdr.data(), dylib_hdr.size(), dylib_load)) {
+                    map_segments_at(dylib_load, base, true);
+                }
+            }
+        }
+        // Synthetic single-image fixtures (e.g. stage137 framebuffer at 0x30000) expect RW scratch RAM
+        // outside mapped Mach-O code/data segments up to stack_top.
+        for (std::uint64_t va = 0x20000ULL; va < pt_l2_pa_; va += kPageSize) {
+            if (read_l3_pte(va) == 0ULL) {
+                map_userspace_pages(va, kPageSize, true, false, true, false);
+            }
+        }
+    }
+
+    // Stack window [stack_bottom, stack_top) mapped RW+NX where unmapped
+    const std::uint64_t stack_window = std::min<std::uint64_t>(0x100000ULL, stack_top / 2u);
+    const std::uint64_t stack_bottom = (stack_top > stack_window) ? ((stack_top - stack_window) & ~0x3FFFULL) : kPageSize;
+    for (std::uint64_t va = stack_bottom; va < stack_top && va < pt_l2_pa_; va += kPageSize) {
+        if (read_l3_pte(va) == 0ULL) {
+            map_userspace_pages(va, kPageSize, true, false, true, false);
+        }
+    }
+
+    // Dyld dylib loading region [0x20000, 0x200000) starts RW+NX for BSS/pread;
+    // minidyld calls SYS_mprotect per dylib segment to lock __TEXT -> RX and __LINKEDIT -> RO.
+    if (is_dyld_session) {
+        for (std::uint64_t va = 0x20000ULL; va < 0x200000ULL && va < pt_l2_pa_; va += kPageSize) {
+            if (read_l3_pte(va) == 0ULL) {
+                map_userspace_pages(va, kPageSize, true, false, true, false);
+            }
+        }
+    }
+
+    // VBAR_EL1 page mapped EL1-only RX if unoccupied by EL0 segments
+    const std::uint64_t vbar_page = vbar_target & ~0x3FFFULL;
+    if (vbar_page < pt_l2_pa_ && read_l3_pte(vbar_page) == 0ULL) {
+        map_userspace_pages(vbar_page, kPageSize, false, true, false, false);
+    }
+
+    // Enable 16 KB Stage-1 Normal-Memory MMU:
+    //   TCR_EL1: T0SZ=28 (36-bit VA), TG0=0b10 (16 KB), SH0=0b11, ORGN0=0b01, IRGN0=0b01
+    //   MAIR_EL1: Attr0=0xFF (Normal WB), Attr1=0x00 (Device nGnRnE)
+    //   SCTLR_EL1: default 0x00C50838 (SA=1, SA0=1) | M=1 | DZE=1 | WXN=1 (A=0)
+    const std::uint64_t tcr_el1 =
+        28ULL | (0x1ULL << 8u) | (0x1ULL << 10u) | (0x3ULL << 12u) | (0x2ULL << 14u);
+    cpu_.get_mmu().set_tcr_el1(tcr_el1);
+    cpu_.get_mmu().set_mair_el1(0x00FFULL);
+    cpu_.get_mmu().set_ttbr0_el1(pt_l2_pa_);
+    cpu_.get_mmu().invalidate_tlb_all();
+    cpu_.set_sctlr_el1(0x00C50838ULL | (1ULL << 0u) | (1ULL << 14u) | (1ULL << 19u));
+}
+
 DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
     const std::uint8_t* macho_bytes,
     std::size_t macho_size,
@@ -119,9 +331,7 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
 
     std::uint64_t initial_sp = 0;
     std::string stack_err;
-    std::uint64_t effective_stack_top = (config.stack_top <= memory_.size())
-                                            ? config.stack_top
-                                            : (memory_.size() & ~0xFULL);
+    std::uint64_t effective_stack_top = compute_effective_stack_top(config.stack_top);
     if (!loader::UserspaceMachOLoader::construct_initial_stack(
             memory_,
             effective_stack_top,
@@ -171,6 +381,7 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
     if (vbar_target + 0x404 <= memory_.size()) {
         memory_.write_u32(vbar_target + 0x400, 0xD503201Fu); // NOP
     }
+    configure_userspace_mmu(load_res, nullptr, effective_stack_top, vbar_target, false);
 
     log_event(result, ExecutionOrigin::Guest, PipelineExecutionStage::UserspaceEntry, target_entry,
               "Transitioned to EL0: PC=0x" + std::to_string(target_entry) +
@@ -261,9 +472,7 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho_with_guest_dyld(
     // 5. Construct initial stack frame
     std::uint64_t initial_sp = 0;
     std::string stack_err;
-    std::uint64_t effective_stack_top = (config.stack_top <= memory_.size())
-                                            ? config.stack_top
-                                            : (memory_.size() & ~0xFULL);
+    std::uint64_t effective_stack_top = compute_effective_stack_top(config.stack_top);
     if (!loader::UserspaceMachOLoader::construct_initial_stack(
             memory_,
             effective_stack_top,
@@ -291,6 +500,10 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho_with_guest_dyld(
     if (auto proc = bsd_.get_process(current_pid_)) {
         if (proc->brk_curr >= memory_.size()) {
             proc->brk_curr = 0x01000000ULL; // 16 MB heap region inside guest RAM
+        }
+        if (proc->vm_regions.empty() && memory_.size() > 0x200000ULL) {
+            // Register minidyld's dylib loading pool [0x20000, 0x200000) so SYS_mprotect succeeds per dylib segment
+            (void)bsd_.mmap(current_pid_, 0x20000ULL, 0x1E0000ULL, 3u, 0x1002u, -1, 0);
         }
     }
 
@@ -325,6 +538,7 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho_with_guest_dyld(
     if (vbar_target + 0x404 <= memory_.size()) {
         memory_.write_u32(vbar_target + 0x400, 0xD503201Fu);
     }
+    configure_userspace_mmu(main_load, &dyld_load, effective_stack_top, vbar_target, true);
 
     log_event(result, ExecutionOrigin::Guest, PipelineExecutionStage::UserspaceEntry, dyld_entry,
               "Transitioned to EL0 at minidyld entry: PC=0x" + std::to_string(dyld_entry) +
@@ -706,6 +920,13 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
         const auto prot = static_cast<std::uint32_t>(cpu_.read_register(2));
         bool ok = bsd_.mprotect(current_pid_, addr, len, prot);
         if (ok) {
+            if (userspace_mmu_active_) {
+                if ((prot & 0x7u) == 0u) {
+                    unmap_userspace_pages(addr, len);
+                } else {
+                    map_userspace_pages(addr, len, (prot & 0x2u) != 0, (prot & 0x4u) != 0, true, false);
+                }
+            }
             cpu_.write_register(0, 0);
             cpu_.set_nzcv(cpu_.get_nzcv() & ~0x2u);
         } else {
@@ -854,6 +1075,12 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
                     memory_.write_u8(mapped + i, 0);
                 }
             }
+            if (userspace_mmu_active_) {
+                map_userspace_pages(mapped, static_cast<std::size_t>(len),
+                                    (effective_prot & 0x2u) != 0,
+                                    (effective_prot & 0x4u) != 0,
+                                    true, false);
+            }
             cpu_.write_register(0, mapped);
             cpu_.set_nzcv(cpu_.get_nzcv() & ~0x2u);
         } else {
@@ -896,6 +1123,9 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
         const auto addr = cpu_.read_register(0);
         const auto len = static_cast<std::size_t>(cpu_.read_register(1));
         bool ok = bsd_.munmap(current_pid_, addr, len);
+        if (ok && userspace_mmu_active_) {
+            unmap_userspace_pages(addr, len);
+        }
         cpu_.write_register(0, ok ? 0ULL : static_cast<std::uint64_t>(-1));
         cpu_.set_nzcv(ok ? (cpu_.get_nzcv() & ~0x2u) : (cpu_.get_nzcv() | 0x2u));
         return;

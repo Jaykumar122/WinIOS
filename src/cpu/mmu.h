@@ -163,6 +163,10 @@ public:
         return ((hcr_el2_ & 0x1ULL) != 0) && (current_el < 2);
     }
     bool is_alignment_check_enabled() const noexcept { return (sctlr_el1_ & 0x2ULL) != 0; }
+    bool is_sp_alignment_check_enabled(unsigned current_el) const noexcept {
+        return current_el == 0 ? ((sctlr_el1_ & (1ULL << 4u)) != 0)
+                               : ((sctlr_el1_ & (1ULL << 3u)) != 0);
+    }
     bool is_wxn_enabled() const noexcept { return (sctlr_el1_ & (1ULL << 19u)) != 0; }
 
     // Stage 60: Translation Granule support

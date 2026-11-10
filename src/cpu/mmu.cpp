@@ -436,7 +436,8 @@ std::optional<std::uint64_t> MMU::translate(
                         return std::nullopt;
                     }
                     if (access == AccessKind::Execute) {
-                        const bool exec_ok = (current_el == 0) ? entry.executable_el0 : entry.executable_el1;
+                        const bool exec_ok = (!is_wxn_enabled() || !entry.writable) &&
+                            ((current_el == 0) ? entry.executable_el0 : entry.executable_el1);
                         if (!exec_ok) {
                             if (out_fault) {
                                 out_fault->type = MmuFaultType::Permission;
@@ -684,8 +685,12 @@ std::optional<std::uint64_t> MMU::walk_stage1(
             const bool read_only = (ap & 0x2u) != 0;
             if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 2);
             if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 2);
-            const bool uxn = ((l2_desc >> 54u) & 0x1u) != 0;
-            const bool pxn = ((l2_desc >> 53u) & 0x1u) != 0;
+            bool uxn = ((l2_desc >> 54u) & 0x1u) != 0;
+            bool pxn = ((l2_desc >> 53u) & 0x1u) != 0;
+            if (is_wxn_enabled() && !read_only) {
+                uxn = true;
+                pxn = true;
+            }
             if (access == AccessKind::Execute) {
                 if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 2);
                 if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 2);
@@ -737,8 +742,12 @@ std::optional<std::uint64_t> MMU::walk_stage1(
         const bool read_only = (ap & 0x2u) != 0;
         if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 3);
         if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 3);
-        const bool uxn = ((l3_desc >> 54u) & 0x1u) != 0;
-        const bool pxn = ((l3_desc >> 53u) & 0x1u) != 0;
+        bool uxn = ((l3_desc >> 54u) & 0x1u) != 0;
+        bool pxn = ((l3_desc >> 53u) & 0x1u) != 0;
+        if (is_wxn_enabled() && !read_only) {
+            uxn = true;
+            pxn = true;
+        }
         if (access == AccessKind::Execute) {
             if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 3);
             if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 3);
@@ -799,8 +808,12 @@ std::optional<std::uint64_t> MMU::walk_stage1(
             const bool read_only = (ap & 0x2u) != 0;
             if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 2);
             if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 2);
-            const bool uxn = ((l2_desc >> 54u) & 0x1u) != 0;
-            const bool pxn = ((l2_desc >> 53u) & 0x1u) != 0;
+            bool uxn = ((l2_desc >> 54u) & 0x1u) != 0;
+            bool pxn = ((l2_desc >> 53u) & 0x1u) != 0;
+            if (is_wxn_enabled() && !read_only) {
+                uxn = true;
+                pxn = true;
+            }
             if (access == AccessKind::Execute) {
                 if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 2);
                 if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 2);
@@ -852,8 +865,12 @@ std::optional<std::uint64_t> MMU::walk_stage1(
         const bool read_only = (ap & 0x2u) != 0;
         if (current_el == 0 && !el0_acc) return make_fault(MmuFaultType::Permission, 3);
         if (access == AccessKind::Write && read_only) return make_fault(MmuFaultType::Permission, 3);
-        const bool uxn = ((l3_desc >> 54u) & 0x1u) != 0;
-        const bool pxn = ((l3_desc >> 53u) & 0x1u) != 0;
+        bool uxn = ((l3_desc >> 54u) & 0x1u) != 0;
+        bool pxn = ((l3_desc >> 53u) & 0x1u) != 0;
+        if (is_wxn_enabled() && !read_only) {
+            uxn = true;
+            pxn = true;
+        }
         if (access == AccessKind::Execute) {
             if (current_el == 0 && uxn) return make_fault(MmuFaultType::Permission, 3);
             if (current_el == 1 && pxn) return make_fault(MmuFaultType::Permission, 3);

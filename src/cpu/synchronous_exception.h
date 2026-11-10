@@ -25,6 +25,7 @@ enum class ExceptionClass : std::uint32_t {
     PcAlignment           = 0x22, // PC alignment fault
     DataAbortLower        = 0x24, // data abort from a lower EL
     DataAbortSame         = 0x25, // data abort from the same EL
+    SpAlignment           = 0x26, // SP alignment fault (ARM DDI 0487 D1.10.2)
     BreakpointLower       = 0x30, // breakpoint from a lower EL
     BreakpointSame        = 0x31, // breakpoint from the same EL
     SoftwareStepLower     = 0x32, // software step from a lower EL
@@ -164,6 +165,17 @@ inline SynchronousException make_pc_alignment(std::uint64_t fault_address) {
     e.preferred_return = fault_address;
     e.has_fault_address = true;
     e.fault_address = fault_address;
+    return e;
+}
+
+// SP alignment fault (ARM DDI 0487 D1.10.2): EC=0x26, ISS=0, FAR_EL1 unchanged.
+inline SynchronousException make_sp_alignment(std::uint64_t preferred_return) {
+    SynchronousException e;
+    e.ec = ExceptionClass::SpAlignment;
+    e.iss = 0u;
+    e.instruction_length_4 = true;
+    e.preferred_return = preferred_return;
+    e.has_fault_address = false;
     return e;
 }
 

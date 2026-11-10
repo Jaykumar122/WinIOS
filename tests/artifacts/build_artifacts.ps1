@@ -137,11 +137,11 @@ Write-Host "Building pac_probe: $srcPacProbe -> $outPacProbe"
 & zig cc -target aarch64-macos -mcpu=apple_a16 -nostdlib "-Wl,-e,_start" $srcPacProbe -o $outPacProbe
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile pac_probe"; exit $LASTEXITCODE }
 
-# Campaign 191-U / 191-V Stage U1-U3 + V0 Artifacts
-& zig cc -target aarch64-macos -O2 -nostdlib -fno-builtin -fno-stack-protector -mno-unaligned-access "-Wl,-e,_start" "-Wl,-pagezero_size,0x02000000" (Join-Path $srcDir "minidyld.c") -o (Join-Path $binDir "minidyld")
+# Campaign 191-U / 191-V Stage U1-U3 + V0 + V1 Artifacts (MMU Normal memory; NO -mstrict-align)
+& zig cc -target aarch64-macos -O2 -nostdlib -fno-builtin -fno-stack-protector "-Wl,-e,_start" "-Wl,-pagezero_size,0x02000000" (Join-Path $srcDir "minidyld.c") -o (Join-Path $binDir "minidyld")
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile minidyld"; exit $LASTEXITCODE }
 
-& zig cc -target aarch64-macos -dynamiclib -O2 -nostdlib -fno-builtin -fno-stack-protector -mstrict-align -install_name /usr/lib/libSystem.B.dylib "-Wl,-undefined,dynamic_lookup" (Join-Path $srcDir "libsystem_lite.c") -o (Join-Path $binDir "libSystem.B.dylib")
+& zig cc -target aarch64-macos -dynamiclib -O2 -nostdlib -fno-builtin -fno-stack-protector -install_name /usr/lib/libSystem.B.dylib "-Wl,-undefined,dynamic_lookup" (Join-Path $srcDir "libsystem_lite.c") -o (Join-Path $binDir "libSystem.B.dylib")
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile libSystem.B.dylib"; exit $LASTEXITCODE }
 
 & zig cc -target aarch64-macos -O2 -fstack-protector-strong (Join-Path $srcDir "stdio_heap_app.c") -o (Join-Path $binDir "stdio_heap_app")
@@ -150,8 +150,11 @@ if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile stdio_heap_app"; exit 
 & zig cc -target aarch64-macos -O2 -fstack-protector-strong (Join-Path $srcDir "stack_smash_libc_app.c") -o (Join-Path $binDir "stack_smash_libc_app")
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile stack_smash_libc_app"; exit $LASTEXITCODE }
 
-& zig cc -target aarch64-macos -O2 -mstrict-align -fstack-protector-strong (Join-Path $srcDir "mach_client.c") -o (Join-Path $binDir "mach_client")
+& zig cc -target aarch64-macos -O2 -fstack-protector-strong (Join-Path $srcDir "mach_client.c") -o (Join-Path $binDir "mach_client")
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile mach_client"; exit $LASTEXITCODE }
+
+& zig cc -target aarch64-macos -O2 -fstack-protector-strong (Join-Path $srcDir "unaligned_stress.c") -o (Join-Path $binDir "unaligned_stress")
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile unaligned_stress"; exit $LASTEXITCODE }
 
 # Stage V0: Real iOS Chained-Fixups Artifacts (libioschain.dylib + ios_chain_app)
 & zig cc -target aarch64-ios -dynamiclib -O2 -nostdlib -fno-sanitize=undefined -fno-stack-protector -install_name /usr/lib/libioschain.dylib (Join-Path $srcDir "libioschain.c") -o (Join-Path $binDir "libioschain.dylib")

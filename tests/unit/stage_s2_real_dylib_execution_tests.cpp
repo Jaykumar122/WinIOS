@@ -30,12 +30,12 @@ using namespace winios::runtime;
 namespace {
 
 constexpr const char* kDylibPath = "tests/artifacts/bin/libmathreal.dylib";
-constexpr const char* kExpectedDylibSha256 = "5d6be8ac5379b472c955350591f839903a700bccc8cd6bdd185ac06f8ead8331";
-constexpr std::size_t kExpectedDylibSize = 50144;
+constexpr const char* kExpectedDylibSha256 = "3860e323103f5ccc099b03928343dd21c9c37a0c41635002baa839e60b16dcc8";
+constexpr std::size_t kExpectedDylibSize = 50128;
 
 constexpr const char* kMainPath = "tests/artifacts/bin/main_with_dylib";
-constexpr const char* kExpectedMainSha256 = "f4ea6b73091a142636200fdf999f665f06ff8c0db4b3618d76b2b8af94a2cc44";
-constexpr std::size_t kExpectedMainSize = 50784;
+constexpr const char* kExpectedMainSha256 = "8248de8e0f55ad73a669b5729fbca28c0b77ba47902525880bcbb9450d8845c4";
+constexpr std::size_t kExpectedMainSize = 50768;
 
 constexpr const char* kExpectedStdout = "DYLIB_OK: 0x0A11C001CAFEBAE8\n";
 

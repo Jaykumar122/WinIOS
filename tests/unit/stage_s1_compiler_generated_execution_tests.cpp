@@ -29,12 +29,12 @@ using namespace winios::runtime;
 namespace {
 
 constexpr const char* kArtifactPathO0 = "tests/artifacts/bin/compute_arm64_O0";
-constexpr const char* kExpectedSha256O0 = "9f196ce18d96a7574cb7c117505042b4e69be4924769cf2d3926eb36115f6652";
-constexpr std::size_t kExpectedSizeO0 = 51328;
+constexpr const char* kExpectedSha256O0 = "f6f10b0673e2e070ba4b68acc7d1ba9766ffa11d892eb6821dc2f9dc0954fd86";
+constexpr std::size_t kExpectedSizeO0 = 51312;
 
 constexpr const char* kArtifactPathO2 = "tests/artifacts/bin/compute_arm64_O2";
-constexpr const char* kExpectedSha256O2 = "c0d45d62d1fbe2fb7ae0fec179301c70b07e2fd4b76fe29dbf9716209c091dd7";
-constexpr std::size_t kExpectedSizeO2 = 50864;
+constexpr const char* kExpectedSha256O2 = "07a9cb7f5f2f5b417e08042a80c6f2853e19fe5d4c89e9e2a43614a81c1411de";
+constexpr std::size_t kExpectedSizeO2 = 50848;
 
 constexpr const char* kExpectedStdout = "COMPUTE_OK: 0xCAFEBABE13438009\n";
 

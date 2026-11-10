@@ -341,11 +341,22 @@ std::uint64_t read_zero_register_operand(const CPU& cpu,
                ? 0
                : cpu.read_register(register_index);
 }
+// Base-register operand reader for load/store instructions (31 -> SP).
+// Enforces SP 16-byte alignment per ARM DDI 0487 D1.10.2 (SCTLR_EL1.SA / SA0).
 std::uint64_t read_stack_pointer_operand(const CPU& cpu,
                                          std::uint32_t register_index) {
-    return register_index == CPU::kRegisterCount
-               ? cpu.get_stack_pointer()
-               : cpu.read_register(register_index);
+    if (register_index == CPU::kRegisterCount) {
+        const std::uint64_t sp = cpu.get_stack_pointer();
+        if (cpu.architectural_exceptions()
+            && cpu.get_mmu().is_sp_alignment_check_enabled(
+                static_cast<unsigned>(cpu.get_current_el()))
+            && (sp & 0xFULL) != 0u) {
+            throw SynchronousExceptionSignal{
+                make_sp_alignment(cpu.get_program_counter())};
+        }
+        return sp;
+    }
+    return cpu.read_register(register_index);
 }
 std::uint64_t width_mask(bool is64) {
     return is64 ? std::numeric_limits<std::uint64_t>::max() : 0xFFFFFFFFull;
@@ -852,42 +863,36 @@ public:
     void write_u32(std::size_t offset, std::uint32_t value) { write(offset, 4u, value); }
     void write_u64(std::size_t offset, std::uint64_t value) { write(offset, 8u, value); }
 
-    // Explicit check used by the pair/quadword paths that issue several
-    // element accesses for one architectural access (and to give 128-bit
-    // SIMD accesses their 16-byte alignment requirement).
+    // Explicit check used by the pair/quadword/exclusive/LSE paths.
     void check_access(std::uint64_t address, unsigned width,
-                      AccessType access) const {
+                      AccessType access,
+                      bool require_natural_align = false) const {
         if (!architectural_) {
             return;
         }
-        if (!cpu_.get_mmu().is_stage1_enabled() && !cpu_.get_mmu().is_stage2_enabled(static_cast<unsigned>(cpu_.get_current_el()))) {
-            check(address, width, access);
-            return;
-        }
-        translate_or_fault(address, width, access);
-        const std::uint64_t page1 = address & ~4095ULL;
-        const std::uint64_t page2 = (address + width - 1u) & ~4095ULL;
-        if (page1 != page2) {
-            translate_or_fault(address + width - 1u, 1u, access);
-        }
+        std::uint64_t pa1 = 0;
+        std::uint64_t pa2 = 0;
+        unsigned first_bytes = 0;
+        unsigned second_bytes = 0;
+        translate_access_pages(address, width, access, true,
+                               require_natural_align, false,
+                               pa1, first_bytes, pa2, second_bytes);
     }
-    // Range/PA check without the alignment test (used where a wider
-    // architectural access has a coarser alignment rule than its width).
+    // Range/PA check without the width-alignment test (used where a wider
+    // architectural access has a coarser alignment rule, or DC ZVA).
     void check_range(std::uint64_t address, unsigned width,
-                     AccessType access) const {
+                     AccessType access,
+                     bool reject_device = false) const {
         if (!architectural_) {
             return;
         }
-        if (!cpu_.get_mmu().is_stage1_enabled() && !cpu_.get_mmu().is_stage2_enabled(static_cast<unsigned>(cpu_.get_current_el()))) {
-            check_address_size_and_range(address, width, access);
-            return;
-        }
-        translate_or_fault(address, width, access);
-        const std::uint64_t page1 = address & ~4095ULL;
-        const std::uint64_t page2 = (address + width - 1u) & ~4095ULL;
-        if (page1 != page2) {
-            translate_or_fault(address + width - 1u, 1u, access);
-        }
+        std::uint64_t pa1 = 0;
+        std::uint64_t pa2 = 0;
+        unsigned first_bytes = 0;
+        unsigned second_bytes = 0;
+        translate_access_pages(address, width, access, false,
+                               false, reject_device,
+                               pa1, first_bytes, pa2, second_bytes);
     }
     // Reports an alignment fault at an explicit address. Used for the
     // reference's exclusive-pair quirk, where FAR holds the second doubleword.
@@ -932,22 +937,41 @@ public:
     }
 
 private:
-    std::uint64_t translate_or_fault(std::uint64_t address, unsigned width, AccessType access) const {
+    std::uint64_t page_mask_for_va(std::uint64_t va) const noexcept {
+        const auto& mmu = cpu_.get_mmu();
+        const bool s1 = mmu.is_stage1_enabled();
+        const bool s2 = mmu.is_stage2_enabled(static_cast<unsigned>(cpu_.get_current_el()));
+        if (!s1 || s2) {
+            return ~4095ULL;
+        }
+        const auto granule = ((va >> 55u) & 1ULL) != 0
+            ? mmu.get_tg1_granule()
+            : mmu.get_tg0_granule();
+        return ~(mmu::MMU::get_granule_size(granule) - 1ULL);
+    }
+
+    std::uint64_t translate_or_fault(std::uint64_t address,
+                                     unsigned alignment_width,
+                                     unsigned check_bytes,
+                                     AccessType access,
+                                     bool require_natural_align = false,
+                                     bool unaligned_override = false,
+                                     bool reject_device = false) const {
         if (!architectural_) {
             return address;
         }
         if (!cpu_.get_mmu().is_stage1_enabled() && !cpu_.get_mmu().is_stage2_enabled(static_cast<unsigned>(cpu_.get_current_el()))) {
-            if (width > 1u && (address & (std::uint64_t{width} - 1u)) != 0u) {
-                fault(address, access, FaultStatus::Alignment, width);
+            if (alignment_width > 1u && (address & (std::uint64_t{alignment_width} - 1u)) != 0u) {
+                fault(address, access, FaultStatus::Alignment, alignment_width);
             }
-            check_address_size_and_range(address, width, access);
+            check_address_size_and_range(address, check_bytes, access);
             return address;
         }
 
-        if (cpu_.get_mmu().is_alignment_check_enabled()) {
-            if (width > 1u && (address & (std::uint64_t{width} - 1u)) != 0u) {
-                fault(address, access, FaultStatus::Alignment, width);
-            }
+        const bool is_unaligned = unaligned_override ||
+            (alignment_width > 1u && (address & (std::uint64_t{alignment_width} - 1u)) != 0u);
+        if ((require_natural_align || cpu_.get_mmu().is_alignment_check_enabled()) && is_unaligned) {
+            fault(address, access, FaultStatus::Alignment, alignment_width);
         }
 
         mmu::TranslationFault mmu_fault;
@@ -962,77 +986,145 @@ private:
             if (mmu_fault.is_stage2) {
                 SynchronousException e = make_data_abort(
                     false /* from lower EL */, access, static_cast<FaultStatus>(mmu_fault.fsc()),
-                    address, instruction_address_, width);
+                    address, instruction_address_, alignment_width);
                 e.has_fault_ipa = true;
                 e.fault_ipa = mmu_fault.fault_ipa;
                 e.target_el = 2;
                 throw SynchronousExceptionSignal{e};
             }
-            fault(address, access, static_cast<FaultStatus>(mmu_fault.fsc()), width);
+            fault(address, access, static_cast<FaultStatus>(mmu_fault.fsc()), alignment_width);
         }
 
-        if (is_device && width > 1u && (address & (std::uint64_t{width} - 1u)) != 0u) {
-            fault(address, access, FaultStatus::Alignment, width);
+        if (is_device && (reject_device || is_unaligned)) {
+            fault(address, access, FaultStatus::Alignment, alignment_width);
         }
         const std::uint64_t pa = pa_opt.value();
         if (cpu_.get_gic().is_mmio_address(pa)) {
             return pa;
         }
         const std::uint64_t size = static_cast<std::uint64_t>(memory_.size());
-        if (pa > size || static_cast<std::uint64_t>(width) > size - pa) {
-            fault(address, access, FaultStatus::SynchronousExternal, width);
+        if (pa > size || static_cast<std::uint64_t>(check_bytes) > size - pa) {
+            fault(address, access, FaultStatus::SynchronousExternal, alignment_width);
         }
         return pa;
     }
 
+    void translate_access_pages(std::uint64_t address, unsigned width,
+                                AccessType access, bool enforce_alignment,
+                                bool require_natural_align, bool reject_device,
+                                std::uint64_t& pa1, unsigned& first_bytes,
+                                std::uint64_t& pa2, unsigned& second_bytes) const {
+        if (!architectural_) {
+            pa1 = address;
+            first_bytes = width;
+            pa2 = 0;
+            second_bytes = 0;
+            return;
+        }
+        if (!cpu_.get_mmu().is_stage1_enabled() && !cpu_.get_mmu().is_stage2_enabled(static_cast<unsigned>(cpu_.get_current_el()))) {
+            pa1 = translate_or_fault(address, enforce_alignment ? width : 1u, width, access,
+                                     require_natural_align, false, reject_device);
+            first_bytes = width;
+            pa2 = 0;
+            second_bytes = 0;
+            return;
+        }
+        const std::uint64_t page_mask = page_mask_for_va(address);
+        const std::uint64_t page1 = address & page_mask;
+        const std::uint64_t page2 = (width > 1u) ? ((address + width - 1u) & page_mask) : page1;
+        if (page1 == page2) {
+            pa1 = translate_or_fault(address, enforce_alignment ? width : 1u, width, access,
+                                     require_natural_align, false, reject_device);
+            first_bytes = width;
+            pa2 = 0;
+            second_bytes = 0;
+            return;
+        }
+        first_bytes = static_cast<unsigned>(page2 - address);
+        second_bytes = width - first_bytes;
+        const unsigned align_w = enforce_alignment ? width : 1u;
+        pa1 = translate_or_fault(address, align_w, first_bytes, access,
+                                 require_natural_align, false, reject_device);
+        const bool orig_unaligned = enforce_alignment && width > 1u &&
+            (address & (std::uint64_t{width} - 1u)) != 0u;
+        pa2 = translate_or_fault(page2, align_w, second_bytes, access,
+                                 false, orig_unaligned, reject_device);
+    }
+
     std::uint64_t read(std::size_t offset, unsigned width, bool emit_trace_event = true) const {
-        const std::uint64_t pa = translate_or_fault(offset, width, AccessType::Read);
+        std::uint64_t pa1 = 0;
+        std::uint64_t pa2 = 0;
+        unsigned first_bytes = 0;
+        unsigned second_bytes = 0;
+        translate_access_pages(offset, width, AccessType::Read, true, false, false,
+                               pa1, first_bytes, pa2, second_bytes);
         check_watchpoint(offset, width, AccessType::Read);
         const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_MEM_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
         const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_L1D_CACHE_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
         std::uint64_t value = 0;
-        if (cpu_.get_gic().is_mmio_address(pa)) {
+        if (cpu_.get_gic().is_mmio_address(pa1)) {
             if (winios::replay::is_replay_active()) {
-                if (!winios::replay::hook_replay_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa, width, value)) {
-                    value = cpu_.get_gic().read_mmio(pa, width);
+                if (!winios::replay::hook_replay_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa1, width, value)) {
+                    value = cpu_.get_gic().read_mmio(pa1, width);
                 }
             } else {
-                value = cpu_.get_gic().read_mmio(pa, width);
-                winios::sndl::hook_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa, value, width, 0);
+                value = cpu_.get_gic().read_mmio(pa1, width);
+                winios::sndl::hook_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa1, value, width, 0);
+            }
+        } else if (second_bytes == 0u) {
+            switch (width) {
+            case 1u: value = memory_.read_u8(static_cast<std::size_t>(pa1)); break;
+            case 2u: value = memory_.read_u16(static_cast<std::size_t>(pa1)); break;
+            case 4u: value = memory_.read_u32(static_cast<std::size_t>(pa1)); break;
+            default: value = memory_.read_u64(static_cast<std::size_t>(pa1)); break;
             }
         } else {
-            switch (width) {
-            case 1u: value = memory_.read_u8(static_cast<std::size_t>(pa)); break;
-            case 2u: value = memory_.read_u16(static_cast<std::size_t>(pa)); break;
-            case 4u: value = memory_.read_u32(static_cast<std::size_t>(pa)); break;
-            default: value = memory_.read_u64(static_cast<std::size_t>(pa)); break;
+            // Unaligned Normal-memory access spanning two pages (little-endian).
+            for (unsigned i = 0; i < first_bytes; ++i) {
+                value |= static_cast<std::uint64_t>(memory_.read_u8(static_cast<std::size_t>(pa1 + i))) << (i * 8u);
+            }
+            for (unsigned i = 0; i < second_bytes; ++i) {
+                value |= static_cast<std::uint64_t>(memory_.read_u8(static_cast<std::size_t>(pa2 + i))) << ((first_bytes + i) * 8u);
             }
         }
         if (emit_trace_event && cpu_.get_trace_manager()) {
             const_cast<CPU&>(cpu_).emit_memory_read_trace(
-                instruction_address_, offset, pa, value,
+                instruction_address_, offset, pa1, value,
                 static_cast<std::uint16_t>(width), is_atomic_, instruction_);
         }
         return value;
     }
     void write(std::size_t offset, unsigned width, std::uint64_t value) {
-        const std::uint64_t pa = translate_or_fault(offset, width, AccessType::Write);
+        std::uint64_t pa1 = 0;
+        std::uint64_t pa2 = 0;
+        unsigned first_bytes = 0;
+        unsigned second_bytes = 0;
+        translate_access_pages(offset, width, AccessType::Write, true, false, false,
+                               pa1, first_bytes, pa2, second_bytes);
         check_watchpoint(offset, width, AccessType::Write);
         const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_MEM_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
         const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_L1D_CACHE_WRITE, static_cast<unsigned>(cpu_.get_current_el()));
-        if (cpu_.get_gic().is_mmio_address(pa)) {
-            const_cast<CPU&>(cpu_).get_gic().write_mmio(pa, value, width);
-        } else {
+        if (cpu_.get_gic().is_mmio_address(pa1)) {
+            const_cast<CPU&>(cpu_).get_gic().write_mmio(pa1, value, width);
+        } else if (second_bytes == 0u) {
             switch (width) {
-            case 1u: memory_.write_u8(static_cast<std::size_t>(pa), static_cast<std::uint8_t>(value)); break;
-            case 2u: memory_.write_u16(static_cast<std::size_t>(pa), static_cast<std::uint16_t>(value)); break;
-            case 4u: memory_.write_u32(static_cast<std::size_t>(pa), static_cast<std::uint32_t>(value)); break;
-            default: memory_.write_u64(static_cast<std::size_t>(pa), value); break;
+            case 1u: memory_.write_u8(static_cast<std::size_t>(pa1), static_cast<std::uint8_t>(value)); break;
+            case 2u: memory_.write_u16(static_cast<std::size_t>(pa1), static_cast<std::uint16_t>(value)); break;
+            case 4u: memory_.write_u32(static_cast<std::size_t>(pa1), static_cast<std::uint32_t>(value)); break;
+            default: memory_.write_u64(static_cast<std::size_t>(pa1), value); break;
+            }
+        } else {
+            // Unaligned Normal-memory write spanning two pages after both translated cleanly.
+            for (unsigned i = 0; i < first_bytes; ++i) {
+                memory_.write_u8(static_cast<std::size_t>(pa1 + i), static_cast<std::uint8_t>((value >> (i * 8u)) & 0xFFu));
+            }
+            for (unsigned i = 0; i < second_bytes; ++i) {
+                memory_.write_u8(static_cast<std::size_t>(pa2 + i), static_cast<std::uint8_t>((value >> ((first_bytes + i) * 8u)) & 0xFFu));
             }
         }
         if (cpu_.get_trace_manager()) {
             const_cast<CPU&>(cpu_).emit_memory_write_trace(
-                instruction_address_, offset, pa, value,
+                instruction_address_, offset, pa1, value,
                 static_cast<std::uint16_t>(width), is_atomic_, instruction_);
         }
     }
@@ -6226,12 +6318,14 @@ void CPU::step(Memory& guest_memory) {
             const std::uint64_t address =
                 read_stack_pointer_operand(*this, base);
             const std::size_t memory_address = pc_as_memory_offset(address);
-            // Phase 36: exclusive accesses follow the reference's alignment
-            // rule, and the reference reports their alignment faults with
-            // WnR = 1 even for the load form.
+            // Phase 36 / ARM DDI 0487 B2.9: exclusive accesses require natural
+            // alignment even when MMU is ON with SCTLR_EL1.A == 0, and report
+            // alignment faults with WnR = 1 even for the load form.
             memory.check_access(address, static_cast<unsigned>(width),
-                                AccessType::Write);
-            require_memory_range(memory, memory_address, width);
+                                AccessType::Write, architectural_exceptions_);
+            if (!architectural_exceptions_) {
+                require_memory_range(memory, memory_address, width);
+            }
             // Phase 43: a single-register exclusive load/store is serialized
             // against every other guest store so the load value, reservation
             // registration and compare-and-swap form one atomic step.
@@ -6316,7 +6410,9 @@ void CPU::step(Memory& guest_memory) {
                     address + 8u, static_cast<unsigned>(pair_width),
                     load ? AccessType::Read : AccessType::Write);
             }
-            require_memory_range(memory, memory_address, pair_width);
+            if (!architectural_exceptions_) {
+                require_memory_range(memory, memory_address, pair_width);
+            }
             const std::size_t second_address = memory_address + element_width;
             // Phase 43: exclusive pairs are serialized as one atomic step.
             auto store_guard = lock_store_serialization();
@@ -6407,8 +6503,11 @@ void CPU::step(Memory& guest_memory) {
             }
             const std::size_t memory_address = pc_as_memory_offset(address);
             memory.check_access(address, static_cast<unsigned>(width),
-                                load ? AccessType::Read : AccessType::Write);
-            require_memory_range(memory, memory_address, width);
+                                load ? AccessType::Read : AccessType::Write,
+                                architectural_exceptions_);
+            if (!architectural_exceptions_) {
+                require_memory_range(memory, memory_address, width);
+            }
             // Phase 43: ordered load/store (LDAR/STLR) serialized with the
             // store stream.
             auto store_guard = lock_store_serialization();
@@ -6441,8 +6540,11 @@ void CPU::step(Memory& guest_memory) {
         const std::size_t width = access_width_bytes(exclusive_size_field);
         const std::uint64_t address = read_stack_pointer_operand(*this, base);
         const std::size_t memory_address = pc_as_memory_offset(address);
-        memory.check_access(address, static_cast<unsigned>(width), AccessType::Write);
-        require_memory_range(memory, memory_address, width);
+        memory.check_access(address, static_cast<unsigned>(width),
+                            AccessType::Write, architectural_exceptions_);
+        if (!architectural_exceptions_) {
+            require_memory_range(memory, memory_address, width);
+        }
         auto store_guard = lock_store_serialization();
         const std::uint64_t mask = access_value_mask(exclusive_size_field);
         const std::uint64_t old_value =
@@ -6480,11 +6582,13 @@ void CPU::step(Memory& guest_memory) {
         const std::size_t width = access_width_bytes(exclusive_size_field);
         const std::uint64_t address = read_stack_pointer_operand(*this, base);
         const std::size_t memory_address = pc_as_memory_offset(address);
-        // Phase 36: LSE atomics are read-modify-write, so the reference reports
-        // alignment faults with WnR = 1.
+        // Phase 36 / ARM DDI 0487 B2.9: LSE atomics are read-modify-write and
+        // always require natural alignment in architectural mode.
         memory.check_access(address, static_cast<unsigned>(width),
-                            AccessType::Write);
-        require_memory_range(memory, memory_address, width);
+                            AccessType::Write, architectural_exceptions_);
+        if (!architectural_exceptions_) {
+            require_memory_range(memory, memory_address, width);
+        }
         // Phase 43: LSE read-modify-write atomics execute as one serialized
         // step with respect to every other guest store.
         auto store_guard = lock_store_serialization();
@@ -6606,7 +6710,8 @@ void CPU::step(Memory& guest_memory) {
             memory.check_watchpoint(ea, static_cast<unsigned>(scale), AccessType::Write);
             memory.check_watchpoint(ea2, static_cast<unsigned>(scale), AccessType::Write);
         }
-        if (mem_offset1 > memory.size() || (scale * 2u) > memory.size() - mem_offset1) {
+        if (!architectural_exceptions_ &&
+            (mem_offset1 > memory.size() || (scale * 2u) > memory.size() - mem_offset1)) {
             std::ostringstream message;
             message << "Memory access out of range: offset " << mem_offset1
                     << ", width " << (scale * 2u)
@@ -7244,7 +7349,8 @@ void CPU::step(Memory& guest_memory) {
                 } else if (access_bytes == 8) {
                     write_d_register(rt, memory.read_u64(mem_offset));
                 } else if (access_bytes == 16) {
-                    if (mem_offset + 16 > memory.size() || mem_offset + 16 < mem_offset) {
+                    if (!architectural_exceptions_ &&
+                        (mem_offset + 16 > memory.size() || mem_offset + 16 < mem_offset)) {
                         throw std::out_of_range("Memory access out of range");
                     }
                     // Phase 44: a 128-bit SIMD/FP load is single-copy atomic
@@ -7270,7 +7376,8 @@ void CPU::step(Memory& guest_memory) {
                     memory.write_u64(mem_offset, read_d_register(rt));
                     note_normal_store(mem_offset, 8);
                 } else if (access_bytes == 16) {
-                    if (mem_offset + 16 > memory.size() || mem_offset + 16 < mem_offset) {
+                    if (!architectural_exceptions_ &&
+                        (mem_offset + 16 > memory.size() || mem_offset + 16 < mem_offset)) {
                         throw std::out_of_range("Memory access out of range");
                     }
                     memory.check_watchpoint(target_address, 16u, AccessType::Write);
@@ -7917,8 +8024,9 @@ void CPU::step(Memory& guest_memory) {
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
                 const std::uint64_t block_va =
                     va & ~(static_cast<std::uint64_t>(kCacheLineBytes) - 1u);
+                // ARM DDI 0487 C6.2.69 / D8.2.3: DC ZVA to Device memory faults with Alignment.
                 memory.check_range(block_va, static_cast<unsigned>(kCacheLineBytes),
-                                   AccessType::Write);
+                                   AccessType::Write, true);
                 // Phase 44: the 64-byte block clear is serialized against every
                 // other guest store. It is still emitted as eight 8-byte
                 // stores, so a concurrent *reader* may observe a partially

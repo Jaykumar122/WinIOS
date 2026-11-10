@@ -167,7 +167,26 @@ private:
     ExecutionDiagnostics*  diagnostics_{nullptr};
     std::uint32_t          current_pid_{1};
     std::uint64_t          current_tid_{1};
+    bool                   userspace_mmu_active_{false};
+    std::uint64_t          pt_l2_pa_{0};
+    std::uint64_t          pt_l3_base_pa_{0};
+    std::size_t            pt_num_l3_{0};
 
+    [[nodiscard]] std::uint64_t compute_effective_stack_top(std::uint64_t requested) const noexcept;
+    void configure_userspace_mmu(
+        const loader::UserspaceLoadResult& main_load,
+        const loader::UserspaceLoadResult* dyld_load,
+        std::uint64_t stack_top,
+        std::uint64_t vbar_target,
+        bool is_dyld_session);
+    void map_userspace_pages(
+        std::uint64_t start_va,
+        std::size_t len,
+        bool writable,
+        bool executable,
+        bool el0_accessible = true,
+        bool is_device = false);
+    void unmap_userspace_pages(std::uint64_t start_va, std::size_t len);
     void handle_bsd_syscall(DarwinPipelineResult& result);
     void handle_mach_trap(DarwinPipelineResult& result);
 };
