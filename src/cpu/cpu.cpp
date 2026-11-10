@@ -2792,14 +2792,15 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         };
         const std::string arr = suffixes[q ? 1 : 0][size];
         if (op_hi == 0b00000) {
-            if ((op_lo & 0x8u) == 0) { // Integer
+            if ((op_lo & 0x18u) != 0x18u) { // Integer
                 const char* m = nullptr;
-                if (op_lo == 0b10001) m = u ? "CMGE" : "CMGT";
+                if (op_lo == 0b01011 && size == 0 && !u) m = "CNT";
+                else if (op_lo == 0b10001) m = u ? "CMGE" : "CMGT";
                 else if (op_lo == 0b10011) m = u ? "CMLE" : "CMEQ";
                 else if (op_lo == 0b10101 && !u) m = "CMLT";
                 else if (op_lo == 0b10111) m = u ? "NEG" : "ABS";
                 if (m) {
-                    if (op_lo == 0b10111) {
+                    if (op_lo == 0b01011 || op_lo == 0b10111) {
                         text = std::string(m) + " V" + std::to_string(rd) + arr + ", V" + std::to_string(rn) + arr;
                     } else {
                         text = std::string(m) + " V" + std::to_string(rd) + arr + ", V" + std::to_string(rn) + arr + ", #0";
@@ -5616,7 +5617,8 @@ void CPU::step(Memory& guest_memory) {
                 nzcv_ |= kZero;
             }
         }
-        write_width_result(*this, rd, result, is64, false);
+        // ARM DDI 0487 C6.2.11: Rd=31 is SP/WSP for AND/ORR/EOR immediate (opc != 3), XZR/WZR for ANDS (opc == 3).
+        write_width_result(*this, rd, result, is64, opc != 3u);
         program_counter_ = checked_add_address(instruction_address, 4u,
                                                 "Instruction PC increment");
         emit_trace();
@@ -9316,7 +9318,7 @@ void CPU::step(Memory& guest_memory) {
         return;
     }
 
-    // Vector NOT (MVN)
+    // Vector NOT (MVN) and Vector CNT (population count per byte)
     if ((instruction & 0xBF3FFC00u) == 0x2E205800u) {
         const bool q = (instruction & 0x40000000u) != 0;
         const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
@@ -9326,6 +9328,28 @@ void CPU::step(Memory& guest_memory) {
         VectorRegister out{};
         out.low = ~n_val.low;
         out.high = q ? ~n_val.high : 0;
+
+        write_vector_register(rd, out);
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+    if ((instruction & 0xBF3FFC00u) == 0x0E205800u) {
+        const bool q = (instruction & 0x40000000u) != 0;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t rd = instruction & 0x1Fu;
+
+        const VectorRegister n_val = read_vector_register(rn);
+        VectorRegister out{};
+        for (unsigned i = 0; i < 8u; ++i) {
+            const std::uint8_t b_lo = static_cast<std::uint8_t>((n_val.low >> (i * 8u)) & 0xFFu);
+            out.low |= static_cast<std::uint64_t>(std::popcount(b_lo)) << (i * 8u);
+            if (q) {
+                const std::uint8_t b_hi = static_cast<std::uint8_t>((n_val.high >> (i * 8u)) & 0xFFu);
+                out.high |= static_cast<std::uint64_t>(std::popcount(b_hi)) << (i * 8u);
+            }
+        }
 
         write_vector_register(rd, out);
         program_counter_ = checked_add_address(

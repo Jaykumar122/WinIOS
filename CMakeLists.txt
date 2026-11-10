@@ -1152,6 +1152,16 @@ if(BUILD_TESTING)
     add_test(NAME stage_v1_userspace_memory_model_tests COMMAND stage_v1_userspace_memory_model_tests)
     set_tests_properties(stage_v1_userspace_memory_model_tests PROPERTIES TIMEOUT 60)
 
+    add_executable(diff_winios_runner tests/tools/diff_cpu/diff_winios_runner.cpp)
+    target_link_libraries(diff_winios_runner PRIVATE winios_core)
+    winios_set_warnings(diff_winios_runner)
+
+    add_executable(stage_v2_differential_cpu_tests tests/unit/stage_v2_differential_cpu_tests.cpp)
+    target_link_libraries(stage_v2_differential_cpu_tests PRIVATE winios_core)
+    winios_set_warnings(stage_v2_differential_cpu_tests)
+    add_test(NAME stage_v2_differential_cpu_tests COMMAND stage_v2_differential_cpu_tests)
+    set_tests_properties(stage_v2_differential_cpu_tests PROPERTIES TIMEOUT 60)
+
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)
     winios_set_warnings(stage53_manifest_tests)
