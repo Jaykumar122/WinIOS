@@ -88,6 +88,7 @@ struct DarwinPipelineResult {
     std::size_t                        bsd_syscalls_handled{0};
     std::size_t                        mach_traps_handled{0};
     std::string                        stdout_output;
+    std::string                        stderr_output;
     std::string                        error_message;
     std::vector<DarwinPipelineTraceEvent> trace;
 
@@ -110,6 +111,15 @@ public:
 
     // Load Mach-O binary bytes into guest memory, construct stack, and run
     DarwinPipelineResult execute_macho(
+        const std::uint8_t* macho_bytes,
+        std::size_t macho_size,
+        const DarwinPipelineConfig& config,
+        std::uint32_t pid = 1);
+
+    // Stage U1: Guest-Side Dynamic Linker Execution (minidyld)
+    DarwinPipelineResult execute_macho_with_guest_dyld(
+        const std::uint8_t* dyld_bytes,
+        std::size_t dyld_size,
         const std::uint8_t* macho_bytes,
         std::size_t macho_size,
         const DarwinPipelineConfig& config,

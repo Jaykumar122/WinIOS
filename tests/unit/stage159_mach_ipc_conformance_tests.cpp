@@ -114,9 +114,9 @@ bool test_task_port_space_isolation() {
     return true;
 }
 
-// Test 3: mach_msg_trap (-26) Send and Receive Round-Trip
+// Test 3: mach_msg_trap (-31) Send and Receive Round-Trip
 bool test_mach_msg_roundtrip() {
-    std::cout << "[Test 3] mach_msg_trap (-26) Send & Receive Round-Trip...\n";
+    std::cout << "[Test 3] mach_msg_trap (-31) Send & Receive Round-Trip...\n";
 
     Memory mem(1024 * 1024);
     MachIpcSubsystem ipc;
@@ -189,7 +189,7 @@ bool test_mach_msg_invalid_dest_error() {
     // mov x3, #0 (rcv_size)
     // mov x4, #0 (rcv_name)
     // mov x5, #0 (timeout)
-    // movn x16, #25 (x16 = -26, mach_msg_trap)
+    // movn x16, #30 (x16 = -31, mach_msg_trap)
     // svc #0x81
     setup_guest_cpu(cpu, mem, 0x1000);
     mem.write_u32(0x1000, 0xD28E0000u); // mov x0, #0x7000
@@ -198,7 +198,7 @@ bool test_mach_msg_invalid_dest_error() {
     mem.write_u32(0x100C, 0xD2800003u); // mov x3, #0
     mem.write_u32(0x1010, 0xD2800004u); // mov x4, #0
     mem.write_u32(0x1014, 0xD2800005u); // mov x5, #0
-    mem.write_u32(0x1018, 0x92800330u); // movn x16, #25 (x16 = -26)
+    mem.write_u32(0x1018, 0x928003D0u); // movn x16, #30 (x16 = -31)
     mem.write_u32(0x101C, 0xD4001021u); // svc #0x81
 
     for (int i = 0; i < 8; ++i) engine.step_one(result, config);

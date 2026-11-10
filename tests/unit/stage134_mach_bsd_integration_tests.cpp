@@ -255,7 +255,7 @@ bool test_guest_mach_port_allocation() {
     // mov x16, #-28        (task_self_trap)
     // svc #0x81            (returns task self port in x0)
     // mov x19, x0
-    // mov x16, #-27        (mach_reply_port_trap)
+    // mov x16, #-26        (mach_reply_port_trap)
     // svc #0x81            (returns reply port in x0)
     // mov x20, x0
     // sub x0, x19, x20     (x0 = x19 - x20)
@@ -265,7 +265,7 @@ bool test_guest_mach_port_allocation() {
         0x92800370u, // mov x16, #-28
         0xD4001021u, // svc #0x81
         0xAA0003F3u, // mov x19, x0
-        0x92800350u, // mov x16, #-27
+        0x92800330u, // mov x16, #-26 (mach_reply_port)
         0xD4001021u, // svc #0x81
         0xAA0003F4u, // mov x20, x0
         0xCB140260u, // sub x0, x19, x20
@@ -321,7 +321,7 @@ bool test_guest_mach_msg_send() {
     // mov x4, #0           (rcv_name)
     // mov x5, #0           (timeout)
     // mov x6, #0           (notify)
-    // mov x16, #-26        (mach_msg_trap)
+    // mov x16, #-31        (mach_msg_trap)
     // svc #0x81            (returns 0 in x0)
     // mov x16, #1          (SYS_exit with return code of mach_msg_trap)
     // svc #0x80
@@ -333,7 +333,7 @@ bool test_guest_mach_msg_send() {
         0xD2800004u, // mov x4, #0
         0xD2800005u, // mov x5, #0
         0xD2800006u, // mov x6, #0
-        0x92800330u, // mov x16, #-26
+        0x928003D0u, // mov x16, #-31 (mach_msg_trap)
         0xD4001021u, // svc #0x81
         0xD2800030u, // mov x16, #1
         0xD4001001u  // svc #0x80

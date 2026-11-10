@@ -267,6 +267,8 @@ bool test_bsd_mmap_munmap_conformance() {
 
     // SYS_munmap(addr=mapped_addr, len=16384)
     setup_guest_cpu(cpu, mem, 0x1010);
+    cpu.write_register(0, mapped_addr);
+    cpu.write_register(1, 16384);
     mem.write_u32(0x1010, 0xD2800930u); // mov x16, #73 (SYS_munmap)
     mem.write_u32(0x1014, 0xD4001001u); // svc #0x80
 

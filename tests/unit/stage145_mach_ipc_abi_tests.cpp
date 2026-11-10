@@ -39,9 +39,9 @@ void setup_guest_cpu(CPU& cpu, Memory& mem, std::uint64_t code_addr = 0x1000, st
     cpu.set_program_counter(code_addr);
 }
 
-// Test 1: task_self_trap (-28) and mach_reply_port_trap (-27)
+// Test 1: task_self_trap (-28) and mach_reply_port_trap (-26)
 bool test_task_self_and_reply_port_traps() {
-    std::cout << "[Test 1] task_self_trap (-28) and mach_reply_port_trap (-27)...\n";
+    std::cout << "[Test 1] task_self_trap (-28) and mach_reply_port_trap (-26)...\n";
 
     Memory mem(1024 * 1024);
     CPU cpu;
@@ -64,9 +64,9 @@ bool test_task_self_and_reply_port_traps() {
     TEST_ASSERT(self_port != kMachPortNull, "task_self_trap must return valid port");
     TEST_ASSERT(result.mach_traps_handled == 1, "Must handle 1 Mach trap");
 
-    // 2. mach_reply_port_trap (-27)
+    // 2. mach_reply_port_trap (-26)
     setup_guest_cpu(cpu, mem, 0x1010);
-    mem.write_u32(0x1010, 0x92800350u); // movn x16, #26 (x16 = -27)
+    mem.write_u32(0x1010, 0x92800330u); // movn x16, #25 (x16 = -26)
     mem.write_u32(0x1014, 0xD4001021u); // svc #0x81
 
     engine.step_one(result, config);
@@ -80,9 +80,9 @@ bool test_task_self_and_reply_port_traps() {
     return true;
 }
 
-// Test 2: Guest mach_msg_trap (-26) Send and In-Memory Queue Verification
+// Test 2: Guest mach_msg_trap (-31) Send and In-Memory Queue Verification
 bool test_mach_msg_send_and_queue() {
-    std::cout << "[Test 2] mach_msg_trap (-26) Send & In-Memory Queue Verification...\n";
+    std::cout << "[Test 2] mach_msg_trap (-31) Send & In-Memory Queue Verification...\n";
 
     Memory mem(1024 * 1024);
     CPU cpu;
@@ -109,7 +109,7 @@ bool test_mach_msg_send_and_queue() {
     DarwinPipelineResult result{};
     DarwinPipelineConfig config{};
 
-    // Invoke mach_msg_trap (-26)
+    // Invoke mach_msg_trap (-31)
     // Args: x0=0x3000, x1=kMachSendMsg (1), x2=28 (send_size), x3=0, x4=0, x5=0
     setup_guest_cpu(cpu, mem, 0x1000);
     cpu.write_register(0, 0x3000);
@@ -118,7 +118,7 @@ bool test_mach_msg_send_and_queue() {
     cpu.write_register(3, 0);
     cpu.write_register(4, 0);
     cpu.write_register(5, 0);
-    mem.write_u32(0x1000, 0x92800330u); // movn x16, #25 (x16 = -26)
+    mem.write_u32(0x1000, 0x928003D0u); // movn x16, #30 (x16 = -31)
     mem.write_u32(0x1004, 0xD4001021u); // svc #0x81
 
     engine.step_one(result, config);
@@ -136,7 +136,7 @@ bool test_mach_msg_send_and_queue() {
 
 // Test 3: Guest mach_msg_trap Receive and Memory Writing
 bool test_mach_msg_receive_into_guest_memory() {
-    std::cout << "[Test 3] mach_msg_trap (-26) Receive and Memory Writing...\n";
+    std::cout << "[Test 3] mach_msg_trap (-31) Receive and Memory Writing...\n";
 
     Memory mem(1024 * 1024);
     CPU cpu;
@@ -171,7 +171,7 @@ bool test_mach_msg_receive_into_guest_memory() {
     cpu.write_register(3, 128); // rcv_size
     cpu.write_register(4, rcv_port);
     cpu.write_register(5, 0);
-    mem.write_u32(0x1000, 0x92800330u); // movn x16, #25 (-26)
+    mem.write_u32(0x1000, 0x928003D0u); // movn x16, #30 (-31)
     mem.write_u32(0x1004, 0xD4001021u); // svc #0x81
 
     engine.step_one(result, config);
@@ -229,7 +229,7 @@ bool test_mach_msg_fifo_queue_ordering() {
         cpu.write_register(3, 128);
         cpu.write_register(4, port);
         cpu.write_register(5, 0);
-        mem.write_u32(0x1000, 0x92800330u);
+        mem.write_u32(0x1000, 0x928003D0u); // movn x16, #30 (-31)
         mem.write_u32(0x1004, 0xD4001021u);
 
         engine.step_one(result, config);
@@ -276,7 +276,7 @@ bool test_mach_msg_error_propagation() {
     cpu.write_register(3, 0);
     cpu.write_register(4, 0);
     cpu.write_register(5, 0);
-    mem.write_u32(0x1000, 0x92800330u);
+    mem.write_u32(0x1000, 0x928003D0u);
     mem.write_u32(0x1004, 0xD4001021u);
 
     engine.step_one(result, config);
@@ -293,7 +293,7 @@ bool test_mach_msg_error_propagation() {
     cpu.write_register(3, 0);
     cpu.write_register(4, 0);
     cpu.write_register(5, 0);
-    mem.write_u32(0x1010, 0x92800330u);
+    mem.write_u32(0x1010, 0x928003D0u);
     mem.write_u32(0x1014, 0xD4001021u);
 
     engine.step_one(result, config);
@@ -310,7 +310,7 @@ bool test_mach_msg_error_propagation() {
     cpu.write_register(3, 128);
     cpu.write_register(4, port); // empty queue
     cpu.write_register(5, 0);
-    mem.write_u32(0x1020, 0x92800330u);
+    mem.write_u32(0x1020, 0x928003D0u);
     mem.write_u32(0x1024, 0xD4001021u);
 
     engine.step_one(result, config);
@@ -332,7 +332,7 @@ bool test_mach_msg_error_propagation() {
     cpu.write_register(3, sizeof(MachMsgHeaderRaw)); // only room for header, not 16-byte payload
     cpu.write_register(4, port);
     cpu.write_register(5, 0);
-    mem.write_u32(0x1030, 0x92800330u);
+    mem.write_u32(0x1030, 0x928003D0u);
     mem.write_u32(0x1034, 0xD4001021u);
 
     engine.step_one(result, config);

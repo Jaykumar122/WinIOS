@@ -213,8 +213,8 @@ bool test_mach_trap_dispatch() {
 
     cpu.reset();
     cpu.set_current_el(0);
-    // Mach traps have negative trap numbers in X16: -27 = mach_reply_port_trap
-    std::int64_t mach_reply_port_trap = -27;
+    // Mach traps have negative trap numbers in X16: -26 = mach_reply_port_trap
+    std::int64_t mach_reply_port_trap = -26;
     cpu.write_register(16, static_cast<std::uint64_t>(mach_reply_port_trap));
     cpu.set_elr_el1(0x10008ULL);
 

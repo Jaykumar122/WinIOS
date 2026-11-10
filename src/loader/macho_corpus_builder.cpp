@@ -176,7 +176,7 @@ MachOCorpusEntry MachOCorpusRegistry::create_memory_mmap() {
 MachOCorpusEntry MachOCorpusRegistry::create_mach_ipc_client() {
     MachOCorpusEntry entry{};
     entry.name = "corpus_mach_ipc_client";
-    entry.description = "Darwin ARM64 Mach IPC Trap Client (mach_reply_port_trap -27 + SYS_exit)";
+    entry.description = "Darwin ARM64 Mach IPC Trap Client (mach_reply_port -26 + SYS_exit)";
     entry.provenance = "Open-Source Mach 3.0 IPC Reference Specification";
     entry.license = "Apple Public Source License / BSD-2-Clause";
     entry.cputype = 0x0100000Cu;
@@ -184,11 +184,11 @@ MachOCorpusEntry MachOCorpusRegistry::create_mach_ipc_client() {
     entry.filetype = 2;
     entry.entry_point = 0x100001000ULL;
     entry.dependencies = {"/usr/lib/dyld", "/usr/lib/libSystem.B.dylib"};
-    entry.required_syscalls = {"mach_reply_port_trap (-27)", "SYS_exit (1)"};
+    entry.required_syscalls = {"mach_reply_port (-26)", "SYS_exit (1)"};
     entry.required_extensions = {"Base AArch64 ISA"};
 
     std::vector<std::uint32_t> instrs = {
-        0x92800350u, // movn x16, #26 (which represents -27 in two's complement)
+        0x92800330u, // movn x16, #25 (which represents -26 in two's complement)
         0xD4001001u, // svc #0x80
         0xD2800000u, // mov x0, #0
         0xD2800030u, // mov x16, #1

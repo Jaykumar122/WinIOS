@@ -53,8 +53,8 @@ bool test_runtime_stub_generation() {
     const auto* mach_stub = rt.find_stub("_mach_msg_trap");
     TEST_ASSERT(mach_stub != nullptr, "_mach_msg_trap stub must be generated");
     TEST_ASSERT(mach_stub->code.size() == 3, "_mach_msg_trap must contain 3 instructions");
-    // movn x16, #25 (~(-26) = 25)
-    TEST_ASSERT(mach_stub->code[0] == 0x92800330u, "movn x16, #25 opcode mismatch");
+    // movn x16, #30 (~(-31) = 30)
+    TEST_ASSERT(mach_stub->code[0] == 0x928003D0u, "movn x16, #30 opcode mismatch");
     // svc #0x81
     TEST_ASSERT(mach_stub->code[1] == 0xD4001021u, "svc #0x81 opcode mismatch");
 

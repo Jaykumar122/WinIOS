@@ -187,12 +187,12 @@ bool test_darwin_mach_trap_dispatch() {
     const std::int64_t host_port = dispatcher.dispatch(cpu, mem, 0x81);
     DARWIN_TRAP_ASSERT(host_port == 0x101, "host_self must return 0x101");
 
-    // 3. MACH_mach_reply_port (-27)
+    // 3. MACH_mach_reply_port (-26)
     cpu.write_register(16, static_cast<std::uint64_t>(static_cast<std::int64_t>(DarwinMachTrap::MachReplyPort)));
     const std::int64_t reply_port = dispatcher.dispatch(cpu, mem, 0x81);
     DARWIN_TRAP_ASSERT(reply_port == 0x203, "reply_port must return 0x203");
 
-    // 4. MACH_mach_msg_trap (-26)
+    // 4. MACH_mach_msg_trap (-31)
     cpu.write_register(16, static_cast<std::uint64_t>(static_cast<std::int64_t>(DarwinMachTrap::MachMsg)));
     const std::int64_t msg_ret = dispatcher.dispatch(cpu, mem, 0x81);
     DARWIN_TRAP_ASSERT(msg_ret == 0, "mach_msg must return KERN_SUCCESS (0)");

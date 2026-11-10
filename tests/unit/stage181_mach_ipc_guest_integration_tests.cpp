@@ -316,12 +316,12 @@ bool test_guest_instruction_mach_trap_dispatch() {
     MachIpcSubsystem ipc;
     DarwinUserspaceEngine engine(cpu, mem, bsd, ipc);
 
-    // Execute mach_reply_port_trap (-27) via guest instructions:
-    // movn x16, #26 (~(-27) = 26)
+    // Execute mach_reply_port_trap (-26) via guest instructions:
+    // movn x16, #25 (~(-26) = 25)
     // svc #0x81
     // ret
     std::vector<std::uint32_t> code = {
-        0x92800350u, // movn x16, #26
+        0x92800330u, // movn x16, #25
         0xD4001021u, // svc #0x81
         0xD65F03C0u  // ret
     };
@@ -339,9 +339,9 @@ bool test_guest_instruction_mach_trap_dispatch() {
     cfg.max_instructions = 10;
     DarwinPipelineResult result;
 
-    // Step 1: movn x16, #26
+    // Step 1: movn x16, #25
     TEST_ASSERT(engine.step_one(result, cfg), "Step 1 failed");
-    TEST_ASSERT(static_cast<std::int64_t>(cpu.read_register(16)) == -27, "X16 must be -27");
+    TEST_ASSERT(static_cast<std::int64_t>(cpu.read_register(16)) == -26, "X16 must be -26");
 
     // Step 2: svc #0x81 -> handles mach_reply_port_trap
     TEST_ASSERT(engine.step_one(result, cfg), "Step 2 failed");

@@ -127,7 +127,7 @@ bool test_memory_mmap_entry_execution() {
     return true;
 }
 
-// Test 5: Mach IPC Client Trap Execution (mach_reply_port_trap -27)
+// Test 5: Mach IPC Client Trap Execution (mach_reply_port_trap -26)
 bool test_mach_ipc_trap_entry_execution() {
     std::cout << "[Test 5] Mach IPC Trap Execution...\n";
 
@@ -145,7 +145,7 @@ bool test_mach_ipc_trap_entry_execution() {
 
     TEST_ASSERT(result.process_exited, "Mach IPC process must exit");
     TEST_ASSERT(result.exit_code == 0, "Exit code 0");
-    TEST_ASSERT(result.mach_traps_handled == 1, "Handled 1 Mach trap (-27)");
+    TEST_ASSERT(result.mach_traps_handled == 1, "Handled 1 Mach trap (-26)");
 
     return true;
 }

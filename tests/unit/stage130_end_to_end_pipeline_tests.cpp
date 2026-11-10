@@ -134,9 +134,9 @@ bool test_guest_mach_traps_execution() {
     // Assembly:
     // mov x16, #-28 (task_self_trap)
     // svc #0x81
-    // mov x16, #-27 (mach_reply_port_trap)
+    // mov x16, #-26 (mach_reply_port_trap)
     // svc #0x81
-    // mov x16, #-26 (mach_msg_trap)
+    // mov x16, #-31 (mach_msg_trap)
     // svc #0x81
     // mov x0, #0
     // mov x16, #1 (SYS_exit)
@@ -144,9 +144,9 @@ bool test_guest_mach_traps_execution() {
     std::vector<std::uint32_t> guest_asm = {
         0x92800370u, // mov x16, #-28 (signed imm)
         0xD4001021u, // svc #0x81
-        0x92800350u, // mov x16, #-27
+        0x92800330u, // mov x16, #-26 (mach_reply_port)
         0xD4001021u, // svc #0x81
-        0x92800330u, // mov x16, #-26
+        0x928003D0u, // mov x16, #-31 (mach_msg_trap)
         0xD4001021u, // svc #0x81
         0xD2800000u, // mov x0, #0
         0xD2800030u, // mov x16, #1

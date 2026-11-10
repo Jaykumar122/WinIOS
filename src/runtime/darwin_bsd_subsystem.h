@@ -241,6 +241,7 @@ public:
     int open(std::uint32_t pid, const std::string& path, std::uint32_t flags, std::uint32_t mode = 0644);
     int close(std::uint32_t pid, int fd);
     std::int64_t read(std::uint32_t pid, int fd, void* buffer, std::size_t count);
+    std::int64_t pread(std::uint32_t pid, int fd, void* buffer, std::size_t count, std::int64_t offset);
     std::int64_t write(std::uint32_t pid, int fd, const void* buffer, std::size_t count);
     std::int64_t lseek(std::uint32_t pid, int fd, std::int64_t offset, int whence);
     int fstat64(std::uint32_t pid, int fd, DarwinStat64Raw& out_stat);

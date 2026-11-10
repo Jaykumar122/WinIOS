@@ -326,8 +326,27 @@ std::int32_t MachIpcSubsystem::dispatch_mach_trap(
     out_retval = 0;
 
     switch (trap_no) {
-        case -26: // mach_msg
-        case -31: {
+        case -26: { // mach_reply_port (XNU syscall_sw.c: -26)
+            out_retval = mach_reply_port(task_id);
+            return 0;
+        }
+        case -27: { // thread_self_trap (XNU syscall_sw.c: -27)
+            auto space = get_task_port_space(task_id);
+            if (!space) space = create_task_port_space(task_id);
+            auto obj = std::make_shared<MachPortObject>(3000 + task_id, task_id);
+            out_retval = space->allocate_port(obj, kMachPortRightReceive);
+            return 0;
+        }
+        case -28: { // mach_task_self
+            out_retval = mach_task_self(task_id);
+            return 0;
+        }
+        case -29: { // mach_host_self
+            out_retval = mach_host_self(task_id);
+            return 0;
+        }
+        case -31: // mach_msg_trap (XNU syscall_sw.c: -31)
+        case -32: { // mach_msg_overwrite_trap
             if (args.size() < 6) return -1;
             std::uint64_t msg_vaddr   = args[0];
             auto          option      = static_cast<std::uint32_t>(args[1]);
@@ -338,18 +357,6 @@ std::int32_t MachIpcSubsystem::dispatch_mach_trap(
 
             out_retval = static_cast<std::uint64_t>(
                 mach_msg(task_id, msg_vaddr, option, send_size, rcv_size, rcv_name, timeout_ms, memory));
-            return 0;
-        }
-        case -27: { // mach_reply_port
-            out_retval = mach_reply_port(task_id);
-            return 0;
-        }
-        case -28: { // mach_task_self
-            out_retval = mach_task_self(task_id);
-            return 0;
-        }
-        case -29: { // mach_host_self
-            out_retval = mach_host_self(task_id);
             return 0;
         }
         case -61: { // mach_port_allocate

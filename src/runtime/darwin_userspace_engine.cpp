@@ -195,6 +195,162 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
     return result;
 }
 
+DarwinPipelineResult DarwinUserspaceEngine::execute_macho_with_guest_dyld(
+    const std::uint8_t* dyld_bytes,
+    std::size_t dyld_size,
+    const std::uint8_t* macho_bytes,
+    std::size_t macho_size,
+    const DarwinPipelineConfig& config,
+    std::uint32_t pid) {
+
+    current_pid_ = pid;
+    DarwinPipelineResult result{};
+
+    if (diagnostics_) {
+        diagnostics_->record_process_start(current_pid_, config.executable_path);
+    }
+
+    log_event(result, ExecutionOrigin::Host, PipelineExecutionStage::MachOLoading, 0,
+              "Loading main Mach-O and minidyld for PID " + std::to_string(pid) + " (" + config.executable_path + ")");
+
+    // 1. Parse main Mach-O metadata
+    loader::UserspaceLoadResult main_load;
+    if (!loader::UserspaceMachOLoader::parse_metadata(macho_bytes, macho_size, main_load)) {
+        result.error_message = "Failed to parse main Mach-O metadata: " + main_load.error_message;
+        return result;
+    }
+
+    // 2. Parse minidyld Mach-O metadata
+    loader::UserspaceLoadResult dyld_load;
+    if (!loader::UserspaceMachOLoader::parse_metadata(dyld_bytes, dyld_size, dyld_load)) {
+        result.error_message = "Failed to parse minidyld metadata: " + dyld_load.error_message;
+        return result;
+    }
+
+    // 3. Map main executable segments into guest memory
+    // Note: Host does NOT map dependent dylibs and does NOT bind symbols!
+    for (const auto& seg : main_load.segments) {
+        if (seg.is_pagezero) continue;
+        if (seg.filesize > 0 && seg.fileoff + seg.filesize <= macho_size) {
+            std::uint64_t target_addr = (seg.vmaddr < memory_.size())
+                                            ? seg.vmaddr
+                                            : (seg.vmaddr % memory_.size());
+            for (std::size_t i = 0; i < seg.filesize; ++i) {
+                if (target_addr + i < memory_.size()) {
+                    memory_.write_u8(target_addr + i, macho_bytes[seg.fileoff + i]);
+                }
+            }
+        }
+    }
+
+    // 4. Map minidyld segments into guest memory
+    for (const auto& seg : dyld_load.segments) {
+        if (seg.is_pagezero) continue;
+        if (seg.filesize > 0 && seg.fileoff + seg.filesize <= dyld_size) {
+            std::uint64_t target_addr = (seg.vmaddr < memory_.size())
+                                            ? seg.vmaddr
+                                            : (seg.vmaddr % memory_.size());
+            for (std::size_t i = 0; i < seg.filesize; ++i) {
+                if (target_addr + i < memory_.size()) {
+                    memory_.write_u8(target_addr + i, dyld_bytes[seg.fileoff + i]);
+                }
+            }
+        }
+    }
+
+    // 5. Construct initial stack frame
+    std::uint64_t initial_sp = 0;
+    std::string stack_err;
+    std::uint64_t effective_stack_top = (config.stack_top <= memory_.size())
+                                            ? config.stack_top
+                                            : (memory_.size() & ~0xFULL);
+    if (!loader::UserspaceMachOLoader::construct_initial_stack(
+            memory_,
+            effective_stack_top,
+            config.argv,
+            config.envp,
+            config.executable_path,
+            initial_sp,
+            stack_err)) {
+        result.error_message = "Failed to construct Darwin stack frame: " + stack_err;
+        return result;
+    }
+
+    // 6. Register process in BSD and allocate Mach port space
+    auto existing = bsd_.get_process(pid);
+    if (!existing) {
+        if (pid != 0) {
+            current_pid_ = bsd_.create_process_with_pid(pid, 1, config.executable_path, 0);
+        } else {
+            current_pid_ = bsd_.create_process(1, config.executable_path, 0);
+        }
+    } else {
+        current_pid_ = pid;
+    }
+    result.pid = current_pid_;
+    if (auto proc = bsd_.get_process(current_pid_)) {
+        if (proc->brk_curr >= memory_.size()) {
+            proc->brk_curr = 0x01000000ULL; // 16 MB heap region inside guest RAM
+        }
+    }
+
+    if (!ipc_.get_task_port_space(current_pid_)) {
+        ipc_.create_task_port_space(current_pid_);
+    }
+
+    // 7. Configure CPU to begin execution at minidyld entry point
+    std::uint64_t dyld_entry = (dyld_load.entry_point < memory_.size())
+                                   ? dyld_load.entry_point
+                                   : (dyld_load.entry_point % memory_.size());
+
+    cpu_.reset();
+    cpu_.set_architectural_exceptions(true);
+    cpu_.set_cpacr_el1(0x00300000); // Full FP/SIMD access (FPEN=11)
+    cpu_.set_current_el(0);         // EL0 Userspace
+    cpu_.set_program_counter(dyld_entry);
+    cpu_.set_stack_pointer(initial_sp);
+    cpu_.set_vbar_el1(config.vbar_el1);
+
+    // Pass main binary's mach_header address in X0 and initial stack pointer in X1 to minidyld
+    std::uint64_t main_header_addr = (main_load.segments.size() > 1)
+                                         ? main_load.segments[1].vmaddr
+                                         : 0x100000000ULL;
+    cpu_.write_register(0, main_header_addr);
+    cpu_.write_register(1, initial_sp);
+
+    // Place a NOP at the kernel synchronous vector (VBAR_EL1 + 0x400)
+    std::uint64_t vbar_target = (config.vbar_el1 < memory_.size())
+                                    ? config.vbar_el1
+                                    : (config.vbar_el1 % memory_.size());
+    if (vbar_target + 0x404 <= memory_.size()) {
+        memory_.write_u32(vbar_target + 0x400, 0xD503201Fu);
+    }
+
+    log_event(result, ExecutionOrigin::Guest, PipelineExecutionStage::UserspaceEntry, dyld_entry,
+              "Transitioned to EL0 at minidyld entry: PC=0x" + std::to_string(dyld_entry) +
+              ", MainMH=0x" + std::to_string(main_header_addr));
+
+    if (config.pre_execution_hook) {
+        config.pre_execution_hook(memory_);
+    }
+
+    // Step instructions until process exit or max instructions reached
+    while (!result.process_exited && result.guest_instructions_retired < config.max_instructions) {
+        if (!step_one(result, config)) {
+            break;
+        }
+    }
+
+    if (!result.process_exited && result.guest_instructions_retired >= config.max_instructions) {
+        result.error_message = "Guest instruction budget reached without clean exit (" +
+                               std::to_string(config.max_instructions) + " instructions)";
+        log_event(result, ExecutionOrigin::Host, PipelineExecutionStage::ExceptionFault,
+                  cpu_.get_program_counter(), result.error_message);
+    }
+
+    return result;
+}
+
 bool DarwinUserspaceEngine::step_one(DarwinPipelineResult& result, const DarwinPipelineConfig& config) {
     (void)config;
     if (cpu_.is_halted()) {
@@ -256,10 +412,19 @@ bool DarwinUserspaceEngine::step_one(DarwinPipelineResult& result, const DarwinP
             cpu_.set_program_counter(cpu_.get_elr_el1());
             cpu_.set_current_el(0);
         } else {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Guest exception in EL0: ESR_EL1=0x%llx EC=0x%x FAR=0x%llx",
+                     static_cast<unsigned long long>(esr),
+                     static_cast<unsigned int>(ec),
+                     static_cast<unsigned long long>(cpu_.get_far_el1()));
             log_event(result, ExecutionOrigin::Guest, PipelineExecutionStage::ExceptionFault,
-                      prev_pc, "Guest exception in EL0: ESR_EL1=0x" + std::to_string(esr) +
-                      " EC=0x" + std::to_string(ec));
-            result.error_message = "Unexpected exception in guest userspace";
+                      prev_pc, buf);
+            snprintf(buf, sizeof(buf), "Unexpected exception in guest userspace at PC=0x%llx ESR=0x%llx EC=0x%x FAR=0x%llx",
+                     static_cast<unsigned long long>(prev_pc),
+                     static_cast<unsigned long long>(esr),
+                     static_cast<unsigned int>(ec),
+                     static_cast<unsigned long long>(cpu_.get_far_el1()));
+            result.error_message = buf;
             return false;
         }
     }
@@ -314,8 +479,10 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
             }
         }
 
-        if (fd == 1 || fd == 2) {
+        if (fd == 1) {
             result.stdout_output.append(s);
+        } else if (fd == 2) {
+            result.stderr_output.append(s);
         }
 
         std::int64_t nwritten = bsd_.write(current_pid_, static_cast<int>(fd), s.data(), s.size());
@@ -402,6 +569,36 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
 
         log_event(result, ExecutionOrigin::Host, PipelineExecutionStage::BsdSyscallTrap,
                   cpu_.get_elr_el1(), "SYS_read: fd=" + std::to_string(fd) + " (count=" + std::to_string(count) + ")");
+        return;
+    }
+
+    if (nr == 153) { // SYS_pread
+        const auto fd = static_cast<int>(cpu_.read_register(0));
+        const auto buf_addr = cpu_.read_register(1);
+        const auto count = static_cast<std::size_t>(cpu_.read_register(2));
+        const auto offset = static_cast<std::int64_t>(cpu_.read_register(3));
+
+        if (count > 0 && offset >= 0) {
+            std::vector<std::uint8_t> tmp(count, 0);
+            std::int64_t nread = bsd_.pread(current_pid_, fd, tmp.data(), count, offset);
+            if (nread >= 0) {
+                std::uint64_t target = (buf_addr < memory_.size()) ? buf_addr : (buf_addr % memory_.size());
+                for (std::size_t i = 0; i < static_cast<std::size_t>(nread) && (target + i) < memory_.size(); ++i) {
+                    memory_.write_u8(target + i, tmp[i]);
+                }
+                cpu_.write_register(0, static_cast<std::uint64_t>(nread));
+                cpu_.set_nzcv(cpu_.get_nzcv() & ~0x2u);
+            } else {
+                cpu_.write_register(0, static_cast<std::uint64_t>(-1));
+                cpu_.set_nzcv(cpu_.get_nzcv() | 0x2u);
+            }
+        } else {
+            cpu_.write_register(0, 0);
+            cpu_.set_nzcv(cpu_.get_nzcv() & ~0x2u);
+        }
+
+        log_event(result, ExecutionOrigin::Host, PipelineExecutionStage::BsdSyscallTrap,
+                  cpu_.get_elr_el1(), "SYS_pread: fd=" + std::to_string(fd) + " (count=" + std::to_string(count) + ", offset=" + std::to_string(offset) + ")");
         return;
     }
 
@@ -641,6 +838,22 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
         std::uint32_t effective_flags = (flags != 0) ? flags : 0x1002u;
         std::uint64_t mapped = bsd_.mmap(current_pid_, target_addr, len, effective_prot, effective_flags, fd, offset);
         if (mapped != 0 && len > 0) {
+            std::uint64_t target = (mapped < memory_.size()) ? mapped : (mapped % memory_.size());
+            if (fd >= 0 && (effective_flags & 0x1000u) == 0) {
+                // File-backed mapping: read file content from offset into memory
+                std::vector<std::uint8_t> tmp(len, 0);
+                std::int64_t nread = bsd_.pread(current_pid_, fd, tmp.data(), len, static_cast<std::int64_t>(offset));
+                if (nread > 0) {
+                    for (std::size_t i = 0; i < static_cast<std::size_t>(nread) && (target + i) < memory_.size(); ++i) {
+                        memory_.write_u8(target + i, tmp[i]);
+                    }
+                }
+            } else if (mapped < memory_.size()) {
+                // Anonymous mapping in addressable guest RAM: zero-initialize pages
+                for (std::size_t i = 0; i < len && (mapped + i) < memory_.size(); ++i) {
+                    memory_.write_u8(mapped + i, 0);
+                }
+            }
             cpu_.write_register(0, mapped);
             cpu_.set_nzcv(cpu_.get_nzcv() & ~0x2u);
         } else {
@@ -679,7 +892,16 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
         return;
     }
 
-    if (nr == 73 || nr == 366 || nr == 180) { // munmap, bsdthread_register, kdebug_trace
+    if (nr == 73) { // SYS_munmap
+        const auto addr = cpu_.read_register(0);
+        const auto len = static_cast<std::size_t>(cpu_.read_register(1));
+        bool ok = bsd_.munmap(current_pid_, addr, len);
+        cpu_.write_register(0, ok ? 0ULL : static_cast<std::uint64_t>(-1));
+        cpu_.set_nzcv(ok ? (cpu_.get_nzcv() & ~0x2u) : (cpu_.get_nzcv() | 0x2u));
+        return;
+    }
+
+    if (nr == 366 || nr == 180) { // bsdthread_register, kdebug_trace
         cpu_.write_register(0, 0);
         cpu_.set_nzcv(cpu_.get_nzcv() & ~0x2u);
         return;
@@ -721,21 +943,47 @@ void DarwinUserspaceEngine::handle_mach_trap(DarwinPipelineResult& result) {
         return;
     }
 
-    if (trap_nr == -27) { // mach_reply_port_trap
+    if (trap_nr == -26) { // mach_reply_port_trap (XNU syscall_sw.c: -26)
         auto space = ipc_.get_task_port_space(current_pid_);
         if (!space) {
             space = ipc_.create_task_port_space(current_pid_);
         }
         mach_port_t reply_port = current_pid_ * 100 + 2;
-        auto obj = std::make_shared<MachPortObject>(2000 + current_pid_, current_pid_);
-        space->insert_right(reply_port, obj, kMachPortRightReceive);
+        if (!space->lookup_port(reply_port)) {
+            auto obj = std::make_shared<MachPortObject>(2000 + current_pid_, current_pid_);
+            space->insert_right(reply_port, obj, kMachPortRightReceive);
+        } else {
+            reply_port = ipc_.mach_reply_port(current_pid_);
+        }
         cpu_.write_register(0, reply_port);
+        if (diagnostics_) {
+            diagnostics_->log_syscall(TrapKind::MachTrap, static_cast<std::int32_t>(trap_nr), "mach_reply_port", diag_args, reply_port);
+        }
         log_event(result, ExecutionOrigin::Host, PipelineExecutionStage::MachTrap,
-                  cpu_.get_elr_el1(), "mach_reply_port_trap -> port " + std::to_string(reply_port));
+                  cpu_.get_elr_el1(), "mach_reply_port -> port " + std::to_string(reply_port));
         return;
     }
 
-    if (trap_nr == -26) { // mach_msg_trap
+    if (trap_nr == -27) { // thread_self_trap (XNU syscall_sw.c: -27)
+        auto space = ipc_.get_task_port_space(current_pid_);
+        if (!space) {
+            space = ipc_.create_task_port_space(current_pid_);
+        }
+        mach_port_t thread_port = current_pid_ * 100 + 3;
+        if (!space->lookup_port(thread_port)) {
+            auto obj = std::make_shared<MachPortObject>(3000 + current_pid_, current_pid_);
+            space->insert_right(thread_port, obj, kMachPortRightReceive);
+        }
+        cpu_.write_register(0, thread_port);
+        if (diagnostics_) {
+            diagnostics_->log_syscall(TrapKind::MachTrap, static_cast<std::int32_t>(trap_nr), "thread_self_trap", diag_args, thread_port);
+        }
+        log_event(result, ExecutionOrigin::Host, PipelineExecutionStage::MachTrap,
+                  cpu_.get_elr_el1(), "thread_self_trap -> port " + std::to_string(thread_port));
+        return;
+    }
+
+    if (trap_nr == -31 || trap_nr == -32) { // mach_msg_trap / mach_msg_overwrite_trap (XNU syscall_sw.c: -31/-32)
         const auto msg_addr = cpu_.read_register(0);
         const auto option = static_cast<std::uint32_t>(cpu_.read_register(1));
         const auto send_size = static_cast<std::uint32_t>(cpu_.read_register(2));
@@ -902,6 +1150,7 @@ DarwinPipelineResult DarwinUserspaceEngine::run_complete_end_to_end_pipeline(
     result.bsd_syscalls_handled = macho_res.bsd_syscalls_handled;
     result.mach_traps_handled = macho_res.mach_traps_handled;
     result.stdout_output = std::move(macho_res.stdout_output);
+    result.stderr_output = std::move(macho_res.stderr_output);
     result.process_exited = macho_res.process_exited;
     result.exit_code = macho_res.exit_code;
     result.error_message = macho_res.error_message;

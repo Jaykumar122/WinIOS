@@ -137,6 +137,25 @@ constexpr std::uint32_t kStp64Pre  = 0xA9800000u;
 constexpr std::uint32_t kLdp64Pre  = 0xA9C00000u;
 constexpr std::uint32_t kStp64Post = 0xA8800000u;
 constexpr std::uint32_t kLdp64Post = 0xA8C00000u;
+// SIMD/FP Load/Store pair constants:
+constexpr std::uint32_t kStpQOff   = 0xAD000000u;
+constexpr std::uint32_t kLdpQOff   = 0xAD400000u;
+constexpr std::uint32_t kStpQPre   = 0xAD800000u;
+constexpr std::uint32_t kLdpQPre   = 0xADC00000u;
+constexpr std::uint32_t kStpQPost  = 0xAC800000u;
+constexpr std::uint32_t kLdpQPost  = 0xACC00000u;
+constexpr std::uint32_t kStpDOff   = 0x6D000000u;
+constexpr std::uint32_t kLdpDOff   = 0x6D400000u;
+constexpr std::uint32_t kStpDPre   = 0x6D800000u;
+constexpr std::uint32_t kLdpDPre   = 0x6DC00000u;
+constexpr std::uint32_t kStpDPost  = 0x6C800000u;
+constexpr std::uint32_t kLdpDPost  = 0x6CC00000u;
+constexpr std::uint32_t kStpSOff   = 0x2D000000u;
+constexpr std::uint32_t kLdpSOff   = 0x2D400000u;
+constexpr std::uint32_t kStpSPre   = 0x2D800000u;
+constexpr std::uint32_t kLdpSPre   = 0x2DC00000u;
+constexpr std::uint32_t kStpSPost  = 0x2C800000u;
+constexpr std::uint32_t kLdpSPost  = 0x2CC00000u;
 // Phase 30: Scalar byte/halfword loads/stores, LDPSW, and PRFM forms.
 // Scaled unsigned offset:
 constexpr std::uint32_t kStrbOff      = 0x39000000u;
@@ -223,6 +242,8 @@ constexpr std::uint32_t kAddSubImmediateMask = 0x1F800000u;
 constexpr std::uint32_t kAddImmediate = 0x11000000u;
 constexpr std::uint32_t kAddSubRegisterMask = 0x1F200000u;
 constexpr std::uint32_t kAddSubRegister = 0x0B000000u;
+constexpr std::uint32_t kAddSubExtendedRegisterMask = 0x1FE00000u;
+constexpr std::uint32_t kAddSubExtendedRegister = 0x0B200000u;
 constexpr std::uint32_t kLogicalShiftedRegisterMask = 0x1F000000u;
 constexpr std::uint32_t kLogicalShiftedRegister = 0x0A000000u;
 constexpr std::uint32_t kLogicalImmediateMask = 0x1F800000u;
@@ -388,11 +409,23 @@ std::uint64_t extend_register_offset(std::uint64_t rm_value,
                                      std::uint32_t shift) {
     std::uint64_t value;
     switch (option) {
+    case 0u: // UXTB
+        value = rm_value & 0xFFull;
+        break;
+    case 1u: // UXTH
+        value = rm_value & 0xFFFFull;
+        break;
     case 2u: // UXTW: zero-extend Wm
         value = rm_value & 0xFFFFFFFFull;
         break;
     case 3u: // UXTX / LSL: full Xm
         value = rm_value;
+        break;
+    case 4u: // SXTB
+        value = static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int8_t>(rm_value)));
+        break;
+    case 5u: // SXTH
+        value = static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int16_t>(rm_value)));
         break;
     case 6u: // SXTW: sign-extend Wm
         value = static_cast<std::uint64_t>(
@@ -2799,6 +2832,25 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         if (opcode == 0b00000) m = u ? "USHR" : "SSHR";
         else if (opcode == 0b00100) m = u ? "URSHR" : "SRSHR";
         else if (opcode == 0b01010 && !u) m = "SHL";
+        else if (opcode == 0b10100 && esz < 3) {
+            const unsigned shift_left =
+                (esz == 2) ? (immhb & 0x1Fu) : (esz == 1) ? (immhb & 0x0Fu) : (immhb & 0x07u);
+            const char* const wide_arr[3] = {".8H", ".4S", ".2D"};
+            const char* const narr_arr[2][3] = {
+                {".8B", ".4H", ".2S"},
+                {".16B", ".8H", ".4S"}
+            };
+            const std::string d_arr = wide_arr[esz];
+            const std::string n_arr = narr_arr[q ? 1 : 0][esz];
+            if (shift_left == 0) {
+                const char* wm = u ? (q ? "UXTL2" : "UXTL") : (q ? "SXTL2" : "SXTL");
+                text = std::string(wm) + " V" + std::to_string(rd) + d_arr + ", V" + std::to_string(rn) + n_arr;
+            } else {
+                const char* wm = u ? (q ? "USHLL2" : "USHLL") : (q ? "SSHLL2" : "SSHLL");
+                text = std::string(wm) + " V" + std::to_string(rd) + d_arr + ", V" + std::to_string(rn) + n_arr + ", #" + std::to_string(shift_left);
+            }
+            return true;
+        }
         if (m) {
             text = std::string(m) + " V" + std::to_string(rd) + arr + ", V" + std::to_string(rn) + arr + ", #" + std::to_string(shift);
             return true;
@@ -2806,7 +2858,7 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
     }
 
     // 10. Advanced SIMD DUP, INS, UMOV
-    if ((instruction & 0xBFE08400u) == 0x0E000400u) {
+    if ((instruction & 0x9FE08400u) == 0x0E000400u) {
         const bool q = (instruction & 0x40000000u) != 0;
         const bool bit29 = (instruction & 0x20000000u) != 0;
         const std::uint32_t imm5 = (instruction >> 16u) & 0x1Fu;
@@ -2814,17 +2866,25 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t rd = instruction & 0x1Fu;
         unsigned esz = 0, idx = 0;
-        if (!decode_esz_idx(imm5, esz, idx) || bit29) return false;
+        if (!decode_esz_idx(imm5, esz, idx)) return false;
         const char* const arrs[2][4] = {
             {".8B", ".4H", ".2S", ".1D"},
             {".16B", ".8H", ".4S", ".2D"}
         };
         char elem = "BHSD"[esz];
+        if (bit29) {
+            if (!q) return false;
+            const std::uint32_t imm4 = op2;
+            const unsigned src_idx = imm4 >> esz;
+            text = "INS V" + std::to_string(rd) + "." + elem + "[" + std::to_string(idx) + "], V" +
+                   std::to_string(rn) + "." + elem + "[" + std::to_string(src_idx) + "]";
+            return true;
+        }
         if (op2 == 0b0001) { // DUP
             text = "DUP V" + std::to_string(rd) + arrs[q ? 1 : 0][esz] + ", " + transfer_register_name(rn, esz != 3);
             return true;
         }
-        if (op2 == 0b0011 && q) { // INS
+        if (op2 == 0b0011 && q) { // INS (general)
             text = "INS V" + std::to_string(rd) + "." + elem + "[" + std::to_string(idx) + "], " + transfer_register_name(rn, esz != 3);
             return true;
         }
@@ -3378,22 +3438,41 @@ std::string decode_disassembly(std::uint32_t instruction) {
     const bool pair_64 = pair_opcode == kStp64Off || pair_opcode == kLdp64Off
                          || pair_opcode == kStp64Pre || pair_opcode == kLdp64Pre
                          || pair_opcode == kStp64Post || pair_opcode == kLdp64Post;
+    const bool pair_simd_q = pair_opcode == kStpQOff || pair_opcode == kLdpQOff
+                          || pair_opcode == kStpQPre || pair_opcode == kLdpQPre
+                          || pair_opcode == kStpQPost || pair_opcode == kLdpQPost;
+    const bool pair_simd_d = pair_opcode == kStpDOff || pair_opcode == kLdpDOff
+                          || pair_opcode == kStpDPre || pair_opcode == kLdpDPre
+                          || pair_opcode == kStpDPost || pair_opcode == kLdpDPost;
+    const bool pair_simd_s = pair_opcode == kStpSOff || pair_opcode == kLdpSOff
+                          || pair_opcode == kStpSPre || pair_opcode == kLdpSPre
+                          || pair_opcode == kStpSPost || pair_opcode == kLdpSPost;
     const bool is_ldpsw = pair_opcode == kLdpswOff || pair_opcode == kLdpswPre
                           || pair_opcode == kLdpswPost;
-    if (pair_32 || pair_64 || is_ldpsw) {
+    if (pair_32 || pair_64 || pair_simd_q || pair_simd_d || pair_simd_s || is_ldpsw) {
         const bool is_load = is_ldpsw || ((instruction & (1u << 22u)) != 0);
         const auto target1 = instruction & 0x1Fu;
         const auto base = (instruction >> 5u) & 0x1Fu;
         const auto target2 = (instruction >> 10u) & 0x1Fu;
         const auto mode = (instruction >> 23u) & 0x7u;
+        const std::size_t scale = pair_simd_q ? 16u : (pair_64 || pair_simd_d ? 8u : 4u);
         const std::int64_t offset =
-            decode_simm7((instruction >> 15u) & 0x7Fu) * (pair_64 ? 8 : 4);
+            decode_simm7((instruction >> 15u) & 0x7Fu) * static_cast<std::int64_t>(scale);
         std::ostringstream stream;
         const char* mnemonic = is_ldpsw ? "LDPSW " : (is_load ? "LDP " : "STP ");
-        const bool reg_is32 = pair_32;
-        stream << mnemonic
-               << transfer_register_name(target1, reg_is32) << ", "
-               << transfer_register_name(target2, reg_is32) << ", [";
+        stream << mnemonic;
+        if (pair_simd_q) {
+            stream << "Q" << target1 << ", Q" << target2;
+        } else if (pair_simd_d) {
+            stream << "D" << target1 << ", D" << target2;
+        } else if (pair_simd_s) {
+            stream << "S" << target1 << ", S" << target2;
+        } else {
+            const bool reg_is32 = pair_32;
+            stream << transfer_register_name(target1, reg_is32) << ", "
+                   << transfer_register_name(target2, reg_is32);
+        }
+        stream << ", [";
         if (mode == 2u) {
             stream << register_name(base, true) << ", #" << offset << "]";
         } else if (mode == 3u) {
@@ -5352,6 +5431,32 @@ void CPU::step(Memory& guest_memory) {
         emit_trace();
         return;
     }
+    if ((instruction & kAddSubExtendedRegisterMask) == kAddSubExtendedRegister) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool subtract = (instruction & 0x40000000u) != 0;
+        const bool set_flags = (instruction & 0x20000000u) != 0;
+        const std::uint32_t destination = instruction & 0x1Fu;
+        const std::uint32_t source = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t imm3 = (instruction >> 10u) & 0x7u;
+        const std::uint32_t option = (instruction >> 13u) & 0x7u;
+        const std::uint32_t rm = (instruction >> 16u) & 0x1Fu;
+        if (imm3 > 4u) {
+            throw std::runtime_error("Unsupported ADD/SUB extended register shift amount");
+        }
+        const std::uint64_t rm_val = read_width_operand(*this, rm, (option & 3u) == 3u, false);
+        std::uint64_t right = extend_register_offset(rm_val, option, imm3);
+        if (!is64) right &= 0xFFFFFFFFull;
+        const std::uint64_t left = read_width_operand(*this, source, is64, true);
+        const std::uint64_t result = subtract ? left - right : left + right;
+        if (set_flags) {
+            nzcv_ = arithmetic_flags(left, right, result, subtract, is64);
+        }
+        write_width_result(*this, destination, result, is64, !set_flags);
+        program_counter_ = checked_add_address(instruction_address, 4u,
+                                                "Instruction PC increment");
+        emit_trace();
+        return;
+    }
     if ((instruction & kLogicalShiftedRegisterMask) == kLogicalShiftedRegister) {
         const bool is64 = (instruction & 0x80000000u) != 0;
         const std::uint32_t opc = (instruction >> 29u) & 0x3u;
@@ -6449,16 +6554,25 @@ void CPU::step(Memory& guest_memory) {
     const bool pair_64 = pair_opcode == kStp64Off || pair_opcode == kLdp64Off
                          || pair_opcode == kStp64Pre || pair_opcode == kLdp64Pre
                          || pair_opcode == kStp64Post || pair_opcode == kLdp64Post;
+    const bool pair_simd_q = pair_opcode == kStpQOff || pair_opcode == kLdpQOff
+                          || pair_opcode == kStpQPre || pair_opcode == kLdpQPre
+                          || pair_opcode == kStpQPost || pair_opcode == kLdpQPost;
+    const bool pair_simd_d = pair_opcode == kStpDOff || pair_opcode == kLdpDOff
+                          || pair_opcode == kStpDPre || pair_opcode == kLdpDPre
+                          || pair_opcode == kStpDPost || pair_opcode == kLdpDPost;
+    const bool pair_simd_s = pair_opcode == kStpSOff || pair_opcode == kLdpSOff
+                          || pair_opcode == kStpSPre || pair_opcode == kLdpSPre
+                          || pair_opcode == kStpSPost || pair_opcode == kLdpSPost;
     const bool is_ldpsw = pair_opcode == kLdpswOff || pair_opcode == kLdpswPre
                           || pair_opcode == kLdpswPost;
-    if (pair_32 || pair_64 || is_ldpsw) {
+    if (pair_32 || pair_64 || pair_simd_q || pair_simd_d || pair_simd_s || is_ldpsw) {
         const bool load = is_ldpsw || ((instruction & (1u << 22u)) != 0);
         const bool is32 = pair_32;
         const std::uint32_t target1 = instruction & 0x1Fu;
         const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t target2 = (instruction >> 10u) & 0x1Fu;
         const std::uint32_t mode = (instruction >> 23u) & 0x7u;
-        const std::size_t scale = (pair_64 ? 8u : 4u);
+        const std::size_t scale = pair_simd_q ? 16u : ((pair_64 || pair_simd_d) ? 8u : 4u);
         const std::int64_t offset =
             decode_simm7((instruction >> 15u) & 0x7Fu) * static_cast<std::int64_t>(scale);
         const std::uint64_t base_value = read_stack_pointer_operand(*this, base);
@@ -6484,8 +6598,6 @@ void CPU::step(Memory& guest_memory) {
         const std::size_t mem_offset2 = pc_as_memory_offset(ea2);
         // Fault atomicity: check memory bounds for the entire 2*scale byte range before
         // modifying any architectural registers or writing any bytes to memory.
-        // Phase 36: each element must be naturally aligned; both checks happen
-        // before any store so a faulting second element cannot commit the first.
         memory.check_access(ea, static_cast<unsigned>(scale),
                             load ? AccessType::Read : AccessType::Write);
         memory.check_access(ea2, static_cast<unsigned>(scale),
@@ -6502,28 +6614,55 @@ void CPU::step(Memory& guest_memory) {
             throw std::out_of_range(message.str());
         }
         if (load) {
-            // Read both elements into temporaries before updating registers
-            std::uint64_t val1 = 0;
-            std::uint64_t val2 = 0;
-            if (is_ldpsw) {
-                const std::int32_t sval1 = static_cast<std::int32_t>(memory.read_u32(mem_offset1));
-                const std::int32_t sval2 = static_cast<std::int32_t>(memory.read_u32(mem_offset2));
-                val1 = static_cast<std::uint64_t>(static_cast<std::int64_t>(sval1));
-                val2 = static_cast<std::uint64_t>(static_cast<std::int64_t>(sval2));
-            } else if (is32) {
-                val1 = memory.read_u32(mem_offset1);
-                val2 = memory.read_u32(mem_offset2);
+            if (pair_simd_q) {
+                const VectorRegister v1{memory.read_u64(mem_offset1), memory.read_u64(mem_offset1 + 8)};
+                const VectorRegister v2{memory.read_u64(mem_offset2), memory.read_u64(mem_offset2 + 8)};
+                write_vector_register(target1, v1);
+                write_vector_register(target2, v2);
+            } else if (pair_simd_d) {
+                write_d_register(target1, memory.read_u64(mem_offset1));
+                write_d_register(target2, memory.read_u64(mem_offset2));
+            } else if (pair_simd_s) {
+                write_s_register(target1, memory.read_u32(mem_offset1));
+                write_s_register(target2, memory.read_u32(mem_offset2));
             } else {
-                val1 = memory.read_u64(mem_offset1);
-                val2 = memory.read_u64(mem_offset2);
+                // Read both elements into temporaries before updating registers
+                std::uint64_t val1 = 0;
+                std::uint64_t val2 = 0;
+                if (is_ldpsw) {
+                    const std::int32_t sval1 = static_cast<std::int32_t>(memory.read_u32(mem_offset1));
+                    const std::int32_t sval2 = static_cast<std::int32_t>(memory.read_u32(mem_offset2));
+                    val1 = static_cast<std::uint64_t>(static_cast<std::int64_t>(sval1));
+                    val2 = static_cast<std::uint64_t>(static_cast<std::int64_t>(sval2));
+                } else if (is32) {
+                    val1 = memory.read_u32(mem_offset1);
+                    val2 = memory.read_u32(mem_offset2);
+                } else {
+                    val1 = memory.read_u64(mem_offset1);
+                    val2 = memory.read_u64(mem_offset2);
+                }
+                write_zero_register_result(*this, target1, val1);
+                write_zero_register_result(*this, target2, val2);
             }
-            // Transfer register writes: Rt then Rt2. Register 31 is WZR/XZR (discarded).
-            // When Rt == Rt2, Rt2 is written second so Rt receives val2 (deterministic policy).
-            write_zero_register_result(*this, target1, val1);
-            write_zero_register_result(*this, target2, val2);
         } else {
-            // Store: read transfer registers (register 31 is WZR/XZR -> 0)
-            if (is32) {
+            // Store: read transfer registers
+            if (pair_simd_q) {
+                const VectorRegister v1 = read_vector_register(target1);
+                const VectorRegister v2 = read_vector_register(target2);
+                memory.write_u64(mem_offset1, v1.low);
+                memory.write_u64(mem_offset1 + 8, v1.high);
+                memory.write_u64(mem_offset2, v2.low);
+                memory.write_u64(mem_offset2 + 8, v2.high);
+                note_normal_store(mem_offset1, 32);
+            } else if (pair_simd_d) {
+                memory.write_u64(mem_offset1, read_d_register(target1));
+                memory.write_u64(mem_offset2, read_d_register(target2));
+                note_normal_store(mem_offset1, 16);
+            } else if (pair_simd_s) {
+                memory.write_u32(mem_offset1, read_s_register(target1));
+                memory.write_u32(mem_offset2, read_s_register(target2));
+                note_normal_store(mem_offset1, 8);
+            } else if (is32) {
                 const std::uint32_t val1 = static_cast<std::uint32_t>(read_zero_register_operand(*this, target1));
                 const std::uint32_t val2 = static_cast<std::uint32_t>(read_zero_register_operand(*this, target2));
                 memory.write_u32(mem_offset1, val1);
@@ -9111,11 +9250,111 @@ void CPU::step(Memory& guest_memory) {
             esz = 0;
             shift = (opcode == 0b01010) ? (immhb & 0x07u) : (8u - (immhb & 0x07u));
         } else {
-            throw std::runtime_error("Reserved immh in shift immediate");
+            // immh == 0: Advanced SIMD modified immediate (MOVI, MVNI, ORR, BIC)
+            const bool op = u; // bit 29
+            const std::uint32_t cmode = (instruction >> 12u) & 0xFu;
+            const std::uint64_t imm8 = (((instruction >> 16u) & 0x7u) << 5u) | ((instruction >> 5u) & 0x1Fu);
+            std::uint64_t imm64 = 0;
+            bool is_bic = false;
+            bool is_orr = false;
+            bool is_mvni = false;
+
+            if ((cmode & 0b1110) == 0b0000) {
+                // 32-bit element, shift = 0
+                const std::uint64_t imm32 = imm8;
+                imm64 = (imm32 << 32u) | imm32;
+                if (cmode & 1) { if (op) is_bic = true; else is_orr = true; }
+                else if (op) is_mvni = true;
+            } else if ((cmode & 0b1110) == 0b0010) {
+                // 32-bit element, shift = 8
+                const std::uint64_t imm32 = imm8 << 8u;
+                imm64 = (imm32 << 32u) | imm32;
+                if (cmode & 1) { if (op) is_bic = true; else is_orr = true; }
+                else if (op) is_mvni = true;
+            } else if ((cmode & 0b1110) == 0b0100) {
+                // 32-bit element, shift = 16
+                const std::uint64_t imm32 = imm8 << 16u;
+                imm64 = (imm32 << 32u) | imm32;
+                if (cmode & 1) { if (op) is_bic = true; else is_orr = true; }
+                else if (op) is_mvni = true;
+            } else if ((cmode & 0b1110) == 0b0110) {
+                // 32-bit element, shift = 24
+                const std::uint64_t imm32 = imm8 << 24u;
+                imm64 = (imm32 << 32u) | imm32;
+                if (cmode & 1) { if (op) is_bic = true; else is_orr = true; }
+                else if (op) is_mvni = true;
+            } else if ((cmode & 0b1100) == 0b1000) {
+                // 16-bit element, shift = (cmode & 2) ? 8 : 0
+                const std::uint64_t shift16 = (cmode & 2) ? 8u : 0u;
+                const std::uint64_t imm16 = imm8 << shift16;
+                imm64 = (imm16 << 48u) | (imm16 << 32u) | (imm16 << 16u) | imm16;
+                if (cmode & 1) { if (op) is_bic = true; else is_orr = true; }
+                else if (op) is_mvni = true;
+            } else if (cmode == 0b1100) {
+                // 32-bit shifting ones: (imm8 << 8) | 0xFF
+                const std::uint64_t imm32 = (imm8 << 8u) | 0xFFu;
+                imm64 = (imm32 << 32u) | imm32;
+                if (op) is_mvni = true;
+            } else if (cmode == 0b1101) {
+                // 32-bit shifting ones: (imm8 << 16) | 0xFFFF
+                const std::uint64_t imm32 = (imm8 << 16u) | 0xFFFFu;
+                imm64 = (imm32 << 32u) | imm32;
+                if (op) is_mvni = true;
+            } else if (cmode == 0b1110) {
+                // 8-bit element: replicate imm8 across all bytes
+                imm64 = imm8 * 0x0101010101010101ULL;
+            } else if (cmode == 0b1111) {
+                // 64-bit scalar / vector with bitmask
+                for (unsigned b = 0; b < 8; ++b) {
+                    if ((imm8 >> b) & 1u) imm64 |= (0xFFULL << (b * 8u));
+                }
+            }
+
+            VectorRegister out{};
+            if (is_orr) {
+                const VectorRegister old = read_vector_register(rd);
+                out.low = old.low | imm64;
+                out.high = q ? (old.high | imm64) : 0;
+            } else if (is_bic) {
+                const VectorRegister old = read_vector_register(rd);
+                out.low = old.low & ~imm64;
+                out.high = q ? (old.high & ~imm64) : 0;
+            } else if (is_mvni) {
+                out.low = ~imm64;
+                out.high = q ? ~imm64 : 0;
+            } else {
+                // MOVI
+                out.low = imm64;
+                out.high = q ? imm64 : 0;
+            }
+            write_vector_register(rd, out);
+            program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
+            emit_trace();
+            return;
         }
 
         const VectorRegister n_val = read_vector_register(rn);
         VectorRegister out{};
+        if (opcode == 0b10100) { // SSHLL/USHLL (+ SXTL/UXTL when shift == 0)
+            if (esz >= 3) {
+                throw std::runtime_error("Unsupported shift-left-long element size");
+            }
+            const unsigned shift_left =
+                (esz == 2) ? (immhb & 0x1Fu) : (esz == 1) ? (immhb & 0x0Fu) : (immhb & 0x07u);
+            const unsigned desz = esz + 1u;
+            const unsigned lane_count = 8u >> esz;
+            const unsigned src_offset = q ? lane_count : 0u;
+            for (unsigned i = 0; i < lane_count; ++i) {
+                const std::uint64_t raw = get_vec_lane(n_val, src_offset + i, esz);
+                const std::uint64_t widened = !u ? static_cast<std::uint64_t>(sign_extend(raw, esz)) : raw;
+                const std::uint64_t res = (widened << shift_left) & vec_cmp_mask(true, desz);
+                set_vec_lane(out, i, desz, res);
+            }
+            write_vector_register(rd, out);
+            program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
+            emit_trace();
+            return;
+        }
         const unsigned lane_count = q ? (16u >> esz) : (8u >> esz);
         for (unsigned i = 0; i < lane_count; ++i) {
             const std::uint64_t val = get_vec_lane(n_val, i, esz);
@@ -9634,7 +9873,7 @@ void CPU::step(Memory& guest_memory) {
     }
 
     // 3. Vector DUP, INS, UMOV (Advanced SIMD copy)
-    if ((instruction & 0xBFE08400u) == 0x0E000400u) {
+    if ((instruction & 0x9FE08400u) == 0x0E000400u) {
         const bool q = (instruction & 0x40000000u) != 0;
         const bool bit29 = (instruction & 0x20000000u) != 0;
         const std::uint32_t imm5 = (instruction >> 16u) & 0x1Fu;
@@ -9643,11 +9882,20 @@ void CPU::step(Memory& guest_memory) {
         const std::uint32_t rd = instruction & 0x1Fu;
 
         unsigned esz = 0, idx = 0;
-        if (!decode_esz_idx(imm5, esz, idx) || bit29) {
+        if (!decode_esz_idx(imm5, esz, idx)) {
             throw std::runtime_error("Invalid imm5 in SIMD copy instruction");
         }
 
-        if (op2 == 0b0001) { // DUP general
+        if (bit29) {
+            if (!q) {
+                throw std::runtime_error("Unallocated bit29 in SIMD copy instruction with Q=0");
+            }
+            const unsigned src_idx = op2 >> esz;
+            const std::uint64_t val = get_vec_lane(read_vector_register(rn), src_idx, esz);
+            VectorRegister out = read_vector_register(rd);
+            set_vec_lane(out, idx, esz, val);
+            write_vector_register(rd, out);
+        } else if (op2 == 0b0001) { // DUP general
             if (esz == 3 && !q) {
                 throw std::runtime_error("1D DUP general is unallocated");
             }
@@ -9691,8 +9939,10 @@ void CPU::step(Memory& guest_memory) {
             make_undefined_instruction(instruction_address));
         return;
     }
-    throw std::runtime_error("Unsupported AArch64 instruction encoding: 0x"
-                             + std::to_string(instruction));
+    std::ostringstream uerr;
+    uerr << "Unsupported AArch64 instruction encoding: 0x"
+         << std::hex << std::setw(8) << std::setfill('0') << instruction;
+    throw std::runtime_error(uerr.str());
     } catch (const SynchronousExceptionSignal& signal) {
         // A guest data access faulted. The faulting instruction has been
         // unwound without committing register, PC or memory effects, so

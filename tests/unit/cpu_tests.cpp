@@ -13374,6 +13374,68 @@ void phase42_disassembly_names() {
     CHECK(names[1] == "MSR ICC_SGI1R_EL1, X16");
 }
 
+void campaign_191u_ins_element_and_sshll_tests() {
+    CPU cpu;
+    cpu.set_cpacr_el1(0x00300000ULL);
+    Memory memory(0x1000);
+    std::vector<std::string> names;
+    cpu.set_trace_sink([&names](const CPU::TraceRecord& r) {
+        names.push_back(r.disassembly);
+    });
+
+    // 1. INS V0.D[1], V1.D[0] (0x6E180420)
+    cpu.write_vector_register(0, CPU::VectorRegister{0x1122334455667788ull, 0xAABBCCDDEEFF0011ull});
+    cpu.write_vector_register(1, CPU::VectorRegister{0xCAFEBABEDEADBEEFull, 0x9999999999999999ull});
+    phase31_run_one(cpu, memory, 0x6E180420u);
+    CHECK(cpu.read_vector_register(0).low == 0x1122334455667788ull);
+    CHECK(cpu.read_vector_register(0).high == 0xCAFEBABEDEADBEEFull);
+
+    // 2. INS V1.H[1], V0.H[1] (0x6E061401)
+    cpu.write_vector_register(1, CPU::VectorRegister{0x1111222233334444ull, 0x5555666677778888ull});
+    cpu.write_vector_register(0, CPU::VectorRegister{0xAAAABBBBCCCCDDDDull, 0x0ull});
+    phase31_run_one(cpu, memory, 0x6E061401u);
+    CHECK(cpu.read_vector_register(1).low == 0x11112222CCCC4444ull);
+    CHECK(cpu.read_vector_register(1).high == 0x5555666677778888ull);
+
+    // 3. INS V0.B[2], V1.B[5] (0x6E052C20)
+    cpu.write_vector_register(0, CPU::VectorRegister{0x0000000000000000ull, 0x123456789ABCDEF0ull});
+    cpu.write_vector_register(1, CPU::VectorRegister{0x1122A54455667788ull, 0x0ull});
+    phase31_run_one(cpu, memory, 0x6E052C20u);
+    CHECK(cpu.read_vector_register(0).low == 0x0000000000A50000ull);
+    CHECK(cpu.read_vector_register(0).high == 0x123456789ABCDEF0ull);
+
+    // 4. SXTL V0.4S, V1.4H (SSHLL V0.4S, V1.4H, #0 -> 0x0F10A420)
+    cpu.write_vector_register(1, CPU::VectorRegister{0x8000FFFF00027FFFull, 0x0ull});
+    phase31_run_one(cpu, memory, 0x0F10A420u);
+    CHECK(cpu.read_vector_register(0).low == 0x0000000200007FFFull);
+    CHECK(cpu.read_vector_register(0).high == 0xFFFF8000FFFFFFFFull);
+
+    // 5. UXTL2 V0.4S, V1.8H (USHLL2 V0.4S, V1.8H, #0 -> 0x6F10A420)
+    cpu.write_vector_register(1, CPU::VectorRegister{0x0ull, 0x8000FFFF00027FFFull});
+    phase31_run_one(cpu, memory, 0x6F10A420u);
+    CHECK(cpu.read_vector_register(0).low == 0x0000000200007FFFull);
+    CHECK(cpu.read_vector_register(0).high == 0x000080000000FFFFull);
+
+    // 6. SSHLL V0.8H, V1.8B, #3 (0x0F0BA420)
+    cpu.write_vector_register(1, CPU::VectorRegister{0xFFFFFFFFFFFFFF81ull, 0x0ull});
+    phase31_run_one(cpu, memory, 0x0F0BA420u);
+    CHECK(cpu.read_vector_register(0).low == 0xFFF8FFF8FFF8FC08ull);
+    CHECK(cpu.read_vector_register(0).high == 0xFFF8FFF8FFF8FFF8ull);
+
+    const std::vector<std::string> expected = {
+        "INS V0.D[1], V1.D[0]",
+        "INS V1.H[1], V0.H[1]",
+        "INS V0.B[2], V1.B[5]",
+        "SXTL V0.4S, V1.4H",
+        "UXTL2 V0.4S, V1.8H",
+        "SSHLL V0.8H, V1.8B, #3",
+    };
+    CHECK(names.size() == expected.size());
+    for (std::size_t i = 0; i < names.size() && i < expected.size(); ++i) {
+        CHECK(names[i] == expected[i]);
+    }
+}
+
 
 int main() {
 
@@ -13751,6 +13813,7 @@ int main() {
     phase42_cross_core_sev_wfe();
     phase42_round_robin_scheduler();
     phase42_disassembly_names();
+    campaign_191u_ins_element_and_sshll_tests();
 
     return test::summarize("cpu_tests");
 

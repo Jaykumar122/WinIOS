@@ -635,6 +635,28 @@ std::int64_t DarwinBsdSubsystem::read(std::uint32_t pid, int fd, void* buffer, s
     return static_cast<std::int64_t>(to_read);
 }
 
+std::int64_t DarwinBsdSubsystem::pread(std::uint32_t pid, int fd, void* buffer, std::size_t count, std::int64_t offset) {
+    auto proc = get_process(pid);
+    if (!proc || !buffer || count == 0 || offset < 0) return -1;
+
+    auto it = proc->fds.find(fd);
+    if (it == proc->fds.end() || !it->second.node) return -1;
+
+    auto& desc = it->second;
+    if (desc.is_pipe()) return -1; // ESPIPE for pipes
+
+    auto& content = desc.node->content;
+    if (static_cast<std::size_t>(offset) >= content.size()) {
+        return 0; // EOF
+    }
+
+    std::size_t available = content.size() - static_cast<std::size_t>(offset);
+    std::size_t to_read = std::min(count, available);
+    std::memcpy(buffer, content.data() + offset, to_read);
+    // pread does NOT modify desc.offset
+    return static_cast<std::int64_t>(to_read);
+}
+
 std::int64_t DarwinBsdSubsystem::write(std::uint32_t pid, int fd, const void* buffer, std::size_t count) {
     auto proc = get_process(pid);
     if (!proc || !buffer || count == 0) return -1;
@@ -1018,7 +1040,8 @@ bool DarwinBsdSubsystem::mprotect(std::uint32_t pid, std::uint64_t addr, std::si
     }
 
     for (auto& r : proc->vm_regions) {
-        if (r.vmaddr == addr && r.size >= length) {
+        if ((r.vmaddr == addr && r.size >= length) ||
+            (addr >= r.vmaddr && (addr + length) <= (r.vmaddr + r.size))) {
             r.prot = new_prot;
             return true;
         }

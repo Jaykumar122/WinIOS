@@ -184,7 +184,7 @@ bool test_pipeline_mach_ipc() {
     DarwinPipelineResult result{};
     DarwinPipelineConfig config{};
 
-    // Setup guest CPU to invoke mach_msg_trap (-26)
+    // Setup guest CPU to invoke mach_msg_trap (-31)
     cpu.reset();
     cpu.set_architectural_exceptions(true);
     cpu.set_vbar_el1(0x10000);
@@ -201,7 +201,7 @@ bool test_pipeline_mach_ipc() {
     cpu.write_register(3, 0);
     cpu.write_register(4, 0);
     cpu.write_register(5, 0);
-    mem.write_u32(0x1000, 0x92800330u); // movn x16, #25 (x16 = -26)
+    mem.write_u32(0x1000, 0x928003D0u); // movn x16, #30 (x16 = -31)
     mem.write_u32(0x1004, 0xD4001021u); // svc #0x81
 
     engine.step_one(result, config);

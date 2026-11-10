@@ -26,19 +26,24 @@ enum class DarwinBsdSyscall : std::uint64_t {
     GetUid              = 24,
     GetEuid             = 25,
     Munmap              = 73,
+    Mprotect            = 74,
+    Pread               = 153,
     Mmap                = 197,
     KdebugTrace         = 180,
     BsdThreadRegister   = 366
 };
 
 // -----------------------------------------------------------------------------
-// Darwin Mach Trap Numbers (passed as negative integers in X16 with SVC 0x81)
+// Darwin Mach Trap Numbers (passed as negative integers in X16 with SVC 0x80/0x81)
+// Aligned with XNU osfmk/kern/syscall_sw.c
 // -----------------------------------------------------------------------------
 enum class DarwinMachTrap : std::int64_t {
-    MachMsg             = -26,
-    MachReplyPort       = -27,
+    MachReplyPort       = -26,
+    ThreadSelf          = -27,
     TaskSelf            = -28,
     HostSelf            = -29,
+    MachMsg             = -31,
+    MachMsgOverwrite    = -32,
     SemaphoreSignal     = -33,
     SemaphoreWait       = -36,
     SwtchPri            = -59,

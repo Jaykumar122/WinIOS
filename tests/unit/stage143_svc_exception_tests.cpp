@@ -205,11 +205,11 @@ bool test_darwin_xnu_negative_x16_mach_routing() {
 
     setup_el0_svc_env(cpu, mem, 0x1000, 0x10000);
 
-    // Call mach_reply_port_trap (X16 = -27) via standard SVC #0x80
+    // Call mach_reply_port_trap (X16 = -26) via standard SVC #0x80
     // Assembly:
-    //   mov x16, #-27  (0x92800350: movn x16, #26 -> -27)
+    //   mov x16, #-26  (0x92800330: movn x16, #25 -> -26)
     //   svc #0x80      (0xD4001001)
-    mem.write_u32(0x1000, 0x92800350u); // movn x16, #26 (-27)
+    mem.write_u32(0x1000, 0x92800330u); // movn x16, #25 (-26)
     mem.write_u32(0x1004, 0xD4001001u); // svc #0x80
 
     DarwinPipelineResult result{};

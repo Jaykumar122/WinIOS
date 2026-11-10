@@ -141,13 +141,19 @@ void DarwinSyscallDispatcher::setup_default_mach_handlers() {
             return 0x101; // Mach host port name
         });
 
-    // 3. MACH_mach_reply_port (-27)
+    // 3. MACH_mach_reply_port (-26)
     register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::MachReplyPort),
         [](CPU&, Memory&) -> std::int64_t {
             return 0x203; // Mach reply port
         });
 
-    // 4. MACH_mach_msg_trap (-26)
+    // 3b. MACH_thread_self_trap (-27)
+    register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::ThreadSelf),
+        [](CPU&, Memory&) -> std::int64_t {
+            return 0x303; // Mach thread port
+        });
+
+    // 4. MACH_mach_msg_trap (-31)
     register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::MachMsg),
         [](CPU&, Memory&) -> std::int64_t {
             return 0; // MACH_MSG_SUCCESS / KERN_SUCCESS
