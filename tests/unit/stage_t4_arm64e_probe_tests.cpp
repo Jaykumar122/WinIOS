@@ -167,6 +167,64 @@ bool test_arm64e_subtype_admission() {
     return true;
 }
 
+// Test 4: Corrupted Pointer Passes AUTIASP Without Fault (Proves NOP-Hint Space / Partial PAC)
+bool test_pac_corrupted_pointer_nop_hint() {
+    std::cout << "[Test 4] Corrupted Pointer Verification under AUTIASP (NOP-Hint Semantic Verification)...\n";
+
+    CPU cpu;
+    Memory mem(0x100000);
+    DarwinBsdSubsystem bsd;
+    MachIpcSubsystem ipc;
+    DarwinUserspaceEngine engine(cpu, mem, bsd, ipc);
+
+    // Write a tiny test program:
+    // 0: autiasp (0xd50323bf)
+    // 4: mov x0, #0 (0xd2800000)
+    // 8: mov x16, #1 (0xd2800030)
+    // 12: svc #0x80 (0xd4001001)
+    std::vector<std::uint32_t> instrs = {
+        0xd50323bfu, // autiasp
+        0xd2800000u, // mov x0, #0
+        0xd2800030u, // mov x16, #1
+        0xd4001001u  // svc #0x80
+    };
+    std::vector<std::uint8_t> code(instrs.size() * 4);
+    std::memcpy(code.data(), instrs.data(), code.size());
+
+    auto macho = UserspaceMachOFixtureBuilder::create_valid_arm64e_executable(
+        "/usr/lib/dyld", {"/usr/lib/libSystem.B.dylib"}, code);
+
+    DarwinPipelineConfig cfg;
+    cfg.executable_path = "/usr/bin/pac_corrupt_test";
+    cfg.max_instructions = 100;
+
+    constexpr std::uint64_t kCorruptedPointer = 0xDEADBEEFCAFE0000ULL;
+
+    cfg.pre_execution_hook = [&](Memory&) {
+        // Deliberately corrupt LR (X30) with an invalid PAC signature
+        cpu.write_register(30, kCorruptedPointer);
+    };
+
+    auto res = engine.execute_macho(macho.data(), macho.size(), cfg, 606);
+
+    std::cout << "  Retired instructions: " << res.guest_instructions_retired << "\n";
+    std::cout << "  Exit code: " << res.exit_code << "\n";
+    std::cout << "  LR (X30) after autiasp: 0x" << std::hex << cpu.read_register(30) << std::dec << "\n";
+
+    // In full architectural PAC with cryptographic enforcement, AUTIASP on a corrupt pointer
+    // mangles bits 62:61 to produce a Translation Fault on subsequent branch.
+    // In ARMv8.3-A hint space (WinIOS current EL0 implementation), AUTIASP acts as a NOP-hint,
+    // allowing execution to proceed cleanly without trap and preserving register value.
+    TEST_ASSERT(res.process_exited, "Process must cleanly exit");
+    TEST_ASSERT(res.exit_code == 0, "Exit code must be 0");
+    TEST_ASSERT(res.guest_instructions_retired >= 4, "Must retire at least 4 instructions");
+    TEST_ASSERT(cpu.read_register(30) == kCorruptedPointer,
+                "LR (X30) must be preserved across AUTIASP in NOP-hint space");
+
+    std::cout << "  Passed (Confirmed AUTIASP operates in NOP-hint space; PAC verdict is correctly PARTIAL)\n";
+    return true;
+}
+
 int main() {
     std::cout << "====================================================\n";
     std::cout << "STAGE T4: ARM64e / PAC PROBE AND ADMISSION CONFORMANCE\n";
@@ -175,6 +233,7 @@ int main() {
     if (!test_pac_opcodes_inspection()) return 1;
     if (!test_pac_guest_execution()) return 2;
     if (!test_arm64e_subtype_admission()) return 3;
+    if (!test_pac_corrupted_pointer_nop_hint()) return 4;
 
     std::cout << "====================================================\n";
     std::cout << "[STAGE T4 TESTS] ALL PASSED\n";

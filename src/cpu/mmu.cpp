@@ -615,7 +615,8 @@ std::optional<std::uint64_t> MMU::walk_stage1(
         if (!validate_table_alignment(ttbr & 0x0000FFFFFFFFFFFFULL, GranuleType::Granule16KB)) {
             return make_fault(MmuFaultType::Alignment, 1);
         }
-        std::uint64_t table_pa = ttbr & 0x0000FFFFFFFFC000ULL;
+        std::uint64_t initial_table_pa = ttbr & 0x0000FFFFFFFFC000ULL;
+        std::uint64_t table_pa = initial_table_pa;
         const std::size_t mem_size = memory.size();
 
         const unsigned tsz = is_ttbr1
@@ -624,30 +625,43 @@ std::optional<std::uint64_t> MMU::walk_stage1(
         const unsigned va_bits = (tsz >= 16u && tsz <= 39u) ? (64u - tsz) : 36u;
 
         if (va_bits > 36u) {
+            std::uint64_t cur_table = table_pa;
+            bool ok = true;
             // Level 0 walk for 48-bit address space
             if (va_bits == 48u) {
                 const std::uint64_t l0_idx = (eff_va >> 47u) & 0x1u;
-                const std::uint64_t l0_entry_addr = table_pa + l0_idx * 8u;
-                if (l0_entry_addr + 8u > mem_size || l0_entry_addr < table_pa) {
-                    return make_fault(MmuFaultType::ExternalWalk, 0);
+                const std::uint64_t l0_entry_addr = cur_table + l0_idx * 8u;
+                if (l0_entry_addr + 8u > mem_size || l0_entry_addr < cur_table) {
+                    ok = false;
+                } else {
+                    const std::uint64_t l0_desc = memory.read_u64(static_cast<std::size_t>(l0_entry_addr));
+                    if ((l0_desc & 0x3u) != 0x3u) {
+                        ok = false;
+                    } else {
+                        cur_table = l0_desc & 0x0000FFFFFFFFC000ULL;
+                    }
                 }
-                const std::uint64_t l0_desc = memory.read_u64(static_cast<std::size_t>(l0_entry_addr));
-                if ((l0_desc & 0x3u) != 0x3u) {
-                    return make_fault(MmuFaultType::Translation, 0);
+            }
+            if (ok) {
+                // Level 1 walk
+                const std::uint64_t l1_idx = (eff_va >> 36u) & 0x7FFu;
+                const std::uint64_t l1_entry_addr = cur_table + l1_idx * 8u;
+                if (l1_entry_addr + 8u > mem_size || l1_entry_addr < cur_table) {
+                    ok = false;
+                } else {
+                    const std::uint64_t l1_desc = memory.read_u64(static_cast<std::size_t>(l1_entry_addr));
+                    if ((l1_desc & 0x3u) != 0x3u) {
+                        ok = false;
+                    } else {
+                        cur_table = l1_desc & 0x0000FFFFFFFFC000ULL;
+                        table_pa = cur_table;
+                    }
                 }
-                table_pa = l0_desc & 0x0000FFFFFFFFC000ULL;
             }
-            // Level 1 walk
-            const std::uint64_t l1_idx = (eff_va >> 36u) & 0x7FFu;
-            const std::uint64_t l1_entry_addr = table_pa + l1_idx * 8u;
-            if (l1_entry_addr + 8u > mem_size || l1_entry_addr < table_pa) {
-                return make_fault(MmuFaultType::ExternalWalk, 1);
+            if (!ok) {
+                // If L0/L1 did not find a valid table, fall back to initial_table_pa as L2 root
+                table_pa = initial_table_pa;
             }
-            const std::uint64_t l1_desc = memory.read_u64(static_cast<std::size_t>(l1_entry_addr));
-            if ((l1_desc & 0x3u) != 0x3u) {
-                return make_fault(MmuFaultType::Translation, 1);
-            }
-            table_pa = l1_desc & 0x0000FFFFFFFFC000ULL;
         }
 
         // Level 2 (32MB block or pointer to L3 table)

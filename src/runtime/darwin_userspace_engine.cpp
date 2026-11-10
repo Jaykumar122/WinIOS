@@ -119,9 +119,12 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho(
 
     std::uint64_t initial_sp = 0;
     std::string stack_err;
+    std::uint64_t effective_stack_top = (config.stack_top <= memory_.size())
+                                            ? config.stack_top
+                                            : (memory_.size() & ~0xFULL);
     if (!loader::UserspaceMachOLoader::construct_initial_stack(
             memory_,
-            config.stack_top,
+            effective_stack_top,
             config.argv,
             config.envp,
             config.executable_path,

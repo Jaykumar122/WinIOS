@@ -155,7 +155,7 @@ AppleBootArtifactInventory AppleBootArtifactInventory::create_iphone15_template(
     AppleBootArtifact dt_compat;
     dt_compat.artifact_id = "DeviceTree.d73ap.im4p";
     dt_compat.kind = AppleArtifactKind::DeviceTree;
-    dt_compat.target_device = "iPhone15,2";
+    dt_compat.target_device = "iPhone15,4";
     dt_compat.target_os_version = "iOS 17.5.1 (Build 21F90)";
     dt_compat.file_path = pfx + "DeviceTree.d73ap.im4p";
     dt_compat.notes = "Apple DeviceTree (ADTS format) for D73AP board ID 0x18 (iPhone 14 Pro fixture)";

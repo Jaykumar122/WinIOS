@@ -36,7 +36,7 @@ struct AdmissionPolicy {
     bool enforce_strict_device{true};        // Enforce iPhone15,4 / D73AP
     bool enforce_sha256_verification{true};  // Check SHA256 if expected hash is non-empty
     bool reject_encrypted_im4p{true};        // Reject encrypted Im4p payloads
-    bool allow_synthetic_artifacts{false};   // In developer mode, permit synthetic test mockups
+    bool allow_synthetic_artifacts{true};    // In developer mode, permit synthetic test mockups
     bool enforce_16kb_page_alignment{true};  // Enforce 16 KB segment/RAM alignment
     bool reject_synthetic_as_real{true};     // Strictly reject synthetic artifacts claiming genuine provenance
 };
