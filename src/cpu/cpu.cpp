@@ -244,6 +244,8 @@ constexpr std::uint32_t kAddSubRegisterMask = 0x1F200000u;
 constexpr std::uint32_t kAddSubRegister = 0x0B000000u;
 constexpr std::uint32_t kAddSubExtendedRegisterMask = 0x1FE00000u;
 constexpr std::uint32_t kAddSubExtendedRegister = 0x0B200000u;
+constexpr std::uint32_t kAddSubCarryMask = 0x1FE0FC00u;
+constexpr std::uint32_t kAddSubCarry = 0x1A000000u;
 constexpr std::uint32_t kLogicalShiftedRegisterMask = 0x1F000000u;
 constexpr std::uint32_t kLogicalShiftedRegister = 0x0A000000u;
 constexpr std::uint32_t kLogicalImmediateMask = 0x1F800000u;
@@ -709,6 +711,22 @@ std::uint8_t arithmetic_flags(std::uint64_t left, std::uint64_t right,
     const bool overflow = subtract
         ? (((left ^ right) & (left ^ result) & sign) != 0)
         : (((~(left ^ right)) & (left ^ result) & sign) != 0);
+    if (overflow) flags |= kOverflow;
+    return flags;
+}
+std::uint8_t arithmetic_with_carry_flags(std::uint64_t left, std::uint64_t right,
+                                         std::uint64_t sum1, std::uint64_t result,
+                                         bool is64) {
+    const std::uint64_t mask = width_mask(is64);
+    const std::uint64_t sign = is64 ? (1ull << 63u) : (1ull << 31u);
+    left &= mask;
+    right &= mask;
+    sum1 &= mask;
+    result &= mask;
+    std::uint8_t flags = (result & sign) != 0 ? kNegative : 0;
+    if (result == 0) flags |= kZero;
+    if ((sum1 < left) || (result < sum1)) flags |= kCarry;
+    const bool overflow = (((~(left ^ right)) & (left ^ result) & sign) != 0);
     if (overflow) flags |= kOverflow;
     return flags;
 }
@@ -3201,6 +3219,29 @@ std::string decode_disassembly(std::uint32_t instruction) {
         if (amount != 0) stream << ", LSL #" << amount;
         return stream.str();
     }
+    if ((instruction & kAddSubCarryMask) == kAddSubCarry) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool subtract = (instruction & 0x40000000u) != 0;
+        const bool set_flags = (instruction & 0x20000000u) != 0;
+        const auto rm = (instruction >> 16u) & 0x1Fu;
+        const auto rn = (instruction >> 5u) & 0x1Fu;
+        const auto rd = instruction & 0x1Fu;
+        std::ostringstream stream;
+        if (subtract) {
+            stream << (set_flags ? "SBCS " : "SBC ");
+        } else {
+            stream << (set_flags ? "ADCS " : "ADC ");
+        }
+        if (rd == 31u) stream << (is64 ? "XZR" : "WZR");
+        else stream << (is64 ? "X" : "W") << rd;
+        stream << ", ";
+        if (rn == 31u) stream << (is64 ? "XZR" : "WZR");
+        else stream << (is64 ? "X" : "W") << rn;
+        stream << ", ";
+        if (rm == 31u) stream << (is64 ? "XZR" : "WZR");
+        else stream << (is64 ? "X" : "W") << rm;
+        return stream.str();
+    }
     if ((instruction & kConditionalBranchMask) == kConditionalBranch) {
         static constexpr const char* conditions[] = {
             "EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC",
@@ -5602,6 +5643,32 @@ void CPU::step(Memory& guest_memory) {
             nzcv_ = arithmetic_flags(left, right, result, subtract, is64);
         }
         write_width_result(*this, destination, result, is64, !set_flags);
+        program_counter_ = checked_add_address(instruction_address, 4u,
+                                                "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+    if ((instruction & kAddSubCarryMask) == kAddSubCarry) {
+        const bool is64 = (instruction & 0x80000000u) != 0;
+        const bool subtract = (instruction & 0x40000000u) != 0;
+        const bool set_flags = (instruction & 0x20000000u) != 0;
+        const std::uint32_t rm = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t rd = instruction & 0x1Fu;
+
+        const std::uint64_t mask = width_mask(is64);
+        const std::uint64_t left = read_width_operand(*this, rn, is64, false) & mask;
+        const std::uint64_t right_raw = read_width_operand(*this, rm, is64, false) & mask;
+        const std::uint64_t op2 = subtract ? ((~right_raw) & mask) : right_raw;
+        const std::uint64_t carry_in = (nzcv_ & kCarry) ? 1u : 0u;
+
+        const std::uint64_t sum1 = (left + op2) & mask;
+        const std::uint64_t result = (sum1 + carry_in) & mask;
+
+        if (set_flags) {
+            nzcv_ = arithmetic_with_carry_flags(left, op2, sum1, result, is64);
+        }
+        write_width_result(*this, rd, result, is64, false);
         program_counter_ = checked_add_address(instruction_address, 4u,
                                                 "Instruction PC increment");
         emit_trace();

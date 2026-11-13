@@ -936,6 +936,16 @@ void DarwinUserspaceEngine::handle_bsd_syscall(DarwinPipelineResult& result) {
         return;
     }
 
+    if (nr == 75) { // SYS_madvise
+        const auto addr = cpu_.read_register(0);
+        const auto len = static_cast<std::size_t>(cpu_.read_register(1));
+        const auto advice = static_cast<int>(cpu_.read_register(2));
+        bool ok = bsd_.madvise(current_pid_, addr, len, advice);
+        cpu_.write_register(0, ok ? 0ULL : static_cast<std::uint64_t>(-1));
+        cpu_.set_nzcv(ok ? (cpu_.get_nzcv() & ~0x2u) : (cpu_.get_nzcv() | 0x2u));
+        return;
+    }
+
     if (nr == 116) { // SYS_gettimeofday
         const auto tv_addr = cpu_.read_register(0);
         DarwinTimeval64 tv{};
@@ -1263,6 +1273,7 @@ bool DarwinUserspaceEngine::save_thread_context(std::uint64_t tid) {
     }
     ctx.pc = (cpu_.get_current_el() == 0) ? cpu_.get_program_counter() : cpu_.get_elr_el1();
     ctx.sp = cpu_.get_stack_pointer();
+    ctx.tpidr_el0 = cpu_.get_tpidr_el0();
     for (int i = 0; i < 31; ++i) {
         ctx.x[i] = cpu_.read_register(static_cast<std::size_t>(i));
     }
@@ -1277,6 +1288,7 @@ bool DarwinUserspaceEngine::load_thread_context(std::uint64_t tid) {
     cpu_.set_program_counter(ctx.pc);
     cpu_.set_elr_el1(ctx.pc);
     cpu_.set_stack_pointer(ctx.sp);
+    cpu_.set_tpidr_el0(ctx.tpidr_el0);
     for (int i = 0; i < 31; ++i) {
         cpu_.write_register(static_cast<std::size_t>(i), ctx.x[i]);
     }

@@ -273,6 +273,7 @@ public:
         std::uint64_t offset);
     bool munmap(std::uint32_t pid, std::uint64_t addr, std::size_t length);
     bool mprotect(std::uint32_t pid, std::uint64_t addr, std::size_t length, std::uint32_t new_prot);
+    bool madvise(std::uint32_t pid, std::uint64_t addr, std::size_t length, int advice);
     [[nodiscard]] bool check_vm_access(
         std::uint32_t pid,
         std::uint64_t addr,

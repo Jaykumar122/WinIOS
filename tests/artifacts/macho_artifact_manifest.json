@@ -1701,6 +1701,47 @@
       ],
       "build_reproducible": true,
       "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-034",
+      "file_name": "stage_192_6_abi_app",
+      "relative_path": "tests/artifacts/bin/stage_192_6_abi_app",
+      "sha256": "a74a6f79154a9188c09f9495398f2f46d6c9b0d113a6b0df475b36a3c9dd344c",
+      "size_bytes": 50832,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/stage_192_6_abi_app.c",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O2 -fstack-protector-strong tests/artifacts/src/stage_192_6_abi_app.c -o tests/artifacts/bin/stage_192_6_abi_app",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/dyld",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "STAGE_192_6_ABI_START\nSTAGE_192_6_PASS\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 32863,
+        "test_suite": "tests/unit/stage_192_6_libsystem_abi_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage 192.6",
+          "sha256": "a74a6f79154a9188c09f9495398f2f46d6c9b0d113a6b0df475b36a3c9dd344c",
+          "size_bytes": 50832,
+          "note": "Campaign 192 Stage 192.6 Darwin libSystem Lite ABI Conformance Application"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
     }
   ]
 }

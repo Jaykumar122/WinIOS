@@ -1,0 +1,97 @@
+{
+  "stats": {
+    "total": 4300,
+    "compared": 4300,
+    "matched": 4300,
+    "mismatched": 0,
+    "winios_unsupported": 0,
+    "oracle_fault": 0,
+    "by_category": {
+      "int_alu": {
+        "total": 300,
+        "matched": 300,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "logic_bit": {
+        "total": 250,
+        "matched": 250,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "cond": {
+        "total": 150,
+        "matched": 150,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "branch": {
+        "total": 200,
+        "matched": 200,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "ldst": {
+        "total": 250,
+        "matched": 250,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "simd_fp": {
+        "total": 350,
+        "matched": 350,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "chains_imm": {
+        "total": 300,
+        "matched": 300,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "adc_sbc_stress": {
+        "total": 500,
+        "matched": 500,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "shifted_extended_arith_stress": {
+        "total": 500,
+        "matched": 500,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "cond_edge_cases": {
+        "total": 500,
+        "matched": 500,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "wreg_zero_extension_sp_xzr": {
+        "total": 500,
+        "matched": 500,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      },
+      "simd_vector_corner_cases": {
+        "total": 500,
+        "matched": 500,
+        "mismatched": 0,
+        "unsupported": 0,
+        "oracle_fault": 0
+      }
+    }
+  },
+  "mismatches": []
+}

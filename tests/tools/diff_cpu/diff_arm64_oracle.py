@@ -750,6 +750,225 @@ def generate_cases(seed: int) -> List[Dict]:
                 "data": fixed_pattern,
             })
 
+    # Category 8: adc_sbc_stress (500 cases)
+    for i in range(500):
+        xs, qs = base_regs()
+        sf = rng.choice([0, 1])
+        op = rng.choice([0, 1])
+        s = rng.choice([0, 1])
+        rd = rng.choice([0, 1, 2, 3, 4, 31])
+        rn = rng.choice([0, 1, 2, 3, 4, 31])
+        rm = rng.choice([0, 1, 2, 3, 4, 31])
+        nzcv = rng.randint(0, 15)
+        if rn < 31 and rng.random() < 0.6:
+            xs[rn] = rng.choice(edge_vals)
+        if rm < 31 and rng.random() < 0.6:
+            xs[rm] = rng.choice(edge_vals)
+        insn = enc_adc_sbc(sf, op, s, rm, rn, rd)
+        name = f"adc_sbc_stress_sf{sf}_op{op}_s{s}_{i}"
+        cases.append({
+            "cat": "adc_sbc_stress",
+            "name": name,
+            "steps": 1,
+            "pc": CODE_BASE,
+            "sp": DATA_BASE + 0x400,
+            "nzcv": nzcv,
+            "x": xs,
+            "q": qs,
+            "code": u32_bytes([insn]),
+            "data_addr": DATA_BASE,
+            "data": b"",
+        })
+
+    # Category 9: shifted_extended_arith_stress (500 cases)
+    for i in range(500):
+        xs, qs = base_regs()
+        sf = rng.choice([0, 1])
+        op = rng.choice([0, 1])
+        s = rng.choice([0, 1])
+        rd = rng.choice([0, 1, 2, 3, 4, 31])
+        rn = rng.randint(0, 5)
+        rm = rng.randint(0, 5)
+        nzcv = rng.randint(0, 15)
+        if rng.random() < 0.5:
+            shift = rng.choice([0, 1, 2])
+            imm6 = rng.choice([0, 1, 2, 15, 31, 32, 63] if sf else [0, 1, 2, 15, 31])
+            insn = enc_add_sub_shifted(sf, op, s, shift, rm, imm6, rn, rd)
+            name = f"shift_arith_sf{sf}_sh{shift}_imm{imm6}_{i}"
+        else:
+            opt = rng.randint(0, 7)
+            imm3 = rng.choice([0, 1, 2, 3, 4])
+            insn = enc_add_sub_ext(sf, op, s, rm, opt, imm3, rn, rd)
+            name = f"ext_arith_sf{sf}_opt{opt}_imm{imm3}_{i}"
+        cases.append({
+            "cat": "shifted_extended_arith_stress",
+            "name": name,
+            "steps": 1,
+            "pc": CODE_BASE,
+            "sp": DATA_BASE + 0x400,
+            "nzcv": nzcv,
+            "x": xs,
+            "q": qs,
+            "code": u32_bytes([insn]),
+            "data_addr": DATA_BASE,
+            "data": b"",
+        })
+
+    # Category 10: cond_edge_cases (500 cases)
+    for i in range(500):
+        xs, qs = base_regs()
+        nzcv = i % 16
+        cond = (i // 16) % 16
+        sf = rng.choice([0, 1])
+        rd = rng.choice([0, 1, 2, 3])
+        rn = rng.choice([0, 1, 2, 4])
+        rm = rng.choice([0, 1, 2, 5])
+        if i % 3 != 0:
+            op = rng.choice([0, 1])
+            op2 = rng.choice([0, 1])
+            insn = enc_csel(sf, op, rm, cond, op2, rn, rd)
+            cases.append({
+                "cat": "cond_edge_cases",
+                "name": f"csel_cond_{cond}_nzcv_{nzcv}_{i}",
+                "steps": 1,
+                "pc": CODE_BASE,
+                "sp": DATA_BASE + 0x400,
+                "nzcv": nzcv,
+                "x": xs,
+                "q": qs,
+                "code": u32_bytes([insn]),
+                "data_addr": DATA_BASE,
+                "data": b"",
+            })
+        else:
+            c = cond if cond < 15 else 14
+            landing_fall = enc_mov_wide(1, 2, 0, 0x1111, 10)
+            landing_tgt = enc_mov_wide(1, 2, 0, 0x2222, 10)
+            insn = (0b01010100 << 24) | (2 << 5) | c
+            cases.append({
+                "cat": "cond_edge_cases",
+                "name": f"bcond_cond_{c}_nzcv_{nzcv}_{i}",
+                "steps": 2,
+                "pc": CODE_BASE,
+                "sp": DATA_BASE + 0x400,
+                "nzcv": nzcv,
+                "x": xs,
+                "q": qs,
+                "code": u32_bytes([insn, landing_fall, landing_tgt]),
+                "data_addr": DATA_BASE,
+                "data": b"",
+            })
+
+    # Category 11: wreg_zero_extension_sp_xzr (500 cases)
+    for i in range(500):
+        xs, qs = base_regs()
+        nzcv = rng.randint(0, 15)
+        kind = i % 5
+        dirty_prefix = 0xDEADBEEF00000000
+        rd = rng.choice([0, 1, 2, 3])
+        xs[rd] = dirty_prefix | (xs[rd] & 0xFFFFFFFF)
+        rn = rng.randint(0, 5)
+        rm = rng.randint(0, 5)
+        if kind == 0:
+            op = rng.choice([0, 1])
+            s = rng.choice([0, 1])
+            shift = rng.choice([0, 1, 2])
+            imm6 = rng.randint(0, 31)
+            insn = enc_add_sub_shifted(0, op, s, shift, rm, imm6, rn, rd)
+            name = f"wreg_addsub_sh_{i}"
+        elif kind == 1:
+            opc = rng.choice([0b001000, 0b001001, 0b001010, 0b001011, 0b000010, 0b000011])
+            insn = enc_dp2(0, rm, opc, rn, rd)
+            name = f"wreg_dp2_opc{opc}_{i}"
+        elif kind == 2:
+            opc = rng.choice([0, 2])
+            immr = rng.randint(0, 31)
+            imms = rng.randint(0, 31)
+            insn = enc_bitfield(0, opc, 0, immr, imms, rn, rd)
+            name = f"wreg_bf_{i}"
+        elif kind == 3:
+            imm12 = rng.randint(0, 0xFFF)
+            subkind = rng.choice([0, 1, 2, 3])
+            if subkind == 0:
+                insn = enc_add_sub_imm(1, 0, 0, 0, imm12, 31, rd)
+                name = f"add_xd_sp_{i}"
+            elif subkind == 1:
+                insn = enc_add_sub_imm(1, 0, 0, 0, imm12, rn, 31)
+                name = f"add_sp_xn_{i}"
+            elif subkind == 2:
+                insn = enc_add_sub_imm(0, 0, 0, 0, imm12, rn, 31)
+                name = f"add_wsp_wn_{i}"
+            else:
+                insn = enc_add_sub_imm(0, 1, 1, 0, imm12, rn, 31)
+                name = f"cmp_wn_imm_{i}"
+        else:
+            xs[5] = DATA_BASE + 0x200 + (rng.randint(0, 30) * 4)
+            insn = enc_ldr_str_uimm(2, 0, 1, 0, 5, rd)
+            name = f"ldr_w_zeroext_{i}"
+
+        cases.append({
+            "cat": "wreg_zero_extension_sp_xzr",
+            "name": name,
+            "steps": 1,
+            "pc": CODE_BASE,
+            "sp": DATA_BASE + 0x400,
+            "nzcv": nzcv,
+            "x": xs,
+            "q": qs,
+            "code": u32_bytes([insn]),
+            "data_addr": DATA_BASE,
+            "data": fixed_pattern if kind == 4 else b"",
+        })
+
+    # Category 12: simd_vector_corner_cases (500 cases)
+    for i in range(500):
+        xs, qs = base_regs()
+        nzcv = rng.randint(0, 15)
+        kind = i % 4
+        rd = rng.randint(0, 5)
+        rn = rng.randint(0, 5)
+        rm = rng.randint(0, 5)
+        q = rng.choice([0, 1])
+        if kind == 0:
+            esz = rng.choice([0, 1, 2])
+            w = 8 << esz
+            shift = rng.randint(1, w)
+            immhb = (w * 2) - shift
+            insn = (q << 30) | (0 << 29) | (0b011110 << 23) | (immhb << 16) | (0b10000 << 11) | (1 << 10) | (rn << 5) | rd
+            name = f"shrn_q{q}_esz{esz}_s{shift}_{i}"
+        elif kind == 1:
+            u = rng.choice([0, 1])
+            sz = rng.choice([0, 1, 2])
+            insn = (q << 30) | (u << 29) | (0b01110 << 24) | (sz << 22) | (1 << 21) | (rm << 16) | (0b11000 << 11) | (rn << 5) | rd
+            name = f"mull_q{q}_u{u}_sz{sz}_{i}"
+        elif kind == 2:
+            ftype = rng.choice([0, 1])
+            cond = rng.randint(0, 15)
+            insn = 0x1E200C00 | (ftype << 22) | (rm << 16) | (cond << 12) | (rn << 5) | rd
+            name = f"fcsel_t{ftype}_c{cond}_{i}"
+        else:
+            cmode = rng.choice([0, 2, 4, 6, 8, 10, 14])
+            op = 0 if cmode == 14 else rng.choice([0, 1])
+            imm8 = rng.randint(0, 255)
+            imm8_hi = (imm8 >> 5) & 7
+            imm8_lo = imm8 & 31
+            insn = 0x0F000400 | (q << 30) | (op << 29) | (imm8_hi << 16) | (cmode << 12) | (imm8_lo << 5) | rd
+            name = f"vec_imm_q{q}_cmode{cmode}_op{op}_{i}"
+
+        cases.append({
+            "cat": "simd_vector_corner_cases",
+            "name": name,
+            "steps": 1,
+            "pc": CODE_BASE,
+            "sp": DATA_BASE + 0x400,
+            "nzcv": nzcv,
+            "x": xs,
+            "q": qs,
+            "code": u32_bytes([insn]),
+            "data_addr": DATA_BASE,
+            "data": b"",
+        })
+
     return cases
 
 

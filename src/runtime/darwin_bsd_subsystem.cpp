@@ -570,7 +570,10 @@ int DarwinBsdSubsystem::open(std::uint32_t pid, const std::string& path, std::ui
     }
     if (!node) return -1;
 
-    int fd = proc->next_fd++;
+    int fd = 3;
+    while (proc->fds.find(fd) != proc->fds.end()) {
+        fd++;
+    }
     proc->fds[fd] = FileDescriptor{fd, node, nullptr, flags, 0};
     return fd;
 }
@@ -622,6 +625,10 @@ std::int64_t DarwinBsdSubsystem::read(std::uint32_t pid, int fd, void* buffer, s
     }
 
     if (!desc.node) return -1;
+
+    if (!desc.is_pipe() && (desc.flags & 0x03u) == 1u) {
+        return -1; // O_WRONLY cannot read
+    }
 
     auto& content = desc.node->content;
     if (desc.offset >= content.size()) {
@@ -681,6 +688,15 @@ std::int64_t DarwinBsdSubsystem::write(std::uint32_t pid, int fd, const void* bu
 
     if (!desc.node) return -1;
 
+    // Check write permissions: O_RDONLY cannot write
+    if (!desc.is_pipe() && (desc.flags & 0x03u) == 0u) {
+        return -1; // O_RDONLY cannot write
+    }
+
+    if (!desc.is_pipe() && (desc.flags & 0x0008u) != 0u) {
+        desc.offset = desc.node->content.size(); // O_APPEND
+    }
+
     auto& content = desc.node->content;
     const auto* bytes = static_cast<const std::uint8_t*>(buffer);
 
@@ -728,7 +744,10 @@ int DarwinBsdSubsystem::dup(std::uint32_t pid, int oldfd) {
     auto it = proc->fds.find(oldfd);
     if (it == proc->fds.end()) return -1;
 
-    int newfd = proc->next_fd++;
+    int newfd = 3;
+    while (proc->fds.find(newfd) != proc->fds.end()) {
+        newfd++;
+    }
     FileDescriptor cloned = it->second;
     cloned.fd = newfd;
     proc->fds[newfd] = cloned;
@@ -1043,6 +1062,23 @@ bool DarwinBsdSubsystem::mprotect(std::uint32_t pid, std::uint64_t addr, std::si
         if ((r.vmaddr == addr && r.size >= length) ||
             (addr >= r.vmaddr && (addr + length) <= (r.vmaddr + r.size))) {
             r.prot = new_prot;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool DarwinBsdSubsystem::madvise(std::uint32_t pid, std::uint64_t addr, std::size_t length, int advice) {
+    (void)advice;
+    auto proc = get_process(pid);
+    if (!proc || length == 0) return false;
+
+    constexpr std::uint64_t kPageMask = 0x3FFFULL; // 16 KB page granule
+    if ((addr & kPageMask) != 0) return false;
+
+    for (const auto& r : proc->vm_regions) {
+        if ((r.vmaddr == addr && r.size >= length) ||
+            (addr >= r.vmaddr && (addr + length) <= (r.vmaddr + r.size))) {
             return true;
         }
     }

@@ -274,6 +274,14 @@ public:
         std::vector<DyldSymtabSymbolInfo>& out_symbols,
         std::string& out_error);
 
+    // Parse classic LC_DYLD_INFO / LC_DYLD_INFO_ONLY rebase opcodes
+    [[nodiscard]] static bool parse_rebase_stream(
+        const void* data,
+        std::size_t size,
+        const std::vector<std::uint64_t>& segment_vmaddrs,
+        std::vector<DyldRebaseRecord>& out_rebases,
+        std::string& out_error);
+
     // Parse modern or classic LC_DYLD_INFO / LC_DYLD_INFO_ONLY binding opcodes
     [[nodiscard]] static bool parse_binding_stream(
         const void* data,
@@ -303,6 +311,7 @@ public:
         std::uint16_t page_size{0x1000};
         std::uint16_t pointer_format{DYLD_CHAINED_PTR_64};
         std::vector<std::uint16_t> page_starts;
+        std::vector<std::uint16_t> overflow_starts;
     };
 
     struct SyntheticImportDescriptor {

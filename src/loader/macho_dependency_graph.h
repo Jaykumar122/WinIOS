@@ -74,7 +74,15 @@ public:
     [[nodiscard]] std::string resolve_path(
         std::string_view raw_path,
         std::string_view executable_path,
-        const std::vector<std::string>& active_rpaths) const;
+        const std::vector<std::string>& active_rpaths,
+        std::string_view loader_path = "") const;
+
+    // Expand all ordered @rpath fallback candidates
+    [[nodiscard]] std::vector<std::string> resolve_rpath_fallbacks(
+        std::string_view raw_path,
+        std::string_view executable_path,
+        const std::vector<std::string>& active_rpaths,
+        std::string_view loader_path = "") const;
 
     // Perform topological dependency sort and cycle detection
     [[nodiscard]] DependencyResolutionResult resolve_dependencies(

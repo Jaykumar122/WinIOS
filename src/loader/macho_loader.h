@@ -173,8 +173,13 @@ enum class MachOLoadStatus {
     CorruptedLoadCommands,
     NoSegmentsFound,
     MemoryBoundsExceeded,
-    MemoryWriteFailed
+    MemoryWriteFailed,
+    SegmentOverlap,
+    InvalidEntryPoint,
+    IntegerOverflow
 };
+
+[[nodiscard]] const char* macho_load_status_string(MachOLoadStatus s) noexcept;
 
 struct MachOLoadResult {
     MachOLoadStatus status{MachOLoadStatus::FileNotFound};

@@ -206,32 +206,77 @@ const MachODependencyNode* MachODependencyGraph::get_node(std::string_view node_
 std::string MachODependencyGraph::resolve_path(
     std::string_view raw_path,
     std::string_view executable_path,
-    const std::vector<std::string>& active_rpaths) const {
+    const std::vector<std::string>& active_rpaths,
+    std::string_view loader_path) const {
+
+    auto candidates = resolve_rpath_fallbacks(raw_path, executable_path, active_rpaths, loader_path);
+    if (!candidates.empty()) {
+        return candidates.front();
+    }
+    return std::string(raw_path);
+}
+
+std::vector<std::string> MachODependencyGraph::resolve_rpath_fallbacks(
+    std::string_view raw_path,
+    std::string_view executable_path,
+    const std::vector<std::string>& active_rpaths,
+    std::string_view loader_path) const {
 
     std::string path_str(raw_path);
+    std::vector<std::string> results;
+
+    std::string exec_dir = "/usr/bin";
+    auto last_slash_exec = executable_path.find_last_of('/');
+    if (last_slash_exec != std::string_view::npos) {
+        exec_dir = std::string(executable_path.substr(0, last_slash_exec));
+    }
+
+    std::string loader_dir = exec_dir;
+    if (!loader_path.empty()) {
+        auto last_slash_loader = loader_path.find_last_of('/');
+        if (last_slash_loader != std::string_view::npos) {
+            loader_dir = std::string(loader_path.substr(0, last_slash_loader));
+        } else {
+            loader_dir = std::string(loader_path);
+        }
+    }
 
     // 1. Resolve @executable_path
     const std::string kExecPrefix = "@executable_path/";
     if (path_str.rfind(kExecPrefix, 0) == 0) {
-        std::string exec_dir = "/usr/bin";
-        auto last_slash = executable_path.find_last_of('/');
-        if (last_slash != std::string_view::npos) {
-            exec_dir = std::string(executable_path.substr(0, last_slash));
-        }
-        return exec_dir + "/" + path_str.substr(kExecPrefix.size());
+        results.push_back(exec_dir + "/" + path_str.substr(kExecPrefix.size()));
+        return results;
     }
 
-    // 2. Resolve @rpath
+    // 2. Resolve @loader_path
+    const std::string kLoaderPrefix = "@loader_path/";
+    if (path_str.rfind(kLoaderPrefix, 0) == 0) {
+        results.push_back(loader_dir + "/" + path_str.substr(kLoaderPrefix.size()));
+        return results;
+    }
+
+    // 3. Resolve @rpath
     const std::string kRpathPrefix = "@rpath/";
     if (path_str.rfind(kRpathPrefix, 0) == 0) {
         std::string sub = path_str.substr(kRpathPrefix.size());
-        if (!active_rpaths.empty()) {
-            return active_rpaths.front() + "/" + sub;
+        for (const auto& rp : active_rpaths) {
+            std::string candidate_dir = rp;
+            if (candidate_dir.rfind(kExecPrefix, 0) == 0) {
+                candidate_dir = exec_dir + "/" + candidate_dir.substr(kExecPrefix.size());
+            } else if (candidate_dir.rfind(kLoaderPrefix, 0) == 0) {
+                candidate_dir = loader_dir + "/" + candidate_dir.substr(kLoaderPrefix.size());
+            }
+            if (!candidate_dir.empty() && candidate_dir.back() == '/') {
+                candidate_dir.pop_back();
+            }
+            results.push_back(candidate_dir + "/" + sub);
         }
-        return "/usr/lib/" + sub;
+        results.push_back("/usr/lib/" + sub);
+        return results;
     }
 
-    return path_str;
+    results.push_back(path_str);
+    return results;
 }
 
 DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
@@ -266,6 +311,7 @@ DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
                     } else {
                         result.missing_required.push_back(target);
                     }
+                    continue;
                 }
 
                 // Check cycle

@@ -208,6 +208,23 @@ inline std::uint64_t read_uleb128(const std::uint8_t*& p, const std::uint8_t* en
     return result;
 }
 
+inline bool read_uleb128_safe(const std::uint8_t*& p, const std::uint8_t* end, std::uint64_t& out_val) noexcept {
+    out_val = 0;
+    int shift = 0;
+    while (p < end) {
+        std::uint8_t byte = *p++;
+        if (shift > 63 || (shift == 63 && (byte & 0x7E) != 0)) {
+            return false;
+        }
+        out_val |= static_cast<std::uint64_t>(byte & 0x7F) << shift;
+        if ((byte & 0x80) == 0) {
+            return true;
+        }
+        shift += 7;
+    }
+    return false;
+}
+
 inline void write_uleb128(std::vector<std::uint8_t>& buf, std::uint64_t val) {
     do {
         std::uint8_t byte = static_cast<std::uint8_t>(val & 0x7F);
@@ -238,6 +255,27 @@ inline std::int64_t read_sleb128(const std::uint8_t*& p, const std::uint8_t* end
         result |= -(1LL << shift);
     }
     return result;
+}
+
+inline bool read_sleb128_safe(const std::uint8_t*& p, const std::uint8_t* end, std::int64_t& out_val) noexcept {
+    out_val = 0;
+    int shift = 0;
+    std::uint8_t byte = 0;
+    while (p < end) {
+        byte = *p++;
+        if (shift > 63) {
+            return false;
+        }
+        out_val |= static_cast<std::int64_t>(byte & 0x7Fu) << shift;
+        shift += 7;
+        if ((byte & 0x80u) == 0) {
+            if (shift < 64 && (byte & 0x40u) != 0) {
+                out_val |= -(1LL << shift);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 } // anonymous namespace
@@ -405,6 +443,151 @@ bool DyldEngine::parse_symbol_table(
     return true;
 }
 
+bool DyldEngine::parse_rebase_stream(
+    const void* data,
+    std::size_t size,
+    const std::vector<std::uint64_t>& segment_vmaddrs,
+    std::vector<DyldRebaseRecord>& out_rebases,
+    std::string& out_error) {
+
+    if (!data || size == 0) {
+        return true;
+    }
+
+    const auto* p = static_cast<const std::uint8_t*>(data);
+    const auto* end = p + size;
+
+    std::uint32_t seg_index = 0;
+    std::uint64_t seg_offset = 0;
+    std::uint8_t rebase_type = 1; // REBASE_TYPE_POINTER
+
+    while (p < end) {
+        std::uint8_t byte = *p++;
+        std::uint8_t opcode = byte & 0xF0u;
+        std::uint8_t imm = byte & 0x0Fu;
+
+        switch (opcode) {
+            case 0x00u: // REBASE_OPCODE_DONE
+                return true;
+
+            case 0x10u: // REBASE_OPCODE_SET_TYPE_IMM
+                rebase_type = imm;
+                break;
+
+            case 0x20u: { // REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
+                seg_index = imm;
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Rebase segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                if (!read_uleb128_safe(p, end, seg_offset)) {
+                    out_error = "Malformed ULEB128 in REBASE_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB";
+                    return false;
+                }
+                break;
+            }
+
+            case 0x30u: { // REBASE_OPCODE_ADD_ADDR_ULEB
+                std::uint64_t add_val = 0;
+                if (!read_uleb128_safe(p, end, add_val)) {
+                    out_error = "Malformed ULEB128 in REBASE_OPCODE_ADD_ADDR_ULEB";
+                    return false;
+                }
+                seg_offset += add_val;
+                break;
+            }
+
+            case 0x40u: // REBASE_OPCODE_ADD_ADDR_IMM_SCALED
+                seg_offset += static_cast<std::uint64_t>(imm) * sizeof(void*);
+                break;
+
+            case 0x50u: { // REBASE_OPCODE_DO_REBASE_IMM_TIMES
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Rebase segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
+                for (std::uint8_t i = 0; i < imm; ++i) {
+                    out_rebases.push_back(DyldRebaseRecord{base + seg_offset, rebase_type});
+                    seg_offset += sizeof(void*);
+                }
+                break;
+            }
+
+            case 0x60u: { // REBASE_OPCODE_DO_REBASE_ULEB_TIMES
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Rebase segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t count = 0;
+                if (!read_uleb128_safe(p, end, count)) {
+                    out_error = "Malformed ULEB128 count in REBASE_OPCODE_DO_REBASE_ULEB_TIMES";
+                    return false;
+                }
+                if (count > 65536) {
+                    out_error = "Excessive rebase count in REBASE_OPCODE_DO_REBASE_ULEB_TIMES: " + std::to_string(count);
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
+                for (std::uint64_t i = 0; i < count; ++i) {
+                    out_rebases.push_back(DyldRebaseRecord{base + seg_offset, rebase_type});
+                    seg_offset += sizeof(void*);
+                }
+                break;
+            }
+
+            case 0x70u: { // REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Rebase segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
+                out_rebases.push_back(DyldRebaseRecord{base + seg_offset, rebase_type});
+                std::uint64_t add_val = 0;
+                if (!read_uleb128_safe(p, end, add_val)) {
+                    out_error = "Malformed ULEB128 in REBASE_OPCODE_DO_REBASE_ADD_ADDR_ULEB";
+                    return false;
+                }
+                seg_offset += sizeof(void*) + add_val;
+                break;
+            }
+
+            case 0x80u: { // REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Rebase segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t count = 0;
+                if (!read_uleb128_safe(p, end, count)) {
+                    out_error = "Malformed count in REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB";
+                    return false;
+                }
+                if (count > 65536) {
+                    out_error = "Excessive rebase count in REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB: " + std::to_string(count);
+                    return false;
+                }
+                std::uint64_t skip = 0;
+                if (!read_uleb128_safe(p, end, skip)) {
+                    out_error = "Malformed skip in REBASE_OPCODE_DO_REBASE_ULEB_TIMES_SKIPPING_ULEB";
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
+                for (std::uint64_t i = 0; i < count; ++i) {
+                    out_rebases.push_back(DyldRebaseRecord{base + seg_offset, rebase_type});
+                    seg_offset += sizeof(void*) + skip;
+                }
+                break;
+            }
+
+            default:
+                out_error = "Unknown dyld rebase opcode: 0x" + std::to_string(opcode);
+                return false;
+        }
+    }
+
+    return true;
+}
+
 bool DyldEngine::parse_binding_stream(
     const void* data,
     std::size_t size,
@@ -439,9 +622,15 @@ bool DyldEngine::parse_binding_stream(
                 dylib_ordinal = imm;
                 break;
 
-            case 0x20u: // BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB
-                dylib_ordinal = static_cast<std::uint32_t>(read_uleb128(p, end));
+            case 0x20u: { // BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB
+                std::uint64_t ord = 0;
+                if (!read_uleb128_safe(p, end, ord)) {
+                    out_error = "Malformed ULEB128 in BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB";
+                    return false;
+                }
+                dylib_ordinal = static_cast<std::uint32_t>(ord);
                 break;
+            }
 
             case 0x30u: // BIND_OPCODE_SET_DYLIB_SPECIAL_IMM
                 if (imm == 0) {
@@ -454,11 +643,18 @@ bool DyldEngine::parse_binding_stream(
             case 0x40u: { // BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM
                 is_weak = ((imm & 0x1u) != 0);
                 symbol_name.clear();
-                while (p < end && *p != '\0') {
+                bool null_terminated = false;
+                while (p < end) {
+                    if (*p == '\0') {
+                        null_terminated = true;
+                        p++;
+                        break;
+                    }
                     symbol_name.push_back(static_cast<char>(*p++));
                 }
-                if (p < end && *p == '\0') {
-                    p++;
+                if (!null_terminated) {
+                    out_error = "Unterminated symbol name in binding stream";
+                    return false;
                 }
                 break;
             }
@@ -467,21 +663,43 @@ bool DyldEngine::parse_binding_stream(
                 // imm is bind type (1 = POINTER)
                 break;
 
-            case 0x60u: // BIND_OPCODE_SET_ADDEND_SLEB
-                addend = read_sleb128(p, end);
+            case 0x60u: { // BIND_OPCODE_SET_ADDEND_SLEB
+                if (!read_sleb128_safe(p, end, addend)) {
+                    out_error = "Malformed SLEB128 in BIND_OPCODE_SET_ADDEND_SLEB";
+                    return false;
+                }
                 break;
+            }
 
-            case 0x70u: // BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
+            case 0x70u: { // BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB
                 seg_index = imm;
-                seg_offset = read_uleb128(p, end);
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Binding segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                if (!read_uleb128_safe(p, end, seg_offset)) {
+                    out_error = "Malformed ULEB128 in BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB";
+                    return false;
+                }
                 break;
+            }
 
-            case 0x80u: // BIND_OPCODE_ADD_ADDR_ULEB
-                seg_offset += read_uleb128(p, end);
+            case 0x80u: { // BIND_OPCODE_ADD_ADDR_ULEB
+                std::uint64_t add_val = 0;
+                if (!read_uleb128_safe(p, end, add_val)) {
+                    out_error = "Malformed ULEB128 in BIND_OPCODE_ADD_ADDR_ULEB";
+                    return false;
+                }
+                seg_offset += add_val;
                 break;
+            }
 
             case 0x90u: { // BIND_OPCODE_DO_BIND
-                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Binding segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
                 out_bindings.push_back(DyldBindingRecord{
                     symbol_name,
                     base + seg_offset,
@@ -494,7 +712,11 @@ bool DyldEngine::parse_binding_stream(
             }
 
             case 0xA0u: { // BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB
-                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Binding segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
                 out_bindings.push_back(DyldBindingRecord{
                     symbol_name,
                     base + seg_offset,
@@ -502,12 +724,21 @@ bool DyldEngine::parse_binding_stream(
                     dylib_ordinal,
                     is_weak
                 });
-                seg_offset += sizeof(void*) + read_uleb128(p, end);
+                std::uint64_t add_val = 0;
+                if (!read_uleb128_safe(p, end, add_val)) {
+                    out_error = "Malformed ULEB128 in BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB";
+                    return false;
+                }
+                seg_offset += sizeof(void*) + add_val;
                 break;
             }
 
             case 0xB0u: { // BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED
-                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Binding segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
                 out_bindings.push_back(DyldBindingRecord{
                     symbol_name,
                     base + seg_offset,
@@ -520,9 +751,25 @@ bool DyldEngine::parse_binding_stream(
             }
 
             case 0xC0u: { // BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB
-                std::uint64_t count = read_uleb128(p, end);
-                std::uint64_t skip = read_uleb128(p, end);
-                std::uint64_t base = (seg_index < segment_vmaddrs.size()) ? segment_vmaddrs[seg_index] : 0;
+                if (seg_index >= segment_vmaddrs.size()) {
+                    out_error = "Binding segment index out of bounds: " + std::to_string(seg_index);
+                    return false;
+                }
+                std::uint64_t count = 0;
+                if (!read_uleb128_safe(p, end, count)) {
+                    out_error = "Malformed count in BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB";
+                    return false;
+                }
+                if (count > 65536) {
+                    out_error = "Excessive count in BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: " + std::to_string(count);
+                    return false;
+                }
+                std::uint64_t skip = 0;
+                if (!read_uleb128_safe(p, end, skip)) {
+                    out_error = "Malformed skip in BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB";
+                    return false;
+                }
+                std::uint64_t base = segment_vmaddrs[seg_index];
                 for (std::uint64_t i = 0; i < count; ++i) {
                     out_bindings.push_back(DyldBindingRecord{
                         symbol_name,
@@ -755,126 +1002,50 @@ DyldLinkStatus DyldEngine::process_chained_fixups(
             if (pstart == DYLD_CHAINED_PTR_START_NONE) {
                 continue;
             }
+
+            std::vector<std::uint16_t> chain_offsets;
             if (pstart & DYLD_CHAINED_PTR_START_MULTI) {
-                pstart &= ~DYLD_CHAINED_PTR_START_MULTI;
-            }
-
-            std::uint64_t chain_loc = seg->segment_offset + (static_cast<std::uint64_t>(p) * seg->page_size) + pstart;
-            std::set<std::uint64_t> visited_locations;
-
-            while (true) {
-                if (!visited_locations.insert(chain_loc).second) {
-                    out_error = "Cyclic pointer chain detected at offset " + std::to_string(chain_loc);
-                    return DyldLinkStatus::InvalidChainedFixups;
-                }
-
-                if (chain_loc + sizeof(std::uint64_t) > memory.size()) {
-                    out_error = "Chained fixup offset exceeds memory bounds: " + std::to_string(chain_loc);
-                    return DyldLinkStatus::MemoryPatchFailed;
-                }
-
-                std::uint64_t raw_val = memory.read_u64(chain_loc);
-                std::uint64_t next_stride = 0;
-
-                if (format == DYLD_CHAINED_PTR_64 || format == DYLD_CHAINED_PTR_64_OFFSET) {
-                    bool is_bind = ((raw_val >> 63) & 1) != 0;
-                    next_stride = (raw_val >> 51) & 0xFFFULL;
-
-                    if (is_bind) {
-                        std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFFFULL);
-                        std::int64_t addend = static_cast<std::int8_t>((raw_val >> 24) & 0xFFULL);
-
-                        if (ordinal >= hdr->imports_count) {
-                            out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
-                            return DyldLinkStatus::InvalidChainedFixups;
-                        }
-
-                        const auto* imp = reinterpret_cast<const DyldChainedImportRaw*>(
-                            bytes + hdr->imports_offset + (static_cast<std::size_t>(ordinal) * sizeof(DyldChainedImportRaw)));
-
-                        if (static_cast<std::size_t>(hdr->symbols_offset) + imp->name_offset >= size) {
-                            out_error = "Chained fixup import symbol name out of bounds";
-                            return DyldLinkStatus::InvalidChainedFixups;
-                        }
-
-                        const char* sym_name = reinterpret_cast<const char*>(bytes + hdr->symbols_offset + imp->name_offset);
-                        auto resolved = resolve_symbol(sym_name, imp->lib_ordinal);
-
-                        if (!resolved.has_value()) {
-                            if (imp->weak_import) {
-                                memory.write_u64(chain_loc, 0);
-                            } else {
-                                out_error = "Undefined dynamic symbol: " + std::string(sym_name);
-                                return DyldLinkStatus::UndefinedSymbol;
-                            }
-                        } else {
-                            std::uint64_t final_target = *resolved + static_cast<std::uint64_t>(addend);
-                            memory.write_u64(chain_loc, final_target);
-                        }
-                    } else {
-                        std::uint64_t target = raw_val & 0xFFFFFFFFFULL;
-                        std::uint64_t high8 = (raw_val >> 36) & 0xFFULL;
-                        std::uint64_t target_vaddr = 0;
-
-                        if (format == DYLD_CHAINED_PTR_64_OFFSET) {
-                            target_vaddr = base_vaddr + target + slide;
-                        } else {
-                            target_vaddr = ((high8 << 56) | target) + slide;
-                        }
-                        memory.write_u64(chain_loc, target_vaddr);
-                    }
-
-                    if (next_stride == 0) {
+                std::uint16_t overflow_idx = pstart & ~DYLD_CHAINED_PTR_START_MULTI;
+                std::size_t overflow_off = seg_starts_off + sizeof(DyldChainedStartsInSegmentRaw) +
+                                           (static_cast<std::size_t>(seg->page_count) * sizeof(std::uint16_t)) +
+                                           (static_cast<std::size_t>(overflow_idx) * sizeof(std::uint16_t));
+                while (overflow_off + sizeof(std::uint16_t) <= size) {
+                    std::uint16_t coff = *reinterpret_cast<const std::uint16_t*>(bytes + overflow_off);
+                    if (coff == DYLD_CHAINED_PTR_START_NONE) {
                         break;
                     }
-                    chain_loc += next_stride * 4;
-                } else {
-                    // DYLD_CHAINED_PTR_ARM64E family
-                    bool auth = ((raw_val >> 63) & 1) != 0;
-                    bool is_bind = ((raw_val >> 62) & 1) != 0;
-                    next_stride = (raw_val >> 51) & 0x7FFULL;
+                    chain_offsets.push_back(coff);
+                    overflow_off += sizeof(std::uint16_t);
+                }
+            } else {
+                chain_offsets.push_back(pstart);
+            }
 
-                    if (auth) {
+            for (std::uint16_t coff : chain_offsets) {
+                std::uint64_t chain_loc = seg->segment_offset + (static_cast<std::uint64_t>(p) * seg->page_size) + coff;
+                std::set<std::uint64_t> visited_locations;
+
+                while (true) {
+                    if (!visited_locations.insert(chain_loc).second) {
+                        out_error = "Cyclic pointer chain detected at offset " + std::to_string(chain_loc);
+                        return DyldLinkStatus::InvalidChainedFixups;
+                    }
+
+                    if (chain_loc + sizeof(std::uint64_t) > memory.size()) {
+                        out_error = "Chained fixup offset exceeds memory bounds: " + std::to_string(chain_loc);
+                        return DyldLinkStatus::MemoryPatchFailed;
+                    }
+
+                    std::uint64_t raw_val = memory.read_u64(chain_loc);
+                    std::uint64_t next_stride = 0;
+
+                    if (format == DYLD_CHAINED_PTR_64 || format == DYLD_CHAINED_PTR_64_OFFSET) {
+                        bool is_bind = ((raw_val >> 63) & 1) != 0;
+                        next_stride = (raw_val >> 51) & 0xFFFULL;
+
                         if (is_bind) {
-                            std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFULL);
-                            if (ordinal >= hdr->imports_count) {
-                                out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
-                                return DyldLinkStatus::InvalidChainedFixups;
-                            }
-
-                            const auto* imp = reinterpret_cast<const DyldChainedImportRaw*>(
-                                bytes + hdr->imports_offset + (static_cast<std::size_t>(ordinal) * sizeof(DyldChainedImportRaw)));
-
-                            if (static_cast<std::size_t>(hdr->symbols_offset) + imp->name_offset >= size) {
-                                out_error = "Chained fixup import symbol name out of bounds";
-                                return DyldLinkStatus::InvalidChainedFixups;
-                            }
-
-                            const char* sym_name = reinterpret_cast<const char*>(bytes + hdr->symbols_offset + imp->name_offset);
-                            auto resolved = resolve_symbol(sym_name, imp->lib_ordinal);
-
-                            if (!resolved.has_value()) {
-                                if (imp->weak_import) {
-                                    memory.write_u64(chain_loc, 0);
-                                } else {
-                                    out_error = "Undefined dynamic symbol: " + std::string(sym_name);
-                                    return DyldLinkStatus::UndefinedSymbol;
-                                }
-                            } else {
-                                memory.write_u64(chain_loc, *resolved);
-                            }
-                        } else {
-                            std::uint64_t target = raw_val & 0xFFFFFFFFULL;
-                            std::uint64_t target_vaddr = base_vaddr + target + slide;
-                            memory.write_u64(chain_loc, target_vaddr);
-                        }
-                    } else {
-                        if (is_bind) {
-                            std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFULL);
-                            std::int64_t addend = static_cast<std::int64_t>((raw_val >> 32) & 0x7FFFFULL);
-                            if ((addend & 0x40000LL) != 0) {
-                                addend |= ~0x7FFFFLL;
-                            }
+                            std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFFFULL);
+                            std::int64_t addend = static_cast<std::int8_t>((raw_val >> 24) & 0xFFULL);
 
                             if (ordinal >= hdr->imports_count) {
                                 out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
@@ -904,17 +1075,110 @@ DyldLinkStatus DyldEngine::process_chained_fixups(
                                 memory.write_u64(chain_loc, final_target);
                             }
                         } else {
-                            std::uint64_t target = raw_val & 0x7FFFFFFFFFFULL;
-                            std::uint64_t high8 = (raw_val >> 43) & 0xFFULL;
-                            std::uint64_t target_vaddr = ((high8 << 56) | target) + slide;
+                            std::uint64_t target = raw_val & 0xFFFFFFFFFULL;
+                            std::uint64_t high8 = (raw_val >> 36) & 0xFFULL;
+                            std::uint64_t target_vaddr = 0;
+
+                            if (format == DYLD_CHAINED_PTR_64_OFFSET) {
+                                target_vaddr = base_vaddr + target + slide;
+                            } else {
+                                target_vaddr = ((high8 << 56) | target) + slide;
+                            }
                             memory.write_u64(chain_loc, target_vaddr);
                         }
-                    }
 
-                    if (next_stride == 0) {
-                        break;
+                        if (next_stride == 0) {
+                            break;
+                        }
+                        chain_loc += next_stride * 4;
+                    } else {
+                        // DYLD_CHAINED_PTR_ARM64E family
+                        bool auth = ((raw_val >> 63) & 1) != 0;
+                        bool is_bind = ((raw_val >> 62) & 1) != 0;
+                        next_stride = (raw_val >> 51) & 0x7FFULL;
+
+                        if (auth) {
+                            if (is_bind) {
+                                std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFULL);
+                                if (ordinal >= hdr->imports_count) {
+                                    out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
+                                    return DyldLinkStatus::InvalidChainedFixups;
+                                }
+
+                                const auto* imp = reinterpret_cast<const DyldChainedImportRaw*>(
+                                    bytes + hdr->imports_offset + (static_cast<std::size_t>(ordinal) * sizeof(DyldChainedImportRaw)));
+
+                                if (static_cast<std::size_t>(hdr->symbols_offset) + imp->name_offset >= size) {
+                                    out_error = "Chained fixup import symbol name out of bounds";
+                                    return DyldLinkStatus::InvalidChainedFixups;
+                                }
+
+                                const char* sym_name = reinterpret_cast<const char*>(bytes + hdr->symbols_offset + imp->name_offset);
+                                auto resolved = resolve_symbol(sym_name, imp->lib_ordinal);
+
+                                if (!resolved.has_value()) {
+                                    if (imp->weak_import) {
+                                        memory.write_u64(chain_loc, 0);
+                                    } else {
+                                        out_error = "Undefined dynamic symbol: " + std::string(sym_name);
+                                        return DyldLinkStatus::UndefinedSymbol;
+                                    }
+                                } else {
+                                    memory.write_u64(chain_loc, *resolved);
+                                }
+                            } else {
+                                std::uint64_t target = raw_val & 0xFFFFFFFFULL;
+                                std::uint64_t target_vaddr = base_vaddr + target + slide;
+                                memory.write_u64(chain_loc, target_vaddr);
+                            }
+                        } else {
+                            if (is_bind) {
+                                std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFULL);
+                                std::int64_t addend = static_cast<std::int64_t>((raw_val >> 32) & 0x7FFFFULL);
+                                if ((addend & 0x40000LL) != 0) {
+                                    addend |= ~0x7FFFFLL;
+                                }
+
+                                if (ordinal >= hdr->imports_count) {
+                                    out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
+                                    return DyldLinkStatus::InvalidChainedFixups;
+                                }
+
+                                const auto* imp = reinterpret_cast<const DyldChainedImportRaw*>(
+                                    bytes + hdr->imports_offset + (static_cast<std::size_t>(ordinal) * sizeof(DyldChainedImportRaw)));
+
+                                if (static_cast<std::size_t>(hdr->symbols_offset) + imp->name_offset >= size) {
+                                    out_error = "Chained fixup import symbol name out of bounds";
+                                    return DyldLinkStatus::InvalidChainedFixups;
+                                }
+
+                                const char* sym_name = reinterpret_cast<const char*>(bytes + hdr->symbols_offset + imp->name_offset);
+                                auto resolved = resolve_symbol(sym_name, imp->lib_ordinal);
+
+                                if (!resolved.has_value()) {
+                                    if (imp->weak_import) {
+                                        memory.write_u64(chain_loc, 0);
+                                    } else {
+                                        out_error = "Undefined dynamic symbol: " + std::string(sym_name);
+                                        return DyldLinkStatus::UndefinedSymbol;
+                                    }
+                                } else {
+                                    std::uint64_t final_target = *resolved + static_cast<std::uint64_t>(addend);
+                                    memory.write_u64(chain_loc, final_target);
+                                }
+                            } else {
+                                std::uint64_t target = raw_val & 0x7FFFFFFFFFFULL;
+                                std::uint64_t high8 = (raw_val >> 43) & 0xFFULL;
+                                std::uint64_t target_vaddr = ((high8 << 56) | target) + slide;
+                                memory.write_u64(chain_loc, target_vaddr);
+                            }
+                        }
+
+                        if (next_stride == 0) {
+                            break;
+                        }
+                        chain_loc += next_stride * 8;
                     }
-                    chain_loc += next_stride * 8;
                 }
             }
         }
@@ -1095,8 +1359,9 @@ std::vector<std::uint8_t> DyldFixtureBuilder::create_synthetic_chained_fixups_wi
         seg_hdr->pointer_format = seg.pointer_format;
         seg_hdr->segment_offset = seg.segment_offset;
         seg_hdr->max_valid_pointer = 0;
+        const std::size_t total_u16s = seg.page_starts.size() + seg.overflow_starts.size();
         seg_hdr->page_count = static_cast<std::uint16_t>(seg.page_starts.size());
-        seg_hdr->size = static_cast<std::uint32_t>(sizeof(DyldChainedStartsInSegmentRaw) + (seg.page_starts.size() * sizeof(std::uint16_t)));
+        seg_hdr->size = static_cast<std::uint32_t>(sizeof(DyldChainedStartsInSegmentRaw) + (total_u16s * sizeof(std::uint16_t)));
 
         std::size_t page_starts_loc = current_seg_write_pos + sizeof(DyldChainedStartsInSegmentRaw);
         for (std::size_t p = 0; p < seg.page_starts.size(); ++p) {
@@ -1104,7 +1369,13 @@ std::vector<std::uint8_t> DyldFixtureBuilder::create_synthetic_chained_fixups_wi
             std::memcpy(buf.data() + page_starts_loc + (p * sizeof(std::uint16_t)), &pstart, sizeof(std::uint16_t));
         }
 
-        current_seg_write_pos = (page_starts_loc + (seg.page_starts.size() * sizeof(std::uint16_t)) + 7) & ~static_cast<std::size_t>(7ULL);
+        std::size_t overflow_loc = page_starts_loc + (seg.page_starts.size() * sizeof(std::uint16_t));
+        for (std::size_t o = 0; o < seg.overflow_starts.size(); ++o) {
+            std::uint16_t coff = seg.overflow_starts[o];
+            std::memcpy(buf.data() + overflow_loc + (o * sizeof(std::uint16_t)), &coff, sizeof(std::uint16_t));
+        }
+
+        current_seg_write_pos = (page_starts_loc + (total_u16s * sizeof(std::uint16_t)) + 7) & ~static_cast<std::size_t>(7ULL);
     }
 
     std::size_t imports_loc = (current_seg_write_pos < 0x800) ? 0x800 : ((current_seg_write_pos + 15) & ~static_cast<std::size_t>(15ULL));
@@ -1159,8 +1430,9 @@ std::vector<std::uint8_t> DyldFixtureBuilder::create_synthetic_chained_fixups_mu
         seg_hdr->pointer_format = seg.pointer_format;
         seg_hdr->segment_offset = seg.segment_offset;
         seg_hdr->max_valid_pointer = 0;
+        const std::size_t total_u16s = seg.page_starts.size() + seg.overflow_starts.size();
         seg_hdr->page_count = static_cast<std::uint16_t>(seg.page_starts.size());
-        seg_hdr->size = static_cast<std::uint32_t>(sizeof(DyldChainedStartsInSegmentRaw) + (seg.page_starts.size() * sizeof(std::uint16_t)));
+        seg_hdr->size = static_cast<std::uint32_t>(sizeof(DyldChainedStartsInSegmentRaw) + (total_u16s * sizeof(std::uint16_t)));
 
         std::size_t page_starts_loc = current_seg_write_pos + sizeof(DyldChainedStartsInSegmentRaw);
         for (std::size_t p = 0; p < seg.page_starts.size(); ++p) {
@@ -1168,7 +1440,13 @@ std::vector<std::uint8_t> DyldFixtureBuilder::create_synthetic_chained_fixups_mu
             std::memcpy(buf.data() + page_starts_loc + (p * sizeof(std::uint16_t)), &pstart, sizeof(std::uint16_t));
         }
 
-        current_seg_write_pos = (page_starts_loc + (seg.page_starts.size() * sizeof(std::uint16_t)) + 7) & ~static_cast<std::size_t>(7ULL);
+        std::size_t overflow_loc = page_starts_loc + (seg.page_starts.size() * sizeof(std::uint16_t));
+        for (std::size_t o = 0; o < seg.overflow_starts.size(); ++o) {
+            std::uint16_t coff = seg.overflow_starts[o];
+            std::memcpy(buf.data() + overflow_loc + (o * sizeof(std::uint16_t)), &coff, sizeof(std::uint16_t));
+        }
+
+        current_seg_write_pos = (page_starts_loc + (total_u16s * sizeof(std::uint16_t)) + 7) & ~static_cast<std::size_t>(7ULL);
     }
 
     std::size_t imports_loc = (current_seg_write_pos < 0x800) ? 0x800 : ((current_seg_write_pos + 15) & ~static_cast<std::size_t>(15ULL));

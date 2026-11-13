@@ -159,6 +159,10 @@ public:
     void set_diagnostics(ExecutionDiagnostics* diag) noexcept { diagnostics_ = diag; }
     [[nodiscard]] ExecutionDiagnostics* diagnostics() const noexcept { return diagnostics_; }
 
+    // Syscall & Mach Trap Dispatch
+    void handle_bsd_syscall(DarwinPipelineResult& result);
+    void handle_mach_trap(DarwinPipelineResult& result);
+
 private:
     CPU&                   cpu_;
     Memory&                memory_;
@@ -187,8 +191,6 @@ private:
         bool el0_accessible = true,
         bool is_device = false);
     void unmap_userspace_pages(std::uint64_t start_va, std::size_t len);
-    void handle_bsd_syscall(DarwinPipelineResult& result);
-    void handle_mach_trap(DarwinPipelineResult& result);
 };
 
 } // namespace winios::runtime

@@ -110,12 +110,93 @@ void test_vector_cnt_8b_16b() {
     CHECK(d8.find(".8B") != std::string::npos);
 }
 
+void test_adc_adcs_sbc_sbcs() {
+    std::cout << "[Test 3] ADC, ADCS, SBC, SBCS 32/64-bit semantics, flags, and XZR/WZR destination...\n";
+    CPU cpu;
+    Memory mem(0x10000);
+
+    // 1. ADC W0, W1, W2 (sf=0, op=0, S=0: 0x1A020020)
+    // with C=0: 10 + 20 + 0 = 30
+    cpu.reset();
+    cpu.write_register(1, 10);
+    cpu.write_register(2, 20);
+    cpu.set_nzcv(0);
+    step_one(cpu, mem, 0x300, 0x1A020020u);
+    CHECK(cpu.read_register(0) == 30ULL);
+
+    // with C=1 (NZCV bit 29 -> mask 0x2): 10 + 20 + 1 = 31
+    cpu.write_register(0, 0);
+    cpu.set_nzcv(0x2u); // C=1
+    step_one(cpu, mem, 0x304, 0x1A020020u);
+    CHECK(cpu.read_register(0) == 31ULL);
+
+    // 2. ADCS W31 (WZR), W1, W2 (sf=0, op=0, S=1, rd=31: 0x3A02003F)
+    // SP should NOT change, but flags should update
+    cpu.set_stack_pointer(0x12345678ULL);
+    cpu.write_register(1, 0xFFFFFFFFULL);
+    cpu.write_register(2, 0x0ULL);
+    cpu.set_nzcv(0x2u); // C=1: 0xFFFFFFFF + 0 + 1 = 0x100000000 -> 32-bit result 0, C=1, Z=1
+    step_one(cpu, mem, 0x308, 0x3A02003Fu);
+    CHECK(cpu.get_stack_pointer() == 0x12345678ULL);
+    CHECK((cpu.get_nzcv() & 0x4u) != 0); // Z=1
+    CHECK((cpu.get_nzcv() & 0x2u) != 0); // C=1
+    CHECK((cpu.get_nzcv() & 0x8u) == 0); // N=0
+    CHECK((cpu.get_nzcv() & 0x1u) == 0); // V=0
+
+    // 3. ADCS X0, X1, X2 with 64-bit overflow (V flag)
+    // 0x7FFFFFFFFFFFFFFF + 1 + C=0 -> 0x8000000000000000: N=1, V=1, Z=0, C=0
+    // ADCS X0, X1, X2: sf=1, op=0, S=1: 0xBA020020
+    cpu.write_register(1, 0x7FFFFFFFFFFFFFFFULL);
+    cpu.write_register(2, 1ULL);
+    cpu.set_nzcv(0);
+    step_one(cpu, mem, 0x30C, 0xBA020020u);
+    CHECK(cpu.read_register(0) == 0x8000000000000000ULL);
+    CHECK((cpu.get_nzcv() & 0x8u) != 0); // N=1
+    CHECK((cpu.get_nzcv() & 0x1u) != 0); // V=1
+    CHECK((cpu.get_nzcv() & 0x2u) == 0); // C=0
+    CHECK((cpu.get_nzcv() & 0x4u) == 0); // Z=0
+
+    // 4. SBC W0, W1, W2 (sf=0, op=1, S=0: 0x5A020020)
+    // result = W1 + ~W2 + C = W1 - W2 + (C - 1)
+    // with C=1 (no borrow): 50 - 20 = 30
+    cpu.write_register(1, 50);
+    cpu.write_register(2, 20);
+    cpu.set_nzcv(0x2u); // C=1
+    step_one(cpu, mem, 0x310, 0x5A020020u);
+    CHECK(cpu.read_register(0) == 30ULL);
+
+    // with C=0 (borrow): 50 - 20 - 1 = 29
+    cpu.set_nzcv(0); // C=0
+    step_one(cpu, mem, 0x314, 0x5A020020u);
+    CHECK(cpu.read_register(0) == 29ULL);
+
+    // 5. SBCS X0, X1, X2 (sf=1, op=1, S=1: 0xFA020020)
+    // 10 - 20 with C=1 -> -10 (0xFFFFFFFFFFFFFFF6), borrow occurred so C=0, N=1
+    cpu.write_register(1, 10ULL);
+    cpu.write_register(2, 20ULL);
+    cpu.set_nzcv(0x2u); // C=1
+    step_one(cpu, mem, 0x318, 0xFA020020u);
+    CHECK(cpu.read_register(0) == 0xFFFFFFFFFFFFFFF6ULL);
+    CHECK((cpu.get_nzcv() & 0x8u) != 0); // N=1
+    CHECK((cpu.get_nzcv() & 0x2u) == 0); // C=0 (borrow)
+
+    // 10 - 10 with C=1 -> 0, C=1 (no borrow), Z=1
+    cpu.write_register(1, 10ULL);
+    cpu.write_register(2, 10ULL);
+    cpu.set_nzcv(0x2u); // C=1
+    step_one(cpu, mem, 0x31C, 0xFA020020u);
+    CHECK(cpu.read_register(0) == 0ULL);
+    CHECK((cpu.get_nzcv() & 0x4u) != 0); // Z=1
+    CHECK((cpu.get_nzcv() & 0x2u) != 0); // C=1
+}
+
 } // namespace
 
 int main() {
     try {
         test_logical_immediate_sp_destination();
         test_vector_cnt_8b_16b();
+        test_adc_adcs_sbc_sbcs();
     } catch (const std::exception& ex) {
         std::cerr << "[EXCEPTION] " << ex.what() << "\n";
         return 1;
