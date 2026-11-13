@@ -273,12 +273,19 @@ bool MachOLoader::parse_metadata(
             if (cmd->cmdsize >= sizeof(MachOEntrypointCommand)) {
                 const auto* ep = reinterpret_cast<const MachOEntrypointCommand*>(slice_bytes + cmd_offset);
                 if (out_result.entry_point == 0 && !out_result.segments.empty()) {
-                    if (ep->entryoff > (0xFFFFFFFFFFFFFFFFULL - out_result.segments[0].vmaddr)) {
+                    const MachOSegmentInfo* target_seg = &out_result.segments[0];
+                    for (const auto& s : out_result.segments) {
+                        if (s.name == "__TEXT" || (s.initprot & kVmProtExecute) != 0) {
+                            target_seg = &s;
+                            break;
+                        }
+                    }
+                    if (ep->entryoff > (0xFFFFFFFFFFFFFFFFULL - target_seg->vmaddr)) {
                         out_result.status = MachOLoadStatus::IntegerOverflow;
                         out_result.error_message = "LC_MAIN entryoff causes 64-bit integer overflow";
                         return false;
                     }
-                    out_result.entry_point = out_result.segments[0].vmaddr + ep->entryoff;
+                    out_result.entry_point = target_seg->vmaddr + ep->entryoff;
                 }
                 if (out_result.initial_sp == 0 && ep->stacksize > 0) {
                     out_result.initial_sp = ep->stacksize;

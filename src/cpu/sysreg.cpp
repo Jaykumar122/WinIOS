@@ -12,7 +12,7 @@ namespace {
 // Definition of all implemented system registers in WinIOS
 constexpr SysRegDescriptor kDescriptors[] = {
     // --- CurrentEL & PSTATE ---
-    { SysRegId::CurrentEL, "CurrentEL", make_sysreg_key(3, 0, 4, 2, 2), 3, 0, 4, 2, 2, 0, true, false, 64, 0x4, 0xFFFFFFFFFFFFFFF3ULL, 0 },
+    { SysRegId::CurrentEL, "CurrentEL", make_sysreg_key(3, 0, 4, 2, 2), 3, 0, 4, 2, 2, 1, true, false, 64, 0x4, 0xFFFFFFFFFFFFFFF3ULL, 0 },
     { SysRegId::DAIF,      "DAIF",      make_sysreg_key(3, 3, 4, 2, 1), 3, 3, 4, 2, 1, 0, true, true,  64, 0x3C0, 0xFFFFFFFFFFFFFC3FULL, 0 },
     { SysRegId::NZCV,      "NZCV",      make_sysreg_key(3, 3, 4, 2, 0), 3, 3, 4, 2, 0, 0, true, true,  64, 0, 0x0FFFFFFFFFFFFFFFULL, 0 },
     { SysRegId::SPSel,     "SPSel",     make_sysreg_key(3, 0, 4, 2, 0), 3, 0, 4, 2, 0, 1, true, true,  64, 1, 0xFFFFFFFFFFFFFFFEULL, 0 },

@@ -220,3 +220,9 @@ foreach ($sp in $v3Specs) {
     Remove-Item -Force $outIosRaw -ErrorAction SilentlyContinue
 }
 Remove-Item -Force $iosLibSysStub -ErrorAction SilentlyContinue
+
+# Campaign 193: Synthetic EL1 Kernel Runtime
+$srcKernel = Join-Path $srcDir "synthetic_el1_kernel.S"
+$outKernel = Join-Path $binDir "synthetic_el1_kernel"
+& zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector "-Wl,-e,_start" "-Wl,-pagezero_size,0" $srcKernel -o $outKernel
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile synthetic_el1_kernel"; exit $LASTEXITCODE }

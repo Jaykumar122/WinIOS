@@ -1,0 +1,62 @@
+{
+  "campaign": 193,
+  "title": "ARM64 Exception Architecture, EL0/EL1 Privilege Transitions & Synthetic Kernel Execution",
+  "baseline_commit": "9ff79b3",
+  "branch": "campaign-191r",
+  "host": {
+    "os": "Windows 11 x64",
+    "compiler": "Visual Studio 18 2026, MSVC C++20",
+    "compiler_flags": "/W4 /WX /permissive-",
+    "secondary_toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)"
+  },
+  "target_device_research_identity": {
+    "device": "iPhone 15",
+    "model": "iPhone15,4",
+    "board_id": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "architectures": ["aarch64-macos", "aarch64-ios", "aarch64-freestanding"]
+  },
+  "stages": [
+    { "stage": "193.0", "name": "Baseline Audit and Architectural Inventory", "status": "COMPLETED", "targets_passed": "348/349 (1 skipped)" },
+    { "stage": "193.1", "name": "EL0/EL1 Execution-Level Architecture", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage193_1_execution_level_tests" },
+    { "stage": "193.2", "name": "Exception Entry Architecture", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage193_2_exception_entry_tests" },
+    { "stage": "193.3", "name": "Exception Syndrome Register", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_3_syndrome_register_tests" },
+    { "stage": "193.4", "name": "Vector Table Architecture", "status": "COMPLETED", "tests": "6/6 passed", "suite": "stage193_4_vector_table_tests" },
+    { "stage": "193.5", "name": "ERET and Exception Return", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage193_5_eret_return_tests" },
+    { "stage": "193.6", "name": "System Register Access and Privilege Enforcement", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage193_6_sysreg_privilege_tests" },
+    { "stage": "193.7", "name": "MMU Translation and Fault Integration", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_7_mmu_translation_fault_tests" },
+    { "stage": "193.8", "name": "TLB and Translation Invalidation", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage193_8_tlb_invalidation_tests" },
+    { "stage": "193.9", "name": "ASID and Address-Space Isolation", "status": "COMPLETED", "tests": "3/3 passed", "suite": "stage193_9_asid_isolation_tests" },
+    { "stage": "193.10", "name": "EL0/EL1 Memory Protection", "status": "COMPLETED", "tests": "6/6 passed", "suite": "stage193_10_memory_protection_tests" },
+    { "stage": "193.11", "name": "Stack Management and Context Preservation", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_11_stack_management_tests" },
+    { "stage": "193.12", "name": "GIC Interrupt Delivery Architecture", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_12_gic_delivery_tests" },
+    { "stage": "193.13", "name": "IRQ/FIQ Exception Routing", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_13_irq_routing_tests" },
+    { "stage": "193.14", "name": "Virtual Timer Interrupts", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_14_virtual_timer_tests" },
+    { "stage": "193.15", "name": "Exception Nesting and SMP Delivery", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_15_smp_exception_tests" },
+    { "stage": "193.16", "name": "Synthetic EL1 Kernel Runtime", "status": "COMPLETED", "tests": "3/3 passed", "suite": "stage193_16_synthetic_kernel_tests", "artifact": "KERNEL-001 (synthetic_el1_kernel)" },
+    { "stage": "193.17", "name": "Freestanding Kernel Integration Tests", "status": "COMPLETED", "tests": "4/4 passed", "suite": "stage193_17_kernel_integration_tests" },
+    { "stage": "193.18", "name": "Architectural Conformance Audit", "status": "COMPLETED", "audit_report": "docs/campaign193/stage193_18_conformance_audit.md" },
+    { "stage": "193.19", "name": "Full Regression and Closeout", "status": "COMPLETED", "ctest_release": "365 passed, 1 skipped, 0 failed (366 total)", "ctest_debug": "365 passed, 1 skipped, 0 failed (366 total)" }
+  ],
+  "regression_summary": {
+    "total_ctest_targets": 366,
+    "release_passed": 365,
+    "release_skipped": 1,
+    "release_failed": 0,
+    "debug_passed": 365,
+    "debug_skipped": 1,
+    "debug_failed": 0,
+    "skipped_target": "inferno_integration_tests (requires proprietary host harness)"
+  },
+  "artifacts": [
+    {
+      "artifact_id": "KERNEL-001",
+      "file_name": "synthetic_el1_kernel",
+      "path": "tests/artifacts/bin/synthetic_el1_kernel",
+      "size_bytes": 51832,
+      "sha256": "ef08793bdf38817e06c8d37157d5b25ba94b959269a7965ad45a82d4c4a200cf",
+      "classification": "SYNTHETIC_KERNEL",
+      "toolchain": "Zig 0.17.0"
+    }
+  ]
+}

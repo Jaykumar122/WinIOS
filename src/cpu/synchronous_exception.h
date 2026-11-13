@@ -72,7 +72,7 @@ constexpr std::uint64_t kPhysicalAddressLimit = std::uint64_t{1} << 52;
 // A single synchronous exception, independent of the EL it is taken to.
 struct SynchronousException {
     ExceptionClass ec{ExceptionClass::Unknown};
-    std::uint32_t iss{0};             // ISS bits [23:0], IL excluded
+    std::uint32_t iss{0};             // ISS bits [24:0], IL excluded
     bool instruction_length_4{true};  // ESR_ELx.IL
     std::uint64_t preferred_return{0};// written to ELR_ELx
     bool has_fault_address{false};
@@ -87,7 +87,7 @@ struct SynchronousException {
     std::uint32_t esr() const noexcept {
         return (static_cast<std::uint32_t>(ec) << 26u)
              | (instruction_length_4 ? (1u << 25u) : 0u)
-             | (iss & 0x00FFFFFFu);
+             | (iss & 0x01FFFFFFu);
     }
 };
 
@@ -203,11 +203,18 @@ inline SynchronousException make_data_abort(bool same_el, AccessType access,
                                             FaultStatus fsc,
                                             std::uint64_t fault_address,
                                             std::uint64_t instruction_address,
-                                            unsigned access_size) {
+                                            unsigned access_size,
+                                            bool isv = false,
+                                            unsigned srt = 0) {
     SynchronousException e;
     e.ec = same_el ? ExceptionClass::DataAbortSame : ExceptionClass::DataAbortLower;
-    e.iss = ((access == AccessType::Write ? 1u : 0u) << 6u)
-          | (static_cast<std::uint32_t>(fsc) & 0x3Fu);
+    std::uint32_t iss = ((access == AccessType::Write ? 1u : 0u) << 6u)
+                      | (static_cast<std::uint32_t>(fsc) & 0x3Fu);
+    if (isv) {
+        const std::uint32_t sas = (access_size >= 8u ? 3u : (access_size >= 4u ? 2u : (access_size >= 2u ? 1u : 0u)));
+        iss |= (1u << 24u) | (sas << 22u) | ((srt & 0x1Fu) << 16u);
+    }
+    e.iss = iss;
     e.preferred_return = instruction_address;
     e.has_fault_address = true;
     e.fault_address = fault_address;
@@ -322,10 +329,10 @@ struct ArchitecturalException {
 };
 
 // Computes the architectural vector offset relative to VBAR_ELx according to ARMv8-A D1.10
-[[nodiscard]] constexpr std::uint32_t compute_vector_offset(unsigned origin_el, unsigned target_el, bool sp_sel, ExceptionType type) noexcept {
+[[nodiscard]] constexpr std::uint32_t compute_vector_offset(unsigned origin_el, unsigned target_el, bool sp_sel, ExceptionType type, bool is_aarch32 = false) noexcept {
     std::uint32_t table_section = 0;
     if (origin_el < target_el) {
-        table_section = 0x400u; // Lower EL, AArch64
+        table_section = is_aarch32 ? 0x600u : 0x400u; // Lower EL: AArch32 (+0x600) vs AArch64 (+0x400)
     } else {
         table_section = sp_sel ? 0x200u : 0x000u; // Current EL with SPx / SP0
     }

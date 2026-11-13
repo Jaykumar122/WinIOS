@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WinIOS Genuine Independently-Compiled Mach-O Artifact Manifest",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "provenance_policy": "STRICT_INDEPENDENT_TOOLCHAIN_ONLY",
   "artifacts": [
     {
@@ -1738,6 +1738,45 @@
           "sha256": "a74a6f79154a9188c09f9495398f2f46d6c9b0d113a6b0df475b36a3c9dd344c",
           "size_bytes": 50832,
           "note": "Campaign 192 Stage 192.6 Darwin libSystem Lite ABI Conformance Application"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "KERNEL-001",
+      "file_name": "synthetic_el1_kernel",
+      "relative_path": "tests/artifacts/bin/synthetic_el1_kernel",
+      "sha256": "ef08793bdf38817e06c8d37157d5b25ba94b959269a7965ad45a82d4c4a200cf",
+      "size_bytes": 51832,
+      "classification": "SYNTHETIC_KERNEL",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/synthetic_el1_kernel.S",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector -Wl,-e,_start -Wl,-pagezero_size,0 tests/artifacts/src/synthetic_el1_kernel.S -o tests/artifacts/bin/synthetic_el1_kernel",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "SyntheticKernel-OK\n",
+        "exit_code": 42,
+        "guest_instructions_retired": 178,
+        "test_suite": "tests/unit/stage193_16_synthetic_kernel_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage 193.16",
+          "sha256": "ef08793bdf38817e06c8d37157d5b25ba94b959269a7965ad45a82d4c4a200cf",
+          "size_bytes": 51832,
+          "note": "Campaign 193 Stage 193.16 Synthetic ARM64 EL1 Kernel Runtime"
         }
       ],
       "build_reproducible": true,

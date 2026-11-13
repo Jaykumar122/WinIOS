@@ -56,6 +56,10 @@ divergence_report.json
 !docs/campaign_192_200/
 !docs/campaign_192_200/*.md
 !docs/campaign_192_200/macho_artifact_manifest.json
+!docs/campaign193/
+!docs/campaign193/*.md
+!docs/campaign193/*.json
+!docs/campaign193/*.txt
 reports/
 __pycache__/
 *.pyc

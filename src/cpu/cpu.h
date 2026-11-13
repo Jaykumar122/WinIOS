@@ -156,6 +156,9 @@ public:
     std::uint64_t get_vbar_el1() const noexcept { return vbar_el1_; }
     void set_vbar_el1(std::uint64_t value) noexcept { vbar_el1_ = value & ~0x7FFULL; }
 
+    // Architectural AArch32 lower EL support (iPhone 15 / Apple A16 is 64-bit only; AArch32 lower EL = false)
+    [[nodiscard]] constexpr bool supports_aarch32_lower_el() const noexcept { return false; }
+
     // Phase 36 / 52: Thread pointer system registers
     std::uint64_t get_tpidr_el0() const noexcept { return tpidr_el0_; }
     void set_tpidr_el0(std::uint64_t value) noexcept { tpidr_el0_ = value; }
@@ -190,7 +193,7 @@ public:
     std::uint64_t get_hpfar_el2() const noexcept { return hpfar_el2_; }
     void set_hpfar_el2(std::uint64_t value) noexcept { hpfar_el2_ = value; }
     std::uint64_t get_vbar_el2() const noexcept { return vbar_el2_; }
-    void set_vbar_el2(std::uint64_t value) noexcept { vbar_el2_ = value; }
+    void set_vbar_el2(std::uint64_t value) noexcept { vbar_el2_ = value & ~0x7FFULL; }
     std::uint64_t get_hcr_el2() const noexcept { return hcr_el2_; }
     void set_hcr_el2(std::uint64_t value) noexcept {
         hcr_el2_ = value;
@@ -278,7 +281,7 @@ public:
     std::uint64_t get_far_el3() const noexcept { return far_el3_; }
     void set_far_el3(std::uint64_t value) noexcept { far_el3_ = value; }
     std::uint64_t get_vbar_el3() const noexcept { return vbar_el3_; }
-    void set_vbar_el3(std::uint64_t value) noexcept { vbar_el3_ = value; }
+    void set_vbar_el3(std::uint64_t value) noexcept { vbar_el3_ = value & ~0x7FFULL; }
     std::uint64_t get_scr_el3() const noexcept { return scr_el3_; }
     void set_scr_el3(std::uint64_t value) noexcept { scr_el3_ = value; }
     std::uint64_t get_cptr_el3() const noexcept { return cptr_el3_; }

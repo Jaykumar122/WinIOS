@@ -8965,7 +8965,7 @@ void CPU::step(Memory& guest_memory) {
                 far_el1_ = val;
                 break;
             case kSysregVBAR_EL1:
-                vbar_el1_ = val;
+                vbar_el1_ = val & ~0x7FFULL;
                 break;
             case kSysregFPCR:
                 fpcr_ = static_cast<std::uint32_t>(val & 0xFFFFFFFFu);
@@ -9106,7 +9106,7 @@ void CPU::step(Memory& guest_memory) {
                 hpfar_el2_ = val;
                 break;
             case kSysregVBAR_EL2:
-                vbar_el2_ = val;
+                vbar_el2_ = val & ~0x7FFULL;
                 break;
             case kSysregHCR_EL2:
                 hcr_el2_ = val;
@@ -9148,7 +9148,7 @@ void CPU::step(Memory& guest_memory) {
                 far_el3_ = val;
                 break;
             case kSysregVBAR_EL3:
-                vbar_el3_ = val;
+                vbar_el3_ = val & ~0x7FFULL;
                 break;
             case kSysregCNTHP_CTL: {
                 auto t = get_cnthp_timer();
