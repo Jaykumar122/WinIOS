@@ -799,9 +799,9 @@ static int load_dylib(const char* path) {
     mini_memset(dylib, 0, sizeof(*dylib));
     mini_strcpy(dylib->name, path);
 
-    // Assign base address (each dylib gets 64KB region aligned)
+    // Assign base address dynamically strictly past preceding images (0x10000 aligned)
     dylib->base_addr = g_next_dylib_base;
-    g_next_dylib_base += 0x10000ULL;
+    uint64_t dylib_span = 0x10000ULL;
 
     // Read all load commands
     __attribute__((aligned(16))) uint8_t cmds_buf[4096];
@@ -821,6 +821,8 @@ static int load_dylib(const char* path) {
         if (lc->cmd == LC_SEGMENT_64) {
             const struct segment_command_64* seg = (const struct segment_command_64*)p;
             if (mini_strcmp(seg->segname, "__PAGEZERO") != 0) {
+                uint64_t end = (seg->vmaddr + seg->vmsize + 0xFFFFULL) & ~0xFFFFULL;
+                if (end > dylib_span) dylib_span = end;
                 if (dylib->num_segs < 8) {
                     dylib->seg_vmaddrs[dylib->num_segs++] = seg->vmaddr;
                 }
@@ -902,6 +904,7 @@ static int load_dylib(const char* path) {
     }
 
     sys_close(fd);
+    g_next_dylib_base = dylib->base_addr + dylib_span;
 
     // Recursively load transitive dependencies
     for (int s = 0; s < num_sub_dylibs; ++s) {
@@ -960,6 +963,7 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
 
     uint64_t linkedit_vmaddr = 0;
     uint64_t linkedit_fileoff = 0;
+    uint64_t main_end = 0;
 
     for (uint32_t i = 0; i < mh->ncmds; ++i) {
         const struct load_command* lc = (const struct load_command*)p;
@@ -967,14 +971,19 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
 
         if (lc->cmd == LC_SEGMENT_64) {
             const struct segment_command_64* seg = (const struct segment_command_64*)p;
+            uint64_t mapped_va = map_vaddr(seg->vmaddr);
+            if (mini_strcmp(seg->segname, "__PAGEZERO") != 0) {
+                uint64_t seg_end = mapped_va + ((seg->vmsize + 0x3FFFULL) & ~0x3FFFULL);
+                if (seg_end > main_end) main_end = seg_end;
+            }
             if (num_main_segs < 8) {
-                main_seg_vmaddrs[num_main_segs++] = map_vaddr(seg->vmaddr);
+                main_seg_vmaddrs[num_main_segs++] = mapped_va;
             }
             if (mini_strcmp(seg->segname, "__TEXT") == 0) {
-                main_text_vmaddr = map_vaddr(seg->vmaddr);
+                main_text_vmaddr = mapped_va;
             }
             if (mini_strcmp(seg->segname, "__LINKEDIT") == 0) {
-                linkedit_vmaddr = map_vaddr(seg->vmaddr);
+                linkedit_vmaddr = mapped_va;
                 linkedit_fileoff = seg->fileoff;
             }
 
@@ -1025,6 +1034,11 @@ void minidyld_main(uint64_t main_mh_addr, uint64_t initial_sp) {
         }
 
         p += lc->cmdsize;
+    }
+
+    // Ensure first loaded dylib does not overlap large main binaries
+    if (main_end > g_next_dylib_base) {
+        g_next_dylib_base = (main_end + 0xFFFFULL) & ~0xFFFFULL;
     }
 
     // Step 1: Load all dependent dylibs

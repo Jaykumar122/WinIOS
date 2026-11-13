@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "WinIOS Genuine Independently-Compiled Mach-O Artifact Manifest",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "provenance_policy": "STRICT_INDEPENDENT_TOOLCHAIN_ONLY",
   "artifacts": [
     {
@@ -870,8 +870,8 @@
       "artifact_id": "REAL-017",
       "file_name": "minidyld",
       "relative_path": "tests/artifacts/bin/minidyld",
-      "sha256": "f146c546ca6ef5c4d01c8a1e5f86dd2660f13630998fe9f1edf17d20959940a0",
-      "size_bytes": 67528,
+      "sha256": "5d38063001550404dad3b08f753488c0fcb06da956ea952368d3dfe355aaea3f",
+      "size_bytes": 67512,
       "classification": "REAL-ARTIFACT-EXECUTED",
       "license": "MIT",
       "provenance": {
@@ -923,6 +923,12 @@
           "sha256": "02d6002816ede71f2cd80c453ae072aecc406ae65f57ab5d02c8c08b949a3891",
           "size_bytes": 67512,
           "note": "Archived prior to Campaign 191-V Stage V1 uniform repo-root rebuild without -mstrict-align"
+        },
+        {
+          "commit": "Stage V3",
+          "sha256": "5d38063001550404dad3b08f753488c0fcb06da956ea952368d3dfe355aaea3f",
+          "size_bytes": 67512,
+          "note": "Campaign 191-V Stage V3 minidyld rebuilt with DYLD_CHAINED_PTR_64 chained fixups support"
         }
       ],
       "build_reproducible": true,
@@ -932,8 +938,8 @@
       "artifact_id": "REAL-018",
       "file_name": "libSystem.B.dylib",
       "relative_path": "tests/artifacts/bin/libSystem.B.dylib",
-      "sha256": "f2c2563e9cd1be678cb4450d401cdec9b6ed13df018afc347df9ae3d8ac90cc8",
-      "size_bytes": 54544,
+      "sha256": "94c66c4d93b10e0d792be637458da41d77d7cbb69e0aba794d3eb3205b2477a2",
+      "size_bytes": 71920,
       "classification": "REAL-ARTIFACT-EXECUTED",
       "license": "MIT",
       "provenance": {
@@ -1008,6 +1014,12 @@
           "sha256": "eb2050ee18f1dd86ff54c06692764c11582e8afd8a8b7a2796a6c78e49e141ac",
           "size_bytes": 70960,
           "note": "Archived prior to Campaign 191-V Stage V1 uniform repo-root rebuild without -mstrict-align"
+        },
+        {
+          "commit": "Stage V3",
+          "sha256": "94c66c4d93b10e0d792be637458da41d77d7cbb69e0aba794d3eb3205b2477a2",
+          "size_bytes": 71920,
+          "note": "Campaign 191-V Stage V3 libSystem.B.dylib expanded runtime with calloc, posix_memalign, strcasecmp, strncmp, free"
         }
       ],
       "build_reproducible": true,
@@ -1307,6 +1319,384 @@
           "sha256": "beb3e825596074260aa43f2d6bc9aa104a84d20b08e886ff5ba9091242ad1ab5",
           "size_bytes": 50864,
           "note": "Campaign 191-V Stage V1 initial build (-O2 without -mstrict-align)"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-025",
+      "file_name": "sha256_app_O0",
+      "relative_path": "tests/artifacts/bin/sha256_app_O0",
+      "sha256": "8b9d041d0ff663fc1b2d0cf1a16f6cbb49b043eb8e389a768d98c215a71bd2dd",
+      "size_bytes": 51376,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT / Public Domain",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_sha256.c",
+        "upstream_url": "https://github.com/B-Con/crypto-algorithms",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O0 tests/artifacts/src/app_sha256.c -o tests/artifacts/bin/sha256_app_O0",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "SHA256_HASH=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 443797,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "8b9d041d0ff663fc1b2d0cf1a16f6cbb49b043eb8e389a768d98c215a71bd2dd",
+          "size_bytes": 51376,
+          "note": "Campaign 191-V Stage V3 sha256 -O0 macos"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-026",
+      "file_name": "sha256_app_O2",
+      "relative_path": "tests/artifacts/bin/sha256_app_O2",
+      "sha256": "be02f25cd8082e63c3b2d2f88d3193ac5ad9340eeed51786837842765af2eb22",
+      "size_bytes": 51184,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT / Public Domain",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_sha256.c",
+        "upstream_url": "https://github.com/B-Con/crypto-algorithms",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O2 tests/artifacts/src/app_sha256.c -o tests/artifacts/bin/sha256_app_O2",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "SHA256_HASH=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 147037,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "be02f25cd8082e63c3b2d2f88d3193ac5ad9340eeed51786837842765af2eb22",
+          "size_bytes": 51184,
+          "note": "Campaign 191-V Stage V3 sha256 -O2 macos"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-027",
+      "file_name": "sha256_app_ios",
+      "relative_path": "tests/artifacts/bin/sha256_app_ios",
+      "sha256": "a67ebe957a0de5c710bd47d1531094d6916a3caca4083fa92840fbf9af925218",
+      "size_bytes": 67528,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT / Public Domain",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_sha256.c",
+        "upstream_url": "https://github.com/B-Con/crypto-algorithms",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker + chained fixups converter)",
+        "command_line": "zig cc -target aarch64-macos -O2 tests/artifacts/src/app_sha256.c -o tests/artifacts/bin/sha256_app_ios.raw; python tests/tools/convert_to_chained_fixups.py",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_IOS (2)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "SHA256_HASH=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 146429,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "a67ebe957a0de5c710bd47d1531094d6916a3caca4083fa92840fbf9af925218",
+          "size_bytes": 67528,
+          "note": "Campaign 191-V Stage V3 sha256 -O2 ios chained fixups"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-028",
+      "file_name": "cjson_app_O0",
+      "relative_path": "tests/artifacts/bin/cjson_app_O0",
+      "sha256": "e8772ed70eb75995e2788e9e8e796d707f23346c14059b08d327bb4e492f24fb",
+      "size_bytes": 97424,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_cjson.c",
+        "upstream_url": "https://github.com/DaveGamble/cJSON",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O0 tests/artifacts/src/app_cjson.c tests/artifacts/third_party/cjson/cJSON.c -o tests/artifacts/bin/cjson_app_O0",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "JSON_MATCH=1\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 83747,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "e8772ed70eb75995e2788e9e8e796d707f23346c14059b08d327bb4e492f24fb",
+          "size_bytes": 97424,
+          "note": "Campaign 191-V Stage V3 cJSON -O0 macos"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-029",
+      "file_name": "cjson_app_O2",
+      "relative_path": "tests/artifacts/bin/cjson_app_O2",
+      "sha256": "3d0ffba34b94f31ff28a568c2857d16a8cdbc8c4e87af01ba22f178036011a6d",
+      "size_bytes": 71264,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_cjson.c",
+        "upstream_url": "https://github.com/DaveGamble/cJSON",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O2 tests/artifacts/src/app_cjson.c tests/artifacts/third_party/cjson/cJSON.c -o tests/artifacts/bin/cjson_app_O2",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "JSON_MATCH=1\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 52310,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "3d0ffba34b94f31ff28a568c2857d16a8cdbc8c4e87af01ba22f178036011a6d",
+          "size_bytes": 71264,
+          "note": "Campaign 191-V Stage V3 cJSON -O2 macos"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-030",
+      "file_name": "cjson_app_ios",
+      "relative_path": "tests/artifacts/bin/cjson_app_ios",
+      "sha256": "f18ce6f30ef1ef86416481e74fc4226c47e86408040e602544bd83b0534ce06b",
+      "size_bytes": 71336,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_cjson.c",
+        "upstream_url": "https://github.com/DaveGamble/cJSON",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker + chained fixups converter)",
+        "command_line": "zig cc -target aarch64-macos -O2 tests/artifacts/src/app_cjson.c tests/artifacts/third_party/cjson/cJSON.c -o tests/artifacts/bin/cjson_app_ios.raw; python tests/tools/convert_to_chained_fixups.py",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_IOS (2)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "JSON_MATCH=1\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 49685,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "f18ce6f30ef1ef86416481e74fc4226c47e86408040e602544bd83b0534ce06b",
+          "size_bytes": 71336,
+          "note": "Campaign 191-V Stage V3 cJSON -O2 ios chained fixups"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-031",
+      "file_name": "uzlib_app_O0",
+      "relative_path": "tests/artifacts/bin/uzlib_app_O0",
+      "sha256": "709aa342d01e63b53f89931249ae6ee582b7233239a87120ed9570fcc48fe0dd",
+      "size_bytes": 71920,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "Zlib / MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_uzlib.c",
+        "upstream_url": "https://github.com/pfalcon/uzlib",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O0 tests/artifacts/src/app_uzlib.c tests/artifacts/third_party/uzlib/src/defl_static.c tests/artifacts/third_party/uzlib/src/genlz_static.c tests/artifacts/third_party/uzlib/src/tinfgzip.c tests/artifacts/third_party/uzlib/src/tinflate.c tests/artifacts/third_party/uzlib/src/tinfzlib.c tests/artifacts/third_party/uzlib/src/adler32.c tests/artifacts/third_party/uzlib/src/crc32.c -o tests/artifacts/bin/uzlib_app_O0",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "UZLIB_RC=0 COMP=127 DECOMP=128 DECOMP_MATCH=1\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 855044,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "709aa342d01e63b53f89931249ae6ee582b7233239a87120ed9570fcc48fe0dd",
+          "size_bytes": 71920,
+          "note": "Campaign 191-V Stage V3 uzlib -O0 macos"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-032",
+      "file_name": "uzlib_app_O2",
+      "relative_path": "tests/artifacts/bin/uzlib_app_O2",
+      "sha256": "437845dfabcd927e9cc64d6795e712d08d460fbee08b0d57b1d77cf970dea0ac",
+      "size_bytes": 70016,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "Zlib / MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_uzlib.c",
+        "upstream_url": "https://github.com/pfalcon/uzlib",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker)",
+        "command_line": "zig cc -target aarch64-macos -O2 tests/artifacts/src/app_uzlib.c tests/artifacts/third_party/uzlib/src/defl_static.c tests/artifacts/third_party/uzlib/src/genlz_static.c tests/artifacts/third_party/uzlib/src/tinfgzip.c tests/artifacts/third_party/uzlib/src/tinflate.c tests/artifacts/third_party/uzlib/src/tinfzlib.c tests/artifacts/third_party/uzlib/src/adler32.c tests/artifacts/third_party/uzlib/src/crc32.c -o tests/artifacts/bin/uzlib_app_O2",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_MACOS (1)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "UZLIB_RC=0 COMP=127 DECOMP=128 DECOMP_MATCH=1\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 304980,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "437845dfabcd927e9cc64d6795e712d08d460fbee08b0d57b1d77cf970dea0ac",
+          "size_bytes": 70016,
+          "note": "Campaign 191-V Stage V3 uzlib -O2 macos"
+        }
+      ],
+      "build_reproducible": true,
+      "expected_output_source": "host-computed"
+    },
+    {
+      "artifact_id": "REAL-033",
+      "file_name": "uzlib_app_ios",
+      "relative_path": "tests/artifacts/bin/uzlib_app_ios",
+      "sha256": "b6ba62ee5efc35efe90fe5dfb07641adc6d643093c4793e36b0596c3ff8ebc18",
+      "size_bytes": 70000,
+      "classification": "REAL-ARTIFACT-EXECUTED",
+      "license": "Zlib / MIT",
+      "provenance": {
+        "source_file": "tests/artifacts/src/app_uzlib.c",
+        "upstream_url": "https://github.com/pfalcon/uzlib",
+        "toolchain": "Zig 0.17.0 (Clang 22.1.8 + Zig Mach-O linker + chained fixups converter)",
+        "command_line": "zig cc -target aarch64-macos -O2 tests/artifacts/src/app_uzlib.c tests/artifacts/third_party/uzlib/src/defl_static.c tests/artifacts/third_party/uzlib/src/genlz_static.c tests/artifacts/third_party/uzlib/src/tinfgzip.c tests/artifacts/third_party/uzlib/src/tinflate.c tests/artifacts/third_party/uzlib/src/tinfzlib.c tests/artifacts/third_party/uzlib/src/adler32.c tests/artifacts/third_party/uzlib/src/crc32.c -o tests/artifacts/bin/uzlib_app_ios.raw; python tests/tools/convert_to_chained_fixups.py",
+        "rebuild_script": "tests/artifacts/build_artifacts.ps1",
+        "is_synthetic_builder": false
+      },
+      "cpu_type": "CPU_TYPE_ARM64 (0x0100000C)",
+      "file_type": "MH_EXECUTE (2)",
+      "platform": "PLATFORM_IOS (2)",
+      "dependencies": [
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "admission_status": true,
+      "mapping_status": true,
+      "execution_status": true,
+      "execution_evidence": {
+        "captured_stdout": "UZLIB_RC=0 COMP=127 DECOMP=128 DECOMP_MATCH=1\n",
+        "exit_code": 0,
+        "guest_instructions_retired": 305822,
+        "test_suite": "tests/unit/stage_v3_large_opensource_tests.cpp"
+      },
+      "hash_history": [
+        {
+          "commit": "Stage V3",
+          "sha256": "b6ba62ee5efc35efe90fe5dfb07641adc6d643093c4793e36b0596c3ff8ebc18",
+          "size_bytes": 70000,
+          "note": "Campaign 191-V Stage V3 uzlib -O2 ios chained fixups"
         }
       ],
       "build_reproducible": true,

@@ -61,38 +61,39 @@ def decode_rebases(rb: bytes, segs):
         imm = b & 0x0F
         i += 1
         if op == 0x00:
-            break
+            continue
         elif op == 0x10:
             pass
         elif op == 0x20:
             seg_idx = imm
             seg_off, i = uleb128(rb, i)
+            seg_off &= 0xFFFFFFFFFFFFFFFF
         elif op == 0x30:
             d, i = uleb128(rb, i)
-            seg_off += d
+            seg_off = (seg_off + d) & 0xFFFFFFFFFFFFFFFF
         elif op == 0x40:
-            seg_off += imm * 8
+            seg_off = (seg_off + imm * 8) & 0xFFFFFFFFFFFFFFFF
         elif op == 0x50:
             for _ in range(imm):
                 records.append((seg_idx, seg_off))
-                seg_off += 8
+                seg_off = (seg_off + 8) & 0xFFFFFFFFFFFFFFFF
         elif op == 0x60:
             cnt, i = uleb128(rb, i)
             for _ in range(cnt):
                 records.append((seg_idx, seg_off))
-                seg_off += 8
+                seg_off = (seg_off + 8) & 0xFFFFFFFFFFFFFFFF
         elif op == 0x70:
             cnt, i = uleb128(rb, i)
             skip, i = uleb128(rb, i)
             for _ in range(cnt):
                 records.append((seg_idx, seg_off))
-                seg_off += 8 + skip
+                seg_off = (seg_off + 8 + skip) & 0xFFFFFFFFFFFFFFFF
         elif op == 0x80:
             cnt = imm
             skip, i = uleb128(rb, i)
             for _ in range(cnt):
                 records.append((seg_idx, seg_off))
-                seg_off += 8 + skip
+                seg_off = (seg_off + 8 + skip) & 0xFFFFFFFFFFFFFFFF
         else:
             raise ValueError(f"Unsupported rebase opcode 0x{b:02x}")
     return records
@@ -113,7 +114,7 @@ def decode_binds(bb: bytes):
         imm = b & 0x0F
         i += 1
         if op == 0x00:
-            break
+            continue
         elif op == 0x10:
             lib_ord = imm
         elif op == 0x20:
@@ -132,25 +133,26 @@ def decode_binds(bb: bytes):
         elif op == 0x70:
             seg_idx = imm
             seg_off, i = uleb128(bb, i)
+            seg_off &= 0xFFFFFFFFFFFFFFFF
         elif op == 0x80:
             d, i = uleb128(bb, i)
-            seg_off += d
+            seg_off = (seg_off + d) & 0xFFFFFFFFFFFFFFFF
         elif op == 0x90:
             records.append((seg_idx, seg_off, lib_ord, weak, sym_name, addend))
-            seg_off += 8
+            seg_off = (seg_off + 8) & 0xFFFFFFFFFFFFFFFF
         elif op == 0xA0:
             records.append((seg_idx, seg_off, lib_ord, weak, sym_name, addend))
             d, i = uleb128(bb, i)
-            seg_off += 8 + d
+            seg_off = (seg_off + 8 + d) & 0xFFFFFFFFFFFFFFFF
         elif op == 0xB0:
             records.append((seg_idx, seg_off, lib_ord, weak, sym_name, addend))
-            seg_off += 8 + imm * 8
+            seg_off = (seg_off + 8 + imm * 8) & 0xFFFFFFFFFFFFFFFF
         elif op == 0xC0:
             cnt, i = uleb128(bb, i)
             skip, i = uleb128(bb, i)
             for _ in range(cnt):
                 records.append((seg_idx, seg_off, lib_ord, weak, sym_name, addend))
-                seg_off += 8 + skip
+                seg_off = (seg_off + 8 + skip) & 0xFFFFFFFFFFFFFFFF
         else:
             raise ValueError(f"Unsupported bind opcode 0x{b:02x}")
     return records

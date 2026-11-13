@@ -1162,6 +1162,12 @@ if(BUILD_TESTING)
     add_test(NAME stage_v2_differential_cpu_tests COMMAND stage_v2_differential_cpu_tests)
     set_tests_properties(stage_v2_differential_cpu_tests PROPERTIES TIMEOUT 60)
 
+    add_executable(stage_v3_large_opensource_tests tests/unit/stage_v3_large_opensource_tests.cpp)
+    target_link_libraries(stage_v3_large_opensource_tests PRIVATE winios_core)
+    winios_set_warnings(stage_v3_large_opensource_tests)
+    add_test(NAME stage_v3_large_opensource_tests COMMAND stage_v3_large_opensource_tests)
+    set_tests_properties(stage_v3_large_opensource_tests PROPERTIES TIMEOUT 120)
+
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)
     winios_set_warnings(stage53_manifest_tests)
@@ -2059,9 +2065,10 @@ if(BUILD_TESTING)
                          snapshot_tests sndl_tests replay_tests replay_hardening_tests
                          replay_scalability_tests smp_foundation_tests smp_snapshot_tests smp_sndl_v2_tests sndl_v2_hardening_tests
                          smp_replay_tests smp_four_core_replay_tests smp_topology_scalability_tests smp_eight_core_architecture_tests smp_eight_core_replay_tests smp_eight_core_replay_hardening_tests
-                         smp_long_duration_replay_tests smp_cross_topology_tests smp_independent_state_validation_tests smp_event_corruption_stress_tests smp_large_snapshot_stress_tests smp_scheduler_fairness_tests smp_interrupt_timer_stress_tests smp_replay_performance_profile
+                         smp_cross_topology_tests smp_independent_state_validation_tests smp_event_corruption_stress_tests smp_large_snapshot_stress_tests smp_scheduler_fairness_tests smp_interrupt_timer_stress_tests smp_replay_performance_profile
                          virtual_device_bus_tests virtual_dma_descriptor_tests virtual_dma_memory_integrity_tests virtual_dma_snapshot_tests virtual_dma_smp_tests dma_payload_store_tests dma_recording_replay_tests dma_smp_determinism_tests dma_adversarial_tests dma_crash_recovery_tests dma_replay_checkpoint_tests dma_snapshot_continuation_tests dma_long_duration_stress_tests differential_validation_tests independent_recording_recovery_tests smp_endurance_certification_tests
                          PROPERTIES TIMEOUT 180)
+    set_tests_properties(smp_long_duration_replay_tests PROPERTIES TIMEOUT 400)
     set_tests_properties(threading_tests PROPERTIES TIMEOUT 120)
     set_tests_properties(inferno_launcher_tests PROPERTIES TIMEOUT 120)
 endif()

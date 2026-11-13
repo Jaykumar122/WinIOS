@@ -166,3 +166,57 @@ if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile ios_chain_app"; exit $
 & python (Join-Path (Split-Path -Parent $scriptDir) "tools\convert_to_chained_fixups.py") $rawIosChain (Join-Path $binDir "ios_chain_app")
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to convert ios_chain_app to chained fixups"; exit $LASTEXITCODE }
 Remove-Item -Force $rawIosChain -ErrorAction SilentlyContinue
+
+# Stage V3: Larger Real Open-Source Programs (sha256, cJSON v1.7.18, uzlib v2.9.5)
+$zigEnvOut = (& zig env | Out-String)
+if ($zigEnvOut -notmatch '\.lib_dir\s*=\s*"([^"]+)"') {
+    Write-Error "Failed to determine Zig lib_dir from zig env"
+    exit 1
+}
+$zigLibDir = $Matches[1].Replace('\\', '\')
+$zigDarwinInc = Join-Path $zigLibDir "libc\include\any-darwin-any"
+$tpDir = Join-Path $scriptDir "third_party"
+
+$iosLibSysStub = Join-Path $env:TEMP "winios_libSystem.B.ios.dylib"
+& zig cc -target aarch64-ios -dynamiclib -O2 -nostdlib -fno-builtin -fno-stack-protector -install_name /usr/lib/libSystem.B.dylib "-Wl,-undefined,dynamic_lookup" (Join-Path $srcDir "libsystem_lite.c") -o $iosLibSysStub
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to build temporary iOS libSystem stub"; exit $LASTEXITCODE }
+
+$shaInc = Join-Path $tpDir "sha256"
+$shaSrc = @((Join-Path $srcDir "app_sha256.c"), (Join-Path $shaInc "sha256.c"))
+$cjsonInc = Join-Path $tpDir "cjson"
+$cjsonSrc = @((Join-Path $srcDir "app_cjson.c"), (Join-Path $cjsonInc "cJSON.c"))
+$uzlibInc = Join-Path $tpDir "uzlib"
+$uzlibSrc = @(
+    (Join-Path $srcDir "app_uzlib.c"),
+    (Join-Path $uzlibInc "tinflate.c"),
+    (Join-Path $uzlibInc "defl_static.c"),
+    (Join-Path $uzlibInc "genlz77.c"),
+    (Join-Path $uzlibInc "crc32.c"),
+    (Join-Path $uzlibInc "adler32.c")
+)
+
+$v3Specs = @(
+    @{ Name = "sha256_app"; Inc = $shaInc;   Src = $shaSrc },
+    @{ Name = "cjson_app";  Inc = $cjsonInc; Src = $cjsonSrc },
+    @{ Name = "uzlib_app";  Inc = $uzlibInc; Src = $uzlibSrc }
+)
+
+foreach ($sp in $v3Specs) {
+    $outO0 = Join-Path $binDir ($sp.Name + "_O0")
+    $outO2 = Join-Path $binDir ($sp.Name + "_O2")
+    $outIosRaw = Join-Path $env:TEMP ($sp.Name + "_ios.raw")
+    $outIos = Join-Path $binDir ($sp.Name + "_ios")
+
+    & zig cc -target aarch64-macos -O0 -fno-sanitize=undefined -fstack-protector-strong "-I$($sp.Inc)" $sp.Src -o $outO0
+    if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile $($sp.Name)_O0"; exit $LASTEXITCODE }
+
+    & zig cc -target aarch64-macos -O2 -fstack-protector-strong "-I$($sp.Inc)" $sp.Src -o $outO2
+    if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile $($sp.Name)_O2"; exit $LASTEXITCODE }
+
+    & zig cc -target aarch64-ios -O2 -nostdlib "-Wl,-e,_main" -fno-sanitize=undefined -fstack-protector-strong -isystem $zigDarwinInc "-I$($sp.Inc)" $sp.Src $iosLibSysStub -o $outIosRaw
+    if ($LASTEXITCODE -ne 0) { Write-Error "Failed to compile $($sp.Name)_ios"; exit $LASTEXITCODE }
+    & python (Join-Path (Split-Path -Parent $scriptDir) "tools\convert_to_chained_fixups.py") $outIosRaw $outIos
+    if ($LASTEXITCODE -ne 0) { Write-Error "Failed to convert $($sp.Name)_ios"; exit $LASTEXITCODE }
+    Remove-Item -Force $outIosRaw -ErrorAction SilentlyContinue
+}
+Remove-Item -Force $iosLibSysStub -ErrorAction SilentlyContinue

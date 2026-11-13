@@ -451,12 +451,12 @@ bool test_cpu_simd_movi_stp_and_extended_cmp() {
     cpu.set_stack_pointer(0x80000);
     cpu.set_program_counter(0x1000);
 
-    // 1. MOVI V0.16B, #0 (0x6F00E400) after pre-filling V0
+    // 1. MOVI V0.16B, #0 (0x4F00E400) after pre-filling V0
     cpu.write_vector_register(0, CPU::VectorRegister{0x123456789ABCDEF0ULL, 0x0FEDCBA987654321ULL});
-    mem.write_u32(0x1000, 0x6F00E400u); // movi v0.16b, #0
+    mem.write_u32(0x1000, 0x4F00E400u); // movi v0.16b, #0 (Q=1, op=0, cmode=1110)
 
-    // 2. MOVI V1.16B, #0x42 (a=0, b=1, c=0 => 0x02<<16; d..h=0x02 => 0x02<<5; cmode=1110, op=1, Q=1 => 0x6F02E441)
-    mem.write_u32(0x1004, 0x6F02E441u); // movi v1.16b, #0x42
+    // 2. MOVI V1.16B, #0x42 (Q=1, op=0, cmode=1110, imm8=0x42 -> 0x4F02E441)
+    mem.write_u32(0x1004, 0x4F02E441u); // movi v1.16b, #0x42
 
     // 3. STP Q0, Q1, [SP, #-32]! -> simm7 = -2 (0x7E), opc=10, V=1, mode=3(pre), L=0 -> 0xADBF07E0 -> Rt2=1(0x0400), Rn=31(0x03E0), Rt=0 -> 0xADBF07E0?
     // Wait: simm7 = -2 = 0b1111110 = 0x7E -> (0x7E << 15) = 0x003F0000. 0xAD800000 | 0x003F0000 | (1 << 10) | (31 << 5) | 0 = 0xADBF07E0

@@ -255,10 +255,10 @@ void DarwinUserspaceEngine::configure_userspace_mmu(
         }
     }
 
-    // Dyld dylib loading region [0x20000, 0x200000) starts RW+NX for BSS/pread;
+    // Dyld dylib loading region [0x20000, 0x800000) starts RW+NX for BSS/pread;
     // minidyld calls SYS_mprotect per dylib segment to lock __TEXT -> RX and __LINKEDIT -> RO.
     if (is_dyld_session) {
-        for (std::uint64_t va = 0x20000ULL; va < 0x200000ULL && va < pt_l2_pa_; va += kPageSize) {
+        for (std::uint64_t va = 0x20000ULL; va < 0x800000ULL && va < pt_l2_pa_; va += kPageSize) {
             if (read_l3_pte(va) == 0ULL) {
                 map_userspace_pages(va, kPageSize, true, false, true, false);
             }
@@ -501,9 +501,9 @@ DarwinPipelineResult DarwinUserspaceEngine::execute_macho_with_guest_dyld(
         if (proc->brk_curr >= memory_.size()) {
             proc->brk_curr = 0x01000000ULL; // 16 MB heap region inside guest RAM
         }
-        if (proc->vm_regions.empty() && memory_.size() > 0x200000ULL) {
-            // Register minidyld's dylib loading pool [0x20000, 0x200000) so SYS_mprotect succeeds per dylib segment
-            (void)bsd_.mmap(current_pid_, 0x20000ULL, 0x1E0000ULL, 3u, 0x1002u, -1, 0);
+        if (proc->vm_regions.empty() && memory_.size() > 0x800000ULL) {
+            // Register minidyld's dylib loading pool [0x20000, 0x800000) so SYS_mprotect succeeds per dylib segment
+            (void)bsd_.mmap(current_pid_, 0x20000ULL, 0x7E0000ULL, 3u, 0x1002u, -1, 0);
         }
     }
 

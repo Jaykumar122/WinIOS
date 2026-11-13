@@ -2448,6 +2448,23 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         return true;
     }
 
+    // 4b. Floating-point Conditional Select (FCSEL)
+    if ((instruction & 0xFF200C00u) == 0x1E200C00u) {
+        static constexpr const char* kConds[] = {
+            "EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC",
+            "HI", "LS", "GE", "LT", "GT", "LE", "AL", "NV"
+        };
+        const std::uint32_t ftype = (instruction >> 22u) & 0x3u;
+        const std::uint32_t rm = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t cond = (instruction >> 12u) & 0xFu;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t rd = instruction & 0x1Fu;
+        if (ftype > 1) return false;
+        char p = (ftype == 0) ? 'S' : 'D';
+        text = "FCSEL " + fp_reg(p, rd) + ", " + fp_reg(p, rn) + ", " + fp_reg(p, rm) + ", " + std::string(kConds[cond]);
+        return true;
+    }
+
     // 5. Scalar FP immediate
     if ((instruction & 0xFF201FE0u) == 0x1E201000u) {
         const std::uint32_t ftype = (instruction >> 22u) & 0x3u;
@@ -2679,8 +2696,9 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         return true;
     }
 
-    // 8b. Advanced SIMD 3-Same Floating-Point
-    if ((instruction & 0x9F200400u) == 0x0E200400u && (((instruction >> 11u) & 0x18u) == 0x18u)) {
+    // 8b. Advanced SIMD 3-Same Floating-Point (Vector and Scalar)
+    if ((instruction & 0x8F200400u) == 0x0E200400u && (((instruction >> 11u) & 0x18u) == 0x18u)) {
+        const bool is_scalar = (instruction & 0x10000000u) != 0;
         const bool q = (instruction & 0x40000000u) != 0;
         const bool u = (instruction & 0x20000000u) != 0;
         const bool bit23 = (instruction & (1u << 23u)) != 0;
@@ -2689,29 +2707,35 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         const std::uint32_t opcode = (instruction >> 11u) & 0x1Fu;
         const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t rd = instruction & 0x1Fu;
-        if (sz == 1 && !q) return false;
+        if (sz == 1 && !q && !is_scalar) return false;
         const std::string arr = (sz == 0) ? (q ? ".4S" : ".2S") : ".2D";
         const char* m = nullptr;
         if (opcode == 0b11010) {
             if (!u) m = bit23 ? "FSUB" : "FADD";
-            else if (!bit23) m = "FADDP";
+            else if (!bit23) m = is_scalar ? nullptr : "FADDP";
+            else m = "FABD";
         } else if (opcode == 0b11011 && u && !bit23) {
             m = "FMUL";
         } else if (opcode == 0b11111 && u && !bit23) {
             m = "FDIV";
         } else if (opcode == 0b11110) {
             if (!u) m = bit23 ? "FMIN" : "FMAX";
-            else m = bit23 ? "FMINP" : "FMAXP";
+            else m = is_scalar ? nullptr : (bit23 ? "FMINP" : "FMAXP");
         } else if (opcode == 0b11000) {
             if (!u) m = bit23 ? "FMINNM" : "FMAXNM";
-            else m = bit23 ? "FMINNMP" : "FMAXNMP";
+            else m = is_scalar ? nullptr : (bit23 ? "FMINNMP" : "FMAXNMP");
         } else if (opcode == 0b11100) {
             if (!u && !bit23) m = "FCMEQ";
             else if (u && !bit23) m = "FCMGE";
             else if (u && bit23) m = "FCMGT";
         }
         if (m) {
-            text = std::string(m) + " V" + std::to_string(rd) + arr + ", V" + std::to_string(rn) + arr + ", V" + std::to_string(rm) + arr;
+            if (is_scalar) {
+                const char p = (sz == 0) ? 'S' : 'D';
+                text = std::string(m) + " " + fp_reg(p, rd) + ", " + fp_reg(p, rn) + ", " + fp_reg(p, rm);
+            } else {
+                text = std::string(m) + " V" + std::to_string(rd) + arr + ", V" + std::to_string(rn) + arr + ", V" + std::to_string(rm) + arr;
+            }
             return true;
         }
     }
@@ -2740,6 +2764,7 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         else if (opcode == 0b01101 && size < 3) m = u ? "UMIN" : "SMIN";
         else if (opcode == 0b10000) m = u ? "SUB" : "ADD";
         else if (opcode == 0b10001) m = u ? "CMEQ" : "CMTST";
+        else if (opcode == 0b10010 && size < 3) m = u ? "MLS" : "MLA";
         else if (opcode == 0b10011 && !u && size < 3) m = "MUL";
         else if (opcode == 0b10111 && !u) m = "ADDP";
 
@@ -2777,8 +2802,9 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         }
     }
 
-    // 11. Advanced SIMD 2-Reg Misc (ABS, NEG, Zero comparisons, Narrowing)
-    if ((instruction & 0x9F200C00u) == 0x0E200800u) {
+    // 11. Advanced SIMD 2-Reg Misc (ABS, NEG, Zero comparisons, Narrowing, Scalar Float)
+    if ((instruction & 0x8F200C00u) == 0x0E200800u) {
+        const bool is_scalar = (instruction & 0x10000000u) != 0;
         const bool q = (instruction & 0x40000000u) != 0;
         const bool u = (instruction & 0x20000000u) != 0;
         const std::uint32_t size = (instruction >> 22u) & 0x3u;
@@ -2810,7 +2836,7 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
             } else { // Floating-Point
                 const bool bit23 = (size & 2u) != 0;
                 const std::uint32_t sz = size & 1u;
-                if (bit23 && (sz == 0 || q)) {
+                if (bit23 && (sz == 0 || q || is_scalar)) {
                     const std::string fp_arr = (sz == 0) ? (q ? ".4S" : ".2S") : ".2D";
                     const char* m = nullptr;
                     if (op_lo == 0b11001) m = u ? "FCMGE" : "FCMGT";
@@ -2818,7 +2844,10 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
                     else if (op_lo == 0b11101 && !u) m = "FCMLT";
                     else if (op_lo == 0b11111) m = u ? "FNEG" : "FABS";
                     if (m) {
-                        if (op_lo == 0b11111) {
+                        if (is_scalar) {
+                            const char p = (sz == 0) ? 'S' : 'D';
+                            text = std::string(m) + " " + fp_reg(p, rd) + ", " + fp_reg(p, rn);
+                        } else if (op_lo == 0b11111) {
                             text = std::string(m) + " V" + std::to_string(rd) + fp_arr + ", V" + std::to_string(rn) + fp_arr;
                         } else {
                             text = std::string(m) + " V" + std::to_string(rd) + fp_arr + ", V" + std::to_string(rn) + fp_arr + ", #0";
@@ -2828,7 +2857,7 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
                 }
             }
         } else if (op_hi == 0b00001) {
-            if ((op_lo == 0b00101 || op_lo == 0b01001) && size < 3) {
+            if ((op_lo == 0b00101 || op_lo == 0b01001) && size < 3 && !is_scalar) {
                 const char* const narr_dst[2][3] = {
                     {".8B", ".4H", ".2S"},
                     {".16B", ".8H", ".4S"}
@@ -2846,17 +2875,31 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
                     text = std::string(m) + " V" + std::to_string(rd) + d_arr + ", V" + std::to_string(rn) + s_arr;
                     return true;
                 }
+            } else if (op_lo == 0b00111 && size < 3 && !is_scalar) {
+                const char* const narr_src[3] = {".8B", ".4H", ".2S"};
+                const char* const narr_src2[3] = {".16B", ".8H", ".4S"};
+                const char* const wide_dst[3] = {".8H", ".4S", ".2D"};
+                const std::string s_arr = q ? narr_src2[size] : narr_src[size];
+                const std::string d_arr = wide_dst[size];
+                const char* m = q ? "SHLL2" : "SHLL";
+                text = std::string(m) + " V" + std::to_string(rd) + d_arr + ", V" + std::to_string(rn) + s_arr + ", #" + std::to_string(8u << size);
+                return true;
             } else {
                 const bool bit23 = (size & 2u) != 0;
                 const std::uint32_t sz = size & 1u;
-                if (sz == 0 || q) {
+                if (sz == 0 || q || is_scalar) {
                     const std::string fp_arr = (sz == 0) ? (q ? ".4S" : ".2S") : ".2D";
                     const char* m = nullptr;
                     if (op_lo == 0b11111 && u && bit23) m = "FSQRT";
                     else if (op_lo == 0b11011 && !bit23) m = u ? "UCVTF" : "SCVTF";
                     else if (op_lo == 0b10111 && bit23) m = u ? "FCVTZU" : "FCVTZS";
                     if (m) {
-                        text = std::string(m) + " V" + std::to_string(rd) + fp_arr + ", V" + std::to_string(rn) + fp_arr;
+                        if (is_scalar) {
+                            const char p = (sz == 0) ? 'S' : 'D';
+                            text = std::string(m) + " " + fp_reg(p, rd) + ", " + fp_reg(p, rn);
+                        } else {
+                            text = std::string(m) + " V" + std::to_string(rd) + fp_arr + ", V" + std::to_string(rn) + fp_arr;
+                        }
                         return true;
                     }
                 }
@@ -2883,6 +2926,9 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
             else if (opcode == 0b00100) m = u ? (q ? "USUBL2" : "USUBL") : (q ? "SSUBL2" : "SSUBL");
             else if (opcode == 0b00010) m = u ? (q ? "UADDW2" : "UADDW") : (q ? "SADDW2" : "SADDW");
             else if (opcode == 0b00110) m = u ? (q ? "USUBW2" : "USUBW") : (q ? "SSUBW2" : "SSUBW");
+            else if (opcode == 0b11000) m = u ? (q ? "UMULL2" : "UMULL") : (q ? "SMULL2" : "SMULL");
+            else if (opcode == 0b10000) m = u ? (q ? "UMLAL2" : "UMLAL") : (q ? "SMLAL2" : "SMLAL");
+            else if (opcode == 0b10100) m = u ? (q ? "UMLSL2" : "UMLSL") : (q ? "SMLSL2" : "SMLSL");
             if (m) {
                 const std::string n_arr = (opcode == 0b00010 || opcode == 0b00110) ? d_arr : m_arr;
                 text = std::string(m) + " V" + std::to_string(rd) + d_arr + ", V" + std::to_string(rn) + n_arr + ", V" + std::to_string(rm) + m_arr;
@@ -2925,7 +2971,18 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         if (opcode == 0b00000) m = u ? "USHR" : "SSHR";
         else if (opcode == 0b00100) m = u ? "URSHR" : "SRSHR";
         else if (opcode == 0b01010 && !u) m = "SHL";
-        else if (opcode == 0b10100 && esz < 3) {
+        else if ((opcode == 0b10000 || opcode == 0b10001) && esz < 3) {
+            const char* const narr_dst[2][3] = {
+                {".8B", ".4H", ".2S"},
+                {".16B", ".8H", ".4S"}
+            };
+            const char* const wide_src[3] = {".8H", ".4S", ".2D"};
+            const std::string d_arr = narr_dst[q ? 1 : 0][esz];
+            const std::string s_arr = wide_src[esz];
+            const char* wm = (opcode == 0b10001) ? (q ? "RSHRN2" : "RSHRN") : (q ? "SHRN2" : "SHRN");
+            text = std::string(wm) + " V" + std::to_string(rd) + d_arr + ", V" + std::to_string(rn) + s_arr + ", #" + std::to_string(shift);
+            return true;
+        } else if (opcode == 0b10100 && esz < 3) {
             const unsigned shift_left =
                 (esz == 2) ? (immhb & 0x1Fu) : (esz == 1) ? (immhb & 0x0Fu) : (immhb & 0x07u);
             const char* const wide_arr[3] = {".8H", ".4S", ".2D"};
@@ -4285,7 +4342,7 @@ void CPU::deliver_architectural_exception(const ArchitecturalException& exc) {
     if (smp_cluster_) {
         smp_cluster_->clear_exclusive_reservation(core_id_);
     }
-    const unsigned prev_el = current_el_;
+    const unsigned prev_el = static_cast<unsigned>(current_el_);
     const bool prev_spsel = sp_sel_;
     const std::uint8_t prev_daif = daif_;
     const std::uint64_t source_pc = exc.faulting_pc ? exc.faulting_pc : program_counter_;
@@ -4381,7 +4438,7 @@ void CPU::raise_synchronous_exception(const SynchronousException& exception) {
     ArchitecturalException exc{};
     exc.type = ExceptionType::Synchronous;
     exc.ec = exception.ec;
-    exc.originating_el = current_el_;
+    exc.originating_el = static_cast<unsigned>(current_el_);
     exc.target_el = 1;
     const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
                           exception.ec == ExceptionClass::HvcAArch64 ||
@@ -4399,7 +4456,7 @@ void CPU::raise_el2_exception(const SynchronousException& exception, bool from_l
     ArchitecturalException exc{};
     exc.type = ExceptionType::Synchronous;
     exc.ec = exception.ec;
-    exc.originating_el = current_el_;
+    exc.originating_el = static_cast<unsigned>(current_el_);
     exc.target_el = 2;
     const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
                           exception.ec == ExceptionClass::HvcAArch64 ||
@@ -4419,7 +4476,7 @@ void CPU::raise_el3_exception(const SynchronousException& exception, bool from_l
     ArchitecturalException exc{};
     exc.type = ExceptionType::Synchronous;
     exc.ec = exception.ec;
-    exc.originating_el = current_el_;
+    exc.originating_el = static_cast<unsigned>(current_el_);
     exc.target_el = 3;
     const bool is_call = (exception.ec == ExceptionClass::SvcAArch64 ||
                           exception.ec == ExceptionClass::HvcAArch64 ||
@@ -4436,7 +4493,7 @@ void CPU::raise_el3_asynchronous_exception(bool is_fiq, bool from_lower_el, std:
     (void)from_lower_el;
     ArchitecturalException exc{};
     exc.type = is_fiq ? ExceptionType::FIQ : ExceptionType::IRQ;
-    exc.originating_el = current_el_;
+    exc.originating_el = static_cast<unsigned>(current_el_);
     exc.target_el = 3;
     exc.faulting_pc = program_counter_;
     exc.preferred_return = program_counter_;
@@ -4637,7 +4694,7 @@ bool CPU::check_pending_interrupts() {
 void CPU::raise_asynchronous_exception(bool is_fiq, std::uint32_t intid, bool is_virtual, std::uint8_t priority) {
     ArchitecturalException exc{};
     exc.type = is_fiq ? ExceptionType::FIQ : ExceptionType::IRQ;
-    exc.originating_el = current_el_;
+    exc.originating_el = static_cast<unsigned>(current_el_);
     exc.target_el = 1;
     exc.faulting_pc = program_counter_;
     exc.preferred_return = program_counter_;
@@ -4652,7 +4709,7 @@ void CPU::raise_el2_asynchronous_exception(bool is_fiq, bool from_lower_el, std:
     (void)from_lower_el;
     ArchitecturalException exc{};
     exc.type = is_fiq ? ExceptionType::FIQ : ExceptionType::IRQ;
-    exc.originating_el = current_el_;
+    exc.originating_el = static_cast<unsigned>(current_el_);
     exc.target_el = 2;
     exc.faulting_pc = program_counter_;
     exc.preferred_return = program_counter_;
@@ -7627,6 +7684,29 @@ void CPU::step(Memory& guest_memory) {
         return;
     }
 
+    // Floating-point Conditional Select (FCSEL)
+    if ((instruction & 0xFF200C00u) == 0x1E200C00u) {
+        const std::uint32_t ftype = (instruction >> 22u) & 0x3u;
+        const std::uint32_t rm = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t cond = (instruction >> 12u) & 0xFu;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t rd = instruction & 0x1Fu;
+        const bool pass = condition_holds(cond, nzcv_);
+        const std::uint32_t src = pass ? rn : rm;
+
+        if (ftype == 0) { // Single precision
+            write_s_register(rd, read_s_register(src));
+        } else if (ftype == 1) { // Double precision
+            write_d_register(rd, read_d_register(src));
+        } else {
+            throw std::runtime_error("Unsupported FCSEL ftype");
+        }
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+
     // Phase 35: ERET — exception return.
     // Restores PC from ELR_EL1 and PSTATE from SPSR_EL1.
     // Phase 35 + Phase 40: ERET
@@ -7639,7 +7719,7 @@ void CPU::step(Memory& guest_memory) {
             }
             throw std::runtime_error("Privilege violation: ERET at EL0");
         }
-        const unsigned prev_el = current_el_;
+        const unsigned prev_el = static_cast<unsigned>(current_el_);
         const bool prev_spsel = sp_sel_;
         const std::uint8_t prev_daif = daif_;
         const std::uint32_t spsr = (current_el_ == 3) ? spsr_el3_ : ((current_el_ == 2) ? spsr_el2_ : spsr_el1_);
@@ -7658,10 +7738,10 @@ void CPU::step(Memory& guest_memory) {
                 il_         = true;
                 pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
                 program_counter_ = new_pc;
-                emit_trace(false, false, 0, true, new_pc, spsr, current_el_);
+                emit_trace(false, false, 0, true, new_pc, spsr, static_cast<unsigned>(current_el_));
                 if (!is_halted_.load(std::memory_order_acquire)) {
                     if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-                        emit_context_changed_trace(instruction_address, new_pc, prev_el, current_el_, prev_spsel, sp_sel_,
+                        emit_context_changed_trace(instruction_address, new_pc, prev_el, static_cast<unsigned>(current_el_), prev_spsel, sp_sel_,
                                                    winios::trace::ContextChangeReason::ExceptionReturn, prev_daif, daif_);
                     }
                 }
@@ -7815,7 +7895,7 @@ void CPU::step(Memory& guest_memory) {
             emit_trace();
             if (spsel_changed && !is_halted_.load(std::memory_order_acquire)) {
                 if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-                    emit_context_changed_trace(instruction_address, program_counter_, current_el_, current_el_, prev_spsel, sp_sel_,
+                    emit_context_changed_trace(instruction_address, program_counter_, static_cast<unsigned>(current_el_), static_cast<unsigned>(current_el_), prev_spsel, sp_sel_,
                                                winios::trace::ContextChangeReason::RegisterBankSelect, daif_, daif_);
                 }
             }
@@ -9270,7 +9350,7 @@ void CPU::step(Memory& guest_memory) {
         emit_trace(false, false, 0, false, 0, 0, 0, true, key, sysreg_trace_val, !is_read);
         if (spsel_changed && !is_halted_.load(std::memory_order_acquire)) {
             if (trace_manager_ && trace_manager_->should_trace(winios::trace::TraceEventType::ContextChanged, static_cast<std::uint16_t>(core_id_))) {
-                emit_context_changed_trace(instruction_address, program_counter_, current_el_, current_el_, prev_spsel, sp_sel_,
+                emit_context_changed_trace(instruction_address, program_counter_, static_cast<unsigned>(current_el_), static_cast<unsigned>(current_el_), prev_spsel, sp_sel_,
                                            winios::trace::ContextChangeReason::RegisterBankSelect, daif_, daif_);
             }
         }
@@ -9433,10 +9513,17 @@ void CPU::step(Memory& guest_memory) {
                 imm64 = (imm32 << 32u) | imm32;
                 if (op) is_mvni = true;
             } else if (cmode == 0b1110) {
-                // 8-bit element: replicate imm8 across all bytes
-                imm64 = imm8 * 0x0101010101010101ULL;
+                if (!op) {
+                    // 8-bit element: replicate imm8 across all bytes
+                    imm64 = imm8 * 0x0101010101010101ULL;
+                } else {
+                    // 64-bit scalar / vector with bitmask
+                    for (unsigned b = 0; b < 8; ++b) {
+                        if ((imm8 >> b) & 1u) imm64 |= (0xFFULL << (b * 8u));
+                    }
+                }
             } else if (cmode == 0b1111) {
-                // 64-bit scalar / vector with bitmask
+                // Floating-point or 64-bit bitmask
                 for (unsigned b = 0; b < 8; ++b) {
                     if ((imm8 >> b) & 1u) imm64 |= (0xFFULL << (b * 8u));
                 }
@@ -9482,6 +9569,26 @@ void CPU::step(Memory& guest_memory) {
                 const std::uint64_t res = (widened << shift_left) & vec_cmp_mask(true, desz);
                 set_vec_lane(out, i, desz, res);
             }
+            write_vector_register(rd, out);
+            program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
+            emit_trace();
+            return;
+        } else if (opcode == 0b10000 || opcode == 0b10001) { // SHRN (q=0) / SHRN2 (q=1), RSHRN
+            if (esz >= 3) {
+                throw std::runtime_error("Unsupported shift-right-narrow element size");
+            }
+            const unsigned lane_count = 8u >> esz;
+            out = q ? read_vector_register(rd) : VectorRegister{};
+            const unsigned dst_offset = q ? lane_count : 0u;
+            for (unsigned i = 0; i < lane_count; ++i) {
+                std::uint64_t val = get_vec_lane(n_val, i, esz + 1u);
+                if (opcode == 0b10001 && shift > 0) {
+                    val += (1ULL << (shift - 1u));
+                }
+                const std::uint64_t res = (val >> shift) & vec_cmp_mask(true, esz);
+                set_vec_lane(out, dst_offset + i, esz, res);
+            }
+            if (!q) out.high = 0;
             write_vector_register(rd, out);
             program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
             emit_trace();
@@ -9587,8 +9694,9 @@ void CPU::step(Memory& guest_memory) {
         return;
     }
 
-    // 4. Advanced SIMD 2-Reg Misc (ABS, NEG, Zero comparisons, Narrowing)
-    if ((instruction & 0x9F200C00u) == 0x0E200800u) {
+    // 4. Advanced SIMD 2-Reg Misc (ABS, NEG, Zero comparisons, Narrowing, Scalar Float)
+    if ((instruction & 0x8F200C00u) == 0x0E200800u) {
+        const bool is_scalar = (instruction & 0x10000000u) != 0;
         const bool q = (instruction & 0x40000000u) != 0;
         const bool u = (instruction & 0x20000000u) != 0;
         const std::uint32_t size = (instruction >> 22u) & 0x3u;
@@ -9599,10 +9707,10 @@ void CPU::step(Memory& guest_memory) {
 
         if (op_hi == 0b00000) {
             if ((op_lo & 0x8u) == 0) { // Integer 2-reg misc
-                if (size == 3 && !q) throw std::runtime_error("1D 2-reg misc not supported");
+                if (size == 3 && !q && !is_scalar) throw std::runtime_error("1D 2-reg misc not supported");
                 const VectorRegister n_val = read_vector_register(rn);
                 VectorRegister out{};
-                const unsigned lane_count = q ? (16u >> size) : (8u >> size);
+                const unsigned lane_count = is_scalar ? 1u : (q ? (16u >> size) : (8u >> size));
                 for (unsigned i = 0; i < lane_count; ++i) {
                     const std::uint64_t val = get_vec_lane(n_val, i, size);
                     const std::int64_t sval = sign_extend(val, size);
@@ -9625,7 +9733,12 @@ void CPU::step(Memory& guest_memory) {
                     }
                     set_vec_lane(out, i, size, res);
                 }
-                if (!q) out.high = 0;
+                if (is_scalar) {
+                    out.high = 0;
+                    if (size < 3) out.low &= vec_cmp_mask(true, size);
+                } else if (!q) {
+                    out.high = 0;
+                }
                 write_vector_register(rd, out);
                 program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
@@ -9633,11 +9746,11 @@ void CPU::step(Memory& guest_memory) {
             } else { // Floating-point 2-reg misc (FABS, FNEG, FCMEQ0, FCMGE0, FCMGT0, FCMLE0, FCMLT0)
                 const bool bit23 = (size & 2u) != 0;
                 const std::uint32_t sz = size & 1u;
-                if (!bit23 || (sz == 1 && !q)) {
+                if (!bit23 || (sz == 1 && !q && !is_scalar)) {
                     throw std::runtime_error("Invalid 2-reg misc float encoding");
                 }
                 const unsigned esz = (sz == 0) ? 2u : 3u;
-                const unsigned lane_count = q ? (16u >> esz) : (8u >> esz);
+                const unsigned lane_count = is_scalar ? 1u : (q ? (16u >> esz) : (8u >> esz));
                 const VectorRegister n_val = read_vector_register(rn);
                 VectorRegister out{};
                 for (unsigned i = 0; i < lane_count; ++i) {
@@ -9673,14 +9786,19 @@ void CPU::step(Memory& guest_memory) {
                     }
                     set_vec_lane(out, i, esz, res);
                 }
-                if (!q) out.high = 0;
+                if (is_scalar) {
+                    out.high = 0;
+                    if (sz == 0) out.low &= 0xFFFFFFFFull;
+                } else if (!q) {
+                    out.high = 0;
+                }
                 write_vector_register(rd, out);
                 program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
                 return;
             }
         } else if (op_hi == 0b00001) {
-            if ((op_lo == 0b00101 || op_lo == 0b01001) && size < 3) { // Narrowing (XTN, SQXTN, UQXTN)
+            if ((op_lo == 0b00101 || op_lo == 0b01001) && size < 3 && !is_scalar) { // Narrowing (XTN, SQXTN, UQXTN)
                 int op = 0;
                 if (op_lo == 0b00101 && !u) op = 0; // XTN
                 else if (op_lo == 0b01001 && !u) op = 1; // SQXTN
@@ -9711,14 +9829,30 @@ void CPU::step(Memory& guest_memory) {
                 program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
                 return;
+            } else if (op_lo == 0b00111 && size < 3 && !is_scalar) { // SHLL (q=0) / SHLL2 (q=1)
+                const unsigned shift = 8u << size;
+                const unsigned desz = size + 1u;
+                const unsigned lane_count = 8u >> size;
+                const unsigned src_offset = q ? lane_count : 0u;
+                const VectorRegister n_val = read_vector_register(rn);
+                VectorRegister out{};
+                for (unsigned i = 0; i < lane_count; ++i) {
+                    const std::uint64_t raw = get_vec_lane(n_val, src_offset + i, size);
+                    const std::uint64_t res = (raw << shift) & vec_cmp_mask(true, desz);
+                    set_vec_lane(out, i, desz, res);
+                }
+                write_vector_register(rd, out);
+                program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
+                emit_trace();
+                return;
             } else if (op_lo == 0b11111 || op_lo == 0b11011 || op_lo == 0b10111) { // Floating-point conversions & FSQRT
                 const bool bit23 = (size & 2u) != 0;
                 const std::uint32_t sz = size & 1u;
-                if (sz == 1 && !q) {
+                if (sz == 1 && !q && !is_scalar) {
                     throw std::runtime_error("1D 2-reg misc float is unallocated");
                 }
                 const unsigned esz = (sz == 0) ? 2u : 3u;
-                const unsigned lane_count = q ? (16u >> esz) : (8u >> esz);
+                const unsigned lane_count = is_scalar ? 1u : (q ? (16u >> esz) : (8u >> esz));
                 const VectorRegister n_val = read_vector_register(rn);
                 VectorRegister out{};
                 for (unsigned i = 0; i < lane_count; ++i) {
@@ -9756,7 +9890,12 @@ void CPU::step(Memory& guest_memory) {
                     }
                     set_vec_lane(out, i, esz, res);
                 }
-                if (!q) out.high = 0;
+                if (is_scalar) {
+                    out.high = 0;
+                    if (sz == 0) out.low &= 0xFFFFFFFFull;
+                } else if (!q) {
+                    out.high = 0;
+                }
                 write_vector_register(rd, out);
                 program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
                 emit_trace();
@@ -9797,6 +9936,23 @@ void CPU::step(Memory& guest_memory) {
                 const std::uint64_t b_raw = get_vec_lane(m_val, src_offset + i, size);
                 const std::uint64_t b = !u ? static_cast<std::uint64_t>(sign_extend(b_raw, size)) : b_raw;
                 res = (opcode == 0b00010) ? (a + b) : (a - b);
+            } else if (opcode == 0b11000 || opcode == 0b10000 || opcode == 0b10100) { // SMULL/UMULL, SMLAL/UMLAL, SMLSL/UMLSL
+                const std::uint64_t a_raw = get_vec_lane(n_val, src_offset + i, size);
+                const std::uint64_t b_raw = get_vec_lane(m_val, src_offset + i, size);
+                std::uint64_t prod = 0;
+                if (!u) {
+                    const std::int64_t a = sign_extend(a_raw, size);
+                    const std::int64_t b = sign_extend(b_raw, size);
+                    prod = static_cast<std::uint64_t>(a * b);
+                } else {
+                    prod = a_raw * b_raw;
+                }
+                if (opcode == 0b11000) {
+                    res = prod;
+                } else {
+                    const std::uint64_t acc = get_vec_lane(read_vector_register(rd), i, desz);
+                    res = (opcode == 0b10000) ? (acc + prod) : (acc - prod);
+                }
             } else {
                 throw std::runtime_error("Unsupported 3-different opcode");
             }
@@ -9808,8 +9964,9 @@ void CPU::step(Memory& guest_memory) {
         return;
     }
 
-    // 5b. Advanced SIMD 3-Same Floating-Point
-    if ((instruction & 0x9F200400u) == 0x0E200400u && (((instruction >> 11u) & 0x18u) == 0x18u)) {
+    // 5b. Advanced SIMD 3-Same Floating-Point (Vector and Scalar)
+    if ((instruction & 0x8F200400u) == 0x0E200400u && (((instruction >> 11u) & 0x18u) == 0x18u)) {
+        const bool is_scalar = (instruction & 0x10000000u) != 0;
         const bool q = (instruction & 0x40000000u) != 0;
         const bool u = (instruction & 0x20000000u) != 0;
         const bool bit23 = (instruction & (1u << 23u)) != 0;
@@ -9819,7 +9976,7 @@ void CPU::step(Memory& guest_memory) {
         const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t rd = instruction & 0x1Fu;
 
-        if (sz == 1 && !q) {
+        if (sz == 1 && !q && !is_scalar) {
             throw std::runtime_error("1D SIMD 3-same float is unallocated");
         }
 
@@ -9828,9 +9985,9 @@ void CPU::step(Memory& guest_memory) {
         VectorRegister out{};
 
         const unsigned esz = (sz == 0) ? 2u : 3u;
-        const unsigned lane_count = q ? (16u >> esz) : (8u >> esz);
+        const unsigned lane_count = is_scalar ? 1u : (q ? (16u >> esz) : (8u >> esz));
 
-        const bool is_pairwise = u && (opcode == 0b11010 || opcode == 0b11110 || opcode == 0b11000);
+        const bool is_pairwise = !is_scalar && u && ((opcode == 0b11010 && !bit23) || opcode == 0b11110 || opcode == 0b11000);
         if (is_pairwise) {
             const unsigned half = lane_count / 2;
             for (unsigned i = 0; i < half; ++i) {
@@ -9882,7 +10039,9 @@ void CPU::step(Memory& guest_memory) {
                     const float a = std::bit_cast<float>(static_cast<std::uint32_t>(get_vec_lane(n_val, i, 2)));
                     const float b = std::bit_cast<float>(static_cast<std::uint32_t>(get_vec_lane(m_val, i, 2)));
                     if (opcode == 0b11010) {
-                        res = std::bit_cast<std::uint32_t>(bit23 ? (a - b) : (a + b)); // FSUB / FADD
+                        if (!u) res = std::bit_cast<std::uint32_t>(bit23 ? (a - b) : (a + b)); // FSUB / FADD
+                        else if (u && bit23) res = std::bit_cast<std::uint32_t>(std::fabs(a - b)); // FABD
+                        else throw std::runtime_error("Unsupported 3-same float opcode");
                     } else if (opcode == 0b11011 && u && !bit23) { // FMUL
                         res = std::bit_cast<std::uint32_t>(a * b);
                     } else if (opcode == 0b11111 && u && !bit23) { // FDIV
@@ -9903,7 +10062,9 @@ void CPU::step(Memory& guest_memory) {
                     const double a = std::bit_cast<double>(get_vec_lane(n_val, i, 3));
                     const double b = std::bit_cast<double>(get_vec_lane(m_val, i, 3));
                     if (opcode == 0b11010) {
-                        res = std::bit_cast<std::uint64_t>(bit23 ? (a - b) : (a + b)); // FSUB / FADD
+                        if (!u) res = std::bit_cast<std::uint64_t>(bit23 ? (a - b) : (a + b)); // FSUB / FADD
+                        else if (u && bit23) res = std::bit_cast<std::uint64_t>(std::fabs(a - b)); // FABD
+                        else throw std::runtime_error("Unsupported 3-same float opcode");
                     } else if (opcode == 0b11011 && u && !bit23) { // FMUL
                         res = std::bit_cast<std::uint64_t>(a * b);
                     } else if (opcode == 0b11111 && u && !bit23) { // FDIV
@@ -9924,7 +10085,12 @@ void CPU::step(Memory& guest_memory) {
                 set_vec_lane(out, i, esz, res);
             }
         }
-        if (!q) out.high = 0;
+        if (is_scalar) {
+            out.high = 0;
+            if (sz == 0) out.low &= 0xFFFFFFFFull;
+        } else if (!q) {
+            out.high = 0;
+        }
         write_vector_register(rd, out);
         program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
         emit_trace();
@@ -9978,6 +10144,9 @@ void CPU::step(Memory& guest_memory) {
                     res = u ? umax_op(left, right, size) : smax_op(left, right, size);
                 } else if (opcode == 0b01101 && size < 3) { // SMIN (u=0), UMIN (u=1)
                     res = u ? umin_op(left, right, size) : smin_op(left, right, size);
+                } else if (opcode == 0b10010 && size < 3) { // MLA (u=0), MLS (u=1)
+                    const std::uint64_t acc = get_vec_lane(read_vector_register(rd), i, size);
+                    res = (u ? (acc - (left * right)) : (acc + (left * right))) & vec_cmp_mask(true, size);
                 } else if (opcode == 0b10011 && !u && size < 3) { // MUL
                     res = left * right;
                 } else if (opcode == 0b10001) { // CMTST (u=0), CMEQ (u=1)
@@ -9989,7 +10158,9 @@ void CPU::step(Memory& guest_memory) {
                 } else if (opcode == 0b01000) { // SSHL (u=0), USHL (u=1)
                     res = u ? ushl_op(left, right, size) : sshl_op(left, right, size);
                 } else {
-                    throw std::runtime_error("Unsupported 3-same integer opcode");
+                    char hex_buf[32];
+                    std::snprintf(hex_buf, sizeof(hex_buf), "0x%08X", instruction);
+                    throw std::runtime_error("Unsupported 3-same integer opcode " + std::string(hex_buf) + " op=" + std::to_string(opcode) + " u=" + std::to_string(u));
                 }
                 set_vec_lane(out, i, size, res);
             }
@@ -10063,6 +10234,134 @@ void CPU::step(Memory& guest_memory) {
         emit_trace();
         return;
     }
+
+    // Advanced SIMD load/store multiple structures (LD1-LD4, ST1-ST4)
+    if ((instruction & 0xBF000000u) == 0x0C000000u) {
+        const bool q = (instruction & 0x40000000u) != 0;
+        const bool is_load = (instruction & 0x00400000u) != 0;
+        const bool has_post_idx = (instruction & 0x00800000u) != 0;
+        const std::uint32_t rm = (instruction >> 16u) & 0x1Fu;
+        const std::uint32_t opc = (instruction >> 12u) & 0xFu;
+        const std::uint32_t sz = (instruction >> 10u) & 0x3u;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t rt = instruction & 0x1Fu;
+
+        unsigned num_regs = 0;
+        bool interleaved = false;
+        if (opc == 0b0000) { num_regs = 4; interleaved = true; }
+        else if (opc == 0b0100) { num_regs = 3; interleaved = true; }
+        else if (opc == 0b1000) { num_regs = 2; interleaved = true; }
+        else if (opc == 0b0111) { num_regs = 1; interleaved = false; }
+        else if (opc == 0b1010) { num_regs = 2; interleaved = false; }
+        else if (opc == 0b0110) { num_regs = 3; interleaved = false; }
+        else if (opc == 0b0010) { num_regs = 4; interleaved = false; }
+        else {
+            throw std::runtime_error("Unsupported SIMD multiple structure opcode");
+        }
+
+        const unsigned ebytes = 1u << sz;
+        const unsigned reg_bytes = q ? 16u : 8u;
+        const unsigned elements_per_reg = reg_bytes / ebytes;
+        const unsigned total_bytes = num_regs * reg_bytes;
+
+        std::uint64_t addr = (rn == CPU::kRegisterCount) ? get_stack_pointer() : read_register(rn);
+
+        if (is_load) {
+            std::uint8_t buf[64];
+            for (unsigned b = 0; b < total_bytes; ++b) {
+                buf[b] = memory.read_u8(pc_as_memory_offset(checked_add_address(addr, b, "SIMD load multiple")));
+            }
+            if (interleaved) {
+                VectorRegister regs[4]{};
+                for (unsigned r = 0; r < num_regs; ++r) {
+                    regs[r] = read_vector_register((rt + r) % 32u);
+                    if (!q) regs[r].high = 0;
+                }
+                unsigned buf_idx = 0;
+                for (unsigned e = 0; e < elements_per_reg; ++e) {
+                    for (unsigned r = 0; r < num_regs; ++r) {
+                        std::uint64_t elem_val = 0;
+                        for (unsigned b = 0; b < ebytes; ++b) {
+                            elem_val |= static_cast<std::uint64_t>(buf[buf_idx++]) << (b * 8u);
+                        }
+                        set_vec_lane(regs[r], e, sz, elem_val);
+                    }
+                }
+                for (unsigned r = 0; r < num_regs; ++r) {
+                    write_vector_register((rt + r) % 32u, regs[r]);
+                }
+            } else {
+                unsigned buf_idx = 0;
+                for (unsigned r = 0; r < num_regs; ++r) {
+                    VectorRegister vr{};
+                    if (!q) {
+                        std::memcpy(&vr.low, &buf[buf_idx], 8);
+                        vr.high = 0;
+                        buf_idx += 8;
+                    } else {
+                        std::memcpy(&vr.low, &buf[buf_idx], 8);
+                        std::memcpy(&vr.high, &buf[buf_idx + 8], 8);
+                        buf_idx += 16;
+                    }
+                    write_vector_register((rt + r) % 32u, vr);
+                }
+            }
+        } else {
+            std::uint8_t buf[64];
+            if (interleaved) {
+                VectorRegister regs[4]{};
+                for (unsigned r = 0; r < num_regs; ++r) {
+                    regs[r] = read_vector_register((rt + r) % 32u);
+                }
+                unsigned buf_idx = 0;
+                for (unsigned e = 0; e < elements_per_reg; ++e) {
+                    for (unsigned r = 0; r < num_regs; ++r) {
+                        std::uint64_t elem_val = get_vec_lane(regs[r], e, sz);
+                        for (unsigned b = 0; b < ebytes; ++b) {
+                            buf[buf_idx++] = static_cast<std::uint8_t>((elem_val >> (b * 8u)) & 0xFFu);
+                        }
+                    }
+                }
+            } else {
+                unsigned buf_idx = 0;
+                for (unsigned r = 0; r < num_regs; ++r) {
+                    VectorRegister vr = read_vector_register((rt + r) % 32u);
+                    if (!q) {
+                        std::memcpy(&buf[buf_idx], &vr.low, 8);
+                        buf_idx += 8;
+                    } else {
+                        std::memcpy(&buf[buf_idx], &vr.low, 8);
+                        std::memcpy(&buf[buf_idx + 8], &vr.high, 8);
+                        buf_idx += 16;
+                    }
+                }
+            }
+            for (unsigned b = 0; b < total_bytes; ++b) {
+                memory.write_u8(pc_as_memory_offset(checked_add_address(addr, b, "SIMD store multiple")), buf[b]);
+            }
+            note_normal_store(addr, total_bytes);
+        }
+
+        if (has_post_idx) {
+            std::uint64_t next_addr = 0;
+            if (rm == 31u) {
+                next_addr = checked_add_address(addr, total_bytes, "SIMD multiple post-index");
+            } else {
+                next_addr = checked_add_address(addr, read_register(rm), "SIMD multiple post-index");
+            }
+            if (rn == CPU::kRegisterCount) {
+                set_stack_pointer(next_addr);
+            } else {
+                write_register(rn, next_addr);
+            }
+        }
+
+        program_counter_ = checked_add_address(
+            instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
+
     // Phase 36: only a genuinely unallocated/reserved encoding becomes a guest
     // Undefined Instruction. An allocated encoding that this interpreter does
     // not implement stays a host limitation and keeps throwing.

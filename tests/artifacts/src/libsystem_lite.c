@@ -244,6 +244,18 @@ int memcmp(const void* a, const void* b, size_t n) {
     return 0;
 }
 
+void bzero(void* s, size_t n) {
+    memset(s, 0, n);
+}
+
+int tolower(int c) {
+    return (c >= 'A' && c <= 'Z') ? (c + ('a' - 'A')) : c;
+}
+
+int __tolower(int c) {
+    return tolower(c);
+}
+
 /* -------------------------------------------------------------------------
  * Mmap-Backed Heap Allocator (16-byte aligned)
  * ------------------------------------------------------------------------- */
@@ -381,6 +393,137 @@ static void fmt_emit_uint(char* out, size_t max_len, size_t* pos,
     }
 }
 
+static void fmt_emit_double(char* out, size_t max_len, size_t* pos,
+                            double val, char spec, int has_prec, int prec) {
+    uint64_t bits = 0;
+    memcpy(&bits, &val, sizeof(bits));
+    int is_neg = (bits >> 63) != 0;
+    uint64_t exp_bits = (bits >> 52) & 0x7FFu;
+    uint64_t frac_bits = bits & 0x000FFFFFFFFFFFFFULL;
+
+    if (exp_bits == 0x7FFu) {
+        if (is_neg && frac_bits == 0) fmt_emit_char(out, max_len, pos, '-');
+        fmt_emit_str(out, max_len, pos, frac_bits ? "nan" : "inf");
+        return;
+    }
+    if (is_neg) {
+        fmt_emit_char(out, max_len, pos, '-');
+        val = -val;
+    }
+
+    int sig = has_prec ? prec : 6;
+    if (spec == 'g' || spec == 'G') {
+        if (sig < 1) sig = 1;
+        if (sig > 17) sig = 17;
+    } else {
+        if (sig > 17) sig = 17;
+    }
+
+    if (val == 0.0) {
+        if (spec == 'f' || spec == 'F') {
+            fmt_emit_char(out, max_len, pos, '0');
+            if (sig > 0) {
+                fmt_emit_char(out, max_len, pos, '.');
+                for (int i = 0; i < sig; ++i) fmt_emit_char(out, max_len, pos, '0');
+            }
+        } else if (spec == 'e' || spec == 'E') {
+            fmt_emit_char(out, max_len, pos, '0');
+            if (sig > 0) {
+                fmt_emit_char(out, max_len, pos, '.');
+                for (int i = 0; i < sig; ++i) fmt_emit_char(out, max_len, pos, '0');
+            }
+            fmt_emit_char(out, max_len, pos, spec);
+            fmt_emit_str(out, max_len, pos, "+00");
+        } else {
+            fmt_emit_char(out, max_len, pos, '0');
+        }
+        return;
+    }
+
+    int exp10 = 0;
+    while (val >= 1e16) { val *= 1e-16; exp10 += 16; }
+    while (val >= 10.0) { val *= 0.1; exp10++; }
+    while (val < 1e-15) { val *= 1e16; exp10 -= 16; }
+    while (val < 1.0)   { val *= 10.0; exp10--; }
+
+    int use_exp = (spec == 'e' || spec == 'E') ||
+                  ((spec == 'g' || spec == 'G') && (exp10 < -4 || exp10 >= sig));
+    int ndigits = sig;
+    if (spec == 'f' || spec == 'F') {
+        ndigits = exp10 + 1 + sig;
+        if (ndigits < 1) ndigits = 1;
+        if (ndigits > 18) ndigits = 18;
+    } else if (spec == 'e' || spec == 'E') {
+        ndigits = 1 + sig;
+        if (ndigits > 18) ndigits = 18;
+    }
+
+    double half = 0.5;
+    for (int i = 1; i < ndigits; ++i) half *= 0.1;
+    val += half;
+    if (val >= 10.0) {
+        val *= 0.1;
+        exp10++;
+        if (spec == 'g' || spec == 'G') {
+            use_exp = (exp10 < -4 || exp10 >= sig);
+        }
+    }
+
+    char digits[24];
+    for (int i = 0; i < ndigits; ++i) {
+        int d = (int)val;
+        if (d < 0) d = 0;
+        if (d > 9) d = 9;
+        digits[i] = (char)('0' + d);
+        val = (val - (double)d) * 10.0;
+    }
+
+    int emit_digits = ndigits;
+    if (spec == 'g' || spec == 'G') {
+        int last_nz = emit_digits - 1;
+        int min_keep = use_exp ? 1 : (exp10 >= 0 ? exp10 + 1 : 1);
+        while (last_nz >= min_keep && digits[last_nz] == '0') {
+            last_nz--;
+        }
+        emit_digits = last_nz + 1;
+    }
+
+    if (use_exp) {
+        fmt_emit_char(out, max_len, pos, digits[0]);
+        if (emit_digits > 1) {
+            fmt_emit_char(out, max_len, pos, '.');
+            for (int i = 1; i < emit_digits; ++i) fmt_emit_char(out, max_len, pos, digits[i]);
+        }
+        fmt_emit_char(out, max_len, pos, (spec == 'G' || spec == 'E') ? 'E' : 'e');
+        if (exp10 < 0) {
+            fmt_emit_char(out, max_len, pos, '-');
+            exp10 = -exp10;
+        } else {
+            fmt_emit_char(out, max_len, pos, '+');
+        }
+        fmt_emit_uint(out, max_len, pos, (uint64_t)exp10, 10, 0, 2, '0');
+    } else if (exp10 < 0) {
+        fmt_emit_str(out, max_len, pos, "0.");
+        for (int z = -1; z > exp10; --z) fmt_emit_char(out, max_len, pos, '0');
+        int nz = ndigits - 1;
+        if (spec == 'g' || spec == 'G') {
+            while (nz >= 0 && digits[nz] == '0') nz--;
+        }
+        for (int i = 0; i <= nz; ++i) fmt_emit_char(out, max_len, pos, digits[i]);
+    } else {
+        int int_digits = exp10 + 1;
+        for (int i = 0; i < int_digits; ++i) {
+            fmt_emit_char(out, max_len, pos, i < emit_digits ? digits[i] : '0');
+        }
+        if (int_digits < emit_digits) {
+            fmt_emit_char(out, max_len, pos, '.');
+            for (int i = int_digits; i < emit_digits; ++i) {
+                fmt_emit_char(out, max_len, pos, digits[i]);
+            }
+        }
+    }
+}
+
 int vsnprintf(char* str, size_t size, const char* fmt, __builtin_va_list ap) {
     size_t pos = 0;
     if (!fmt) return 0;
@@ -405,6 +548,17 @@ int vsnprintf(char* str, size_t size, const char* fmt, __builtin_va_list ap) {
         while (*fmt >= '0' && *fmt <= '9') {
             min_width = min_width * 10 + (*fmt - '0');
             fmt++;
+        }
+
+        int has_prec = 0;
+        int prec = 0;
+        if (*fmt == '.') {
+            has_prec = 1;
+            fmt++;
+            while (*fmt >= '0' && *fmt <= '9') {
+                prec = prec * 10 + (*fmt - '0');
+                fmt++;
+            }
         }
 
         int long_count = 0;
@@ -451,6 +605,16 @@ int vsnprintf(char* str, size_t size, const char* fmt, __builtin_va_list ap) {
                 fmt_emit_uint(str, size, &pos, v, 16, 0, min_width > 2 ? min_width - 2 : 0, '0');
                 break;
             }
+            case 'f':
+            case 'F':
+            case 'g':
+            case 'G':
+            case 'e':
+            case 'E': {
+                double dv = __builtin_va_arg(ap, double);
+                fmt_emit_double(str, size, &pos, dv, spec, has_prec, prec);
+                break;
+            }
             case 's': {
                 const char* s = __builtin_va_arg(ap, const char*);
                 fmt_emit_str(str, size, &pos, s);
@@ -472,6 +636,144 @@ int vsnprintf(char* str, size_t size, const char* fmt, __builtin_va_list ap) {
         str[pos < size ? pos : size - 1] = '\0';
     }
     return (int)pos;
+}
+
+int sprintf(char* str, const char* fmt, ...) {
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+    int n = vsnprintf(str, (size_t)0x7FFFFFFFu, fmt, ap);
+    __builtin_va_end(ap);
+    return n;
+}
+
+int __sprintf_chk(char* str, int flag, size_t strlen_cap, const char* fmt, ...) {
+    (void)flag;
+    size_t cap = (strlen_cap > 0) ? strlen_cap : (size_t)0x7FFFFFFFu;
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+    int n = vsnprintf(str, cap, fmt, ap);
+    __builtin_va_end(ap);
+    return n;
+}
+
+double strtod(const char* nptr, char** endptr) {
+    if (!nptr) {
+        if (endptr) *endptr = (char*)nptr;
+        return 0.0;
+    }
+    const char* p = nptr;
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+
+    int sign = 1;
+    if (*p == '-') { sign = -1; p++; }
+    else if (*p == '+') { p++; }
+
+    uint64_t mant = 0;
+    int frac_exp = 0;
+    int digits = 0;
+    int seen_dot = 0;
+    while ((*p >= '0' && *p <= '9') || (*p == '.' && !seen_dot)) {
+        if (*p == '.') {
+            seen_dot = 1;
+        } else {
+            digits++;
+            if (mant < 100000000000000000ULL) {
+                mant = mant * 10ULL + (uint64_t)(*p - '0');
+                if (seen_dot) frac_exp--;
+            } else if (!seen_dot) {
+                frac_exp++;
+            }
+        }
+        p++;
+    }
+    if (digits == 0) {
+        if (endptr) *endptr = (char*)nptr;
+        return 0.0;
+    }
+
+    int exp10 = frac_exp;
+    if (*p == 'e' || *p == 'E') {
+        const char* ep = p + 1;
+        int esign = 1;
+        if (*ep == '-') { esign = -1; ep++; }
+        else if (*ep == '+') { ep++; }
+        int eval = 0;
+        int edig = 0;
+        while (*ep >= '0' && *ep <= '9') {
+            if (eval < 10000) eval = eval * 10 + (*ep - '0');
+            edig++;
+            ep++;
+        }
+        if (edig > 0) {
+            exp10 += esign * eval;
+            p = ep;
+        }
+    }
+
+    double result = (double)mant;
+    while (exp10 > 0) { result *= 10.0; exp10--; }
+    while (exp10 < 0) { result *= 0.1; exp10++; }
+    if (endptr) *endptr = (char*)p;
+    return sign < 0 ? -result : result;
+}
+
+int sscanf(const char* str, const char* fmt, ...) {
+    if (!str || !fmt) return -1;
+    __builtin_va_list ap;
+    __builtin_va_start(ap, fmt);
+    int matched = 0;
+    const char* sp = str;
+    while (*fmt) {
+        if (*fmt == ' ' || *fmt == '\t') {
+            while (*sp == ' ' || *sp == '\t') sp++;
+            fmt++;
+            continue;
+        }
+        if (*fmt != '%') {
+            if (*sp != *fmt) break;
+            sp++; fmt++;
+            continue;
+        }
+        fmt++;
+        int is_long = 0;
+        if (*fmt == 'l') { is_long = 1; fmt++; }
+        char spec = *fmt++;
+        if (spec == 'g' || spec == 'G' || spec == 'f' || spec == 'e') {
+            char* endp = NULL;
+            double v = strtod(sp, &endp);
+            if (endp == sp) break;
+            sp = endp;
+            if (is_long) {
+                double* dp = __builtin_va_arg(ap, double*);
+                if (dp) *dp = v;
+            } else {
+                float* fp = __builtin_va_arg(ap, float*);
+                if (fp) *fp = (float)v;
+            }
+            matched++;
+        } else if (spec == 'd' || spec == 'i') {
+            while (*sp == ' ' || *sp == '\t') sp++;
+            int neg = 0;
+            if (*sp == '-') { neg = 1; sp++; }
+            else if (*sp == '+') { sp++; }
+            if (*sp < '0' || *sp > '9') break;
+            int64_t v = 0;
+            while (*sp >= '0' && *sp <= '9') { v = v * 10 + (*sp - '0'); sp++; }
+            if (neg) v = -v;
+            if (is_long) {
+                int64_t* lp = __builtin_va_arg(ap, int64_t*);
+                if (lp) *lp = v;
+            } else {
+                int* ip = __builtin_va_arg(ap, int*);
+                if (ip) *ip = (int)v;
+            }
+            matched++;
+        } else {
+            break;
+        }
+    }
+    __builtin_va_end(ap);
+    return matched;
 }
 
 int snprintf(char* str, size_t size, const char* fmt, ...) {
@@ -521,7 +823,25 @@ void* __memset_chk(void* dst, int c, size_t len, size_t dstlen) {
     return memset(dst, c, len);
 }
 
+void __assert_rtn(const char* func, const char* file, int line, const char* expr) {
+    (void)func;
+    (void)file;
+    (void)line;
+    (void)expr;
+    static const char msg[] = "Assertion failed in guest runtime\n";
+    write(2, msg, sizeof(msg) - 1);
+    _exit(134);
+}
+
 void* __memmove_chk(void* dst, const void* src, size_t len, size_t dstlen) {
     (void)dstlen;
     return memmove(dst, src, len);
 }
+
+/* Symbol expected by Zig/Apple Mach-O lazy-binding stub helpers */
+__asm__(
+    ".text\n"
+    ".globl dyld_stub_binder\n"
+    "dyld_stub_binder:\n"
+    "  ret\n"
+);
