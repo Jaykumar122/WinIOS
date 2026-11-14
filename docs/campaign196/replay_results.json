@@ -1,0 +1,12 @@
+{
+  "test": "Stage 196.16 Deterministic SMP Replay",
+  "status": "VERIFIED",
+  "total_steps": 604,
+  "final_counter": 200,
+  "cores": [
+    {"core_id": 0, "combined_hash": "0xab1cdd2a76b453ff"},
+    {"core_id": 1, "combined_hash": "0x6af69e56f8813db6"},
+    {"core_id": 2, "combined_hash": "0x13c82278dac9b2a3"},
+    {"core_id": 3, "combined_hash": "0x26489024759e4bef"}
+  ]
+}

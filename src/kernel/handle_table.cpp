@@ -11,6 +11,7 @@ HandleTable::HandleTable(std::size_t max_handles)
 }
 
 std::int32_t HandleTable::allocate_handle(std::shared_ptr<KernelObject> object, std::uint32_t rights) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!object) {
         return -1;
     }
@@ -34,6 +35,7 @@ std::int32_t HandleTable::allocate_handle(std::shared_ptr<KernelObject> object, 
 }
 
 std::shared_ptr<KernelObject> HandleTable::get_object(std::int32_t handle, std::uint32_t required_rights) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!is_valid_handle(handle)) {
         return nullptr;
     }
@@ -47,6 +49,7 @@ std::shared_ptr<KernelObject> HandleTable::get_object(std::int32_t handle, std::
 }
 
 std::int32_t HandleTable::duplicate_handle(std::int32_t handle, std::uint32_t new_rights_mask) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!is_valid_handle(handle)) {
         return -1;
     }
@@ -62,6 +65,7 @@ std::int32_t HandleTable::duplicate_handle(std::int32_t handle, std::uint32_t ne
 }
 
 bool HandleTable::close_handle(std::int32_t handle) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!is_valid_handle(handle)) {
         return false;
     }
@@ -80,6 +84,7 @@ bool HandleTable::close_handle(std::int32_t handle) {
 }
 
 bool HandleTable::is_valid_handle(std::int32_t handle) const noexcept {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (handle <= 0 || static_cast<std::size_t>(handle) >= entries_.size()) {
         return false;
     }
@@ -87,6 +92,7 @@ bool HandleTable::is_valid_handle(std::int32_t handle) const noexcept {
 }
 
 std::uint32_t HandleTable::get_rights(std::int32_t handle) const noexcept {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (!is_valid_handle(handle)) {
         return 0;
     }

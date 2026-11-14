@@ -81,6 +81,25 @@ public:
     [[nodiscard]] const GuestTcb& tcb() const noexcept { return tcb_; }
     [[nodiscard]] GuestTcb& tcb() noexcept { return tcb_; }
 
+    [[nodiscard]] static bool is_valid_transition(ThreadState from, ThreadState to) noexcept {
+        if (from == to) return true;
+        switch (from) {
+        case ThreadState::Ready:
+            return to == ThreadState::Running || to == ThreadState::Terminated;
+        case ThreadState::Running:
+            return to == ThreadState::Ready || to == ThreadState::Blocked || to == ThreadState::Terminated;
+        case ThreadState::Blocked:
+            return to == ThreadState::Ready || to == ThreadState::Terminated;
+        case ThreadState::Terminated:
+            return false;
+        default:
+            return false;
+        }
+    }
+
+    bool transition_state(ThreadState new_state) noexcept;
+    [[nodiscard]] const std::vector<ThreadState>& state_history() const noexcept { return state_history_; }
+
     void set_state(ThreadState new_state) noexcept;
     void set_priority(std::uint32_t priority) noexcept;
     void set_time_slice(std::uint32_t ticks) noexcept;
@@ -100,6 +119,7 @@ public:
 
 private:
     GuestTcb tcb_;
+    std::vector<ThreadState> state_history_{ThreadState::Ready};
 };
 
 class KernelThreadManager {

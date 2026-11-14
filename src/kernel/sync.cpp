@@ -58,6 +58,25 @@ bool KernelSpinlock::release_host(std::uint64_t tid) {
     return true;
 }
 
+bool KernelSpinlock::acquire_irqsave(CPU& cpu, std::uint64_t tid, std::uint8_t& out_prev_daif, bool* out_deadlock) {
+    out_prev_daif = cpu.get_daif();
+    // Mask IRQ bit (bit 1, 0x2)
+    cpu.set_daif(out_prev_daif | 0x2u);
+    const bool success = try_acquire_host(tid, out_deadlock);
+    if (!success) {
+        // Restore DAIF if acquisition failed
+        cpu.set_daif(out_prev_daif);
+    }
+    return success;
+}
+
+bool KernelSpinlock::release_irqrestore(CPU& cpu, std::uint64_t tid, std::uint8_t prev_daif) {
+    const bool released = release_host(tid);
+    // Restore previous DAIF mask state
+    cpu.set_daif(prev_daif);
+    return released;
+}
+
 bool KernelSpinlock::is_locked() const {
     return mem_.read_u32(static_cast<std::size_t>(guest_addr_)) != 0;
 }

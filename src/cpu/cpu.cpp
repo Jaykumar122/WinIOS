@@ -268,9 +268,9 @@ constexpr std::uint32_t kExclusiveGroup = 0x08000000u;
 // LSE atomics: size(31:30) 111000 A R 1 Rs opc(15:12) 00 Rn Rt.
 constexpr std::uint32_t kLseAtomicMask = 0x3F200C00u;
 constexpr std::uint32_t kLseAtomicPattern = 0x38200000u;
-// LSE CAS: size(31:30) 001000 A L 1 Rs 0 0 0 0 0 Rn Rt.
-constexpr std::uint32_t kLseCasMask = 0x0F20FC00u;
-constexpr std::uint32_t kLseCasPattern = 0x08207C00u;
+// LSE CAS: size(31:30) 001000 1 A 1 Rs L 11111 Rn Rt.
+constexpr std::uint32_t kLseCasMask = 0x0FA07C00u;
+constexpr std::uint32_t kLseCasPattern = 0x08A07C00u;
 constexpr std::uint8_t kNegative = 0x8u;
 constexpr std::uint8_t kZero = 0x4u;
 constexpr std::uint8_t kCarry = 0x2u;
@@ -1287,8 +1287,8 @@ bool disassemble_exclusive_or_atomic(std::uint32_t instruction,
         const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t target = instruction & 0x1Fu;
         std::string mnemonic = "CAS";
-        if ((instruction & (1u << 23u)) != 0) mnemonic += "A";
-        if ((instruction & (1u << 22u)) != 0) mnemonic += "L";
+        if ((instruction & (1u << 22u)) != 0) mnemonic += "A";
+        if ((instruction & (1u << 15u)) != 0) mnemonic += "L";
         if (size_field == 0u) mnemonic += "B";
         else if (size_field == 1u) mnemonic += "H";
         std::ostringstream stream;
@@ -6661,8 +6661,8 @@ void CPU::step(Memory& guest_memory) {
         const std::uint32_t expected = (instruction >> 16u) & 0x1Fu;
         const std::uint32_t base = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t desired = instruction & 0x1Fu;
-        const bool acquire = (instruction & (1u << 23u)) != 0;
-        const bool release = (instruction & (1u << 22u)) != 0;
+        const bool acquire = (instruction & (1u << 22u)) != 0;
+        const bool release = (instruction & (1u << 15u)) != 0;
         const std::size_t width = access_width_bytes(exclusive_size_field);
         const std::uint64_t address = read_stack_pointer_operand(*this, base);
         const std::size_t memory_address = pc_as_memory_offset(address);
@@ -7821,6 +7821,10 @@ void CPU::step(Memory& guest_memory) {
         il_         = ((spsr >> 20u) & 0x1u) != 0u;
         pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
         pmu_.on_event(winios::ARMV8_EVENT_EXC_RETURN, static_cast<unsigned>(current_el_));
+        clear_exclusive_monitor();
+        if (smp_cluster_) {
+            smp_cluster_->clear_exclusive_reservation(core_id_);
+        }
         current_el_ = target_el;
         sp_sel_     = (m & 0x1u) != 0u;
         program_counter_ = new_pc;
@@ -8110,7 +8114,17 @@ void CPU::step(Memory& guest_memory) {
             if (op2 == 5u) {
                 // DMB <opt>
                 if (rt == 31u) {
-                    std::atomic_thread_fence(std::memory_order_seq_cst);
+                    // DMB barrier option semantics:
+                    // ST / ISHST / OSHST / NSHST: store-store barrier
+                    // LD / ISHLD / OSHLD / NSHLD: load-load / load-store barrier
+                    // SY / ISH / OSH / NSH: full barrier
+                    if (crm == 10u || crm == 14u || crm == 2u || crm == 6u) {
+                        std::atomic_thread_fence(std::memory_order_release);
+                    } else if (crm == 9u || crm == 13u || crm == 1u || crm == 5u) {
+                        std::atomic_thread_fence(std::memory_order_acquire);
+                    } else {
+                        std::atomic_thread_fence(std::memory_order_seq_cst);
+                    }
                     program_counter_ = checked_add_address(
                         instruction_address, 4u, "Instruction PC increment");
                     emit_trace();

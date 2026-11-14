@@ -35,6 +35,7 @@ void ArchitecturalCpuContext::restore(CPU& cpu) const {
         cpu.write_register(static_cast<std::uint32_t>(i), gpr[i]);
     }
     cpu.set_program_counter(pc);
+    cpu.set_elr_el1(pc);
     cpu.set_sp_el0(sp_el0);
     cpu.set_sp_el1(sp_el1);
     cpu.set_spsr_el1(static_cast<std::uint32_t>(spsr_el1));

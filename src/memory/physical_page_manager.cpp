@@ -39,6 +39,7 @@ void PhysicalPageManager::set_bit(std::size_t page_idx, bool val) {
 }
 
 bool PhysicalPageManager::initialize(bool reserve_bitmap_pages) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (bitmap_addr_ + bitmap_size_bytes_ > mem_.size()) {
         return false;
     }
@@ -59,6 +60,7 @@ bool PhysicalPageManager::initialize(bool reserve_bitmap_pages) {
 }
 
 bool PhysicalPageManager::reserve_range(std::uint64_t start_addr, std::uint64_t size) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (size == 0) return true;
     const std::uint64_t end_addr = start_addr + size;
 
@@ -80,6 +82,7 @@ bool PhysicalPageManager::reserve_range(std::uint64_t start_addr, std::uint64_t 
 }
 
 std::uint64_t PhysicalPageManager::allocate_pages(std::size_t count) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (count == 0 || count > total_pages_) {
         return 0;
     }
@@ -109,6 +112,7 @@ std::uint64_t PhysicalPageManager::allocate_pages(std::size_t count) {
 }
 
 bool PhysicalPageManager::free_pages(std::uint64_t physical_addr, std::size_t count) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (count == 0 || physical_addr < managed_base_) {
         return false;
     }
@@ -136,6 +140,7 @@ bool PhysicalPageManager::free_pages(std::uint64_t physical_addr, std::size_t co
 }
 
 bool PhysicalPageManager::is_page_allocated(std::uint64_t physical_addr) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (physical_addr < managed_base_ || (physical_addr % kPhysicalPageSize16KB) != 0) {
         return true;
     }
@@ -144,6 +149,7 @@ bool PhysicalPageManager::is_page_allocated(std::uint64_t physical_addr) const {
 }
 
 PhysicalPageStats PhysicalPageManager::get_stats() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     PhysicalPageStats stats;
     stats.total_pages = total_pages_;
     stats.bitmap_address = bitmap_addr_;

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,7 @@ private:
     std::uint64_t active_allocations_{0};
     std::uint64_t total_alloc_ops_{0};
     std::uint64_t total_free_ops_{0};
+    mutable std::recursive_mutex mutex_;
 
     [[nodiscard]] HeapBlockHeader read_header(std::uint64_t addr) const;
     void write_header(std::uint64_t addr, const HeapBlockHeader& hdr);

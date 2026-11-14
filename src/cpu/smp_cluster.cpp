@@ -171,6 +171,7 @@ bool SMPCluster::check_and_clear_exclusive_reservation(std::size_t core_id,
 void SMPCluster::invalidate_exclusive_reservations(std::size_t writer_core_id,
                                                    std::uint64_t address,
                                                    std::size_t size) {
+    if (size == 0) return;
     std::lock_guard<std::mutex> lock(reservations_mutex_);
     const std::uint64_t write_end = address + size;
     for (std::size_t i = 0; i < reservations_.size(); ++i) {
@@ -186,6 +187,7 @@ void SMPCluster::invalidate_exclusive_reservations(std::size_t writer_core_id,
 
 void SMPCluster::invalidate_all_exclusive_reservations(std::uint64_t address,
                                                        std::size_t size) {
+    if (size == 0) return;
     std::lock_guard<std::mutex> lock(reservations_mutex_);
     const std::uint64_t write_end = address + size;
     for (auto& reservation : reservations_) {

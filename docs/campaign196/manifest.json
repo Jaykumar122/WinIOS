@@ -1,0 +1,94 @@
+{
+  "campaign": 196,
+  "campaign_name": "ARM64 Memory Model, Atomic Operations, Kernel Concurrency & SMP Correctness",
+  "baseline_commit": "435e67175467c69992cfa761fc8a38ecb2f4f210",
+  "device_research_identity": {
+    "device": "iPhone 15",
+    "model": "iPhone15,4",
+    "board_id": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "target_triples": [
+      "aarch64-macos",
+      "aarch64-ios",
+      "aarch64-freestanding"
+    ]
+  },
+  "host_toolchain": {
+    "os": "Windows 11 x64",
+    "compiler": "Visual Studio 18 2026 MSVC C++20",
+    "compiler_flags": [
+      "/W4",
+      "/WX",
+      "/permissive-"
+    ],
+    "cross_compiler": "Zig 0.17.0 (LLVM/Clang)"
+  },
+  "artifacts": [
+    {
+      "source": "tests/artifacts/src/guest_smp_atomic_stress.S",
+      "binary": "tests/artifacts/bin/guest_smp_atomic_stress",
+      "sha256": "2930da19b96392b66cd92a36ff5c51185c123bf90183fde7854ccf763c5e81c1",
+      "type": "Mach-O 64-bit arm64 executable",
+      "purpose": "Contended multi-core atomic operations (LDADD, SWP, CAS) at EL1"
+    },
+    {
+      "source": "tests/artifacts/src/guest_smp_message_passing.S",
+      "binary": "tests/artifacts/bin/guest_smp_message_passing",
+      "sha256": "c3ea8f7255c7060d10adb6695f61a8d2d8cbd725841c10f451e9f150a3ea01c2",
+      "type": "Mach-O 64-bit arm64 executable",
+      "purpose": "Multi-core message passing litmus test validating LDAR / STLR acquire-release ordering"
+    },
+    {
+      "source": "tests/artifacts/src/guest_kernel_smp_threads.S",
+      "binary": "tests/artifacts/bin/guest_kernel_smp_threads",
+      "sha256": "d30347dc1bc0dbf5e48594fdc42a8f5970254b18bb4a9c96a56399577ac7413c",
+      "type": "Mach-O 64-bit arm64 executable",
+      "purpose": "Spinlock contention and shared counter updates across multiple guest threads"
+    },
+    {
+      "source": "tests/artifacts/src/guest_preemption_stress.S",
+      "binary": "tests/artifacts/bin/guest_preemption_stress",
+      "sha256": "a4da230fb845f0126cc1bbaa5c57068d5e55a86bb1847cca3a5d054b47f43817",
+      "type": "Mach-O 64-bit arm64 executable",
+      "purpose": "GICv3 timer interrupt preemption stress test under contended kernel state"
+    },
+    {
+      "source": "tests/artifacts/src/guest_cooperative_3threads.S",
+      "binary": "tests/artifacts/bin/guest_cooperative_3threads",
+      "sha256": "e6b133d4256fd5664e2eeaf9260d812b83fed2f2bea06e431763a66dac88c24f",
+      "type": "Mach-O 64-bit arm64 executable",
+      "purpose": "Three cooperative threads cycling yields and state handoffs"
+    }
+  ],
+  "test_suites": [
+    "stage196_2_exclusive_monitor_tests",
+    "stage196_3_atomic_instructions_tests",
+    "stage196_4_smp_atomics_tests",
+    "stage196_5_barrier_tests",
+    "stage196_6_acquire_release_tests",
+    "stage196_7_spinlock_stress_tests",
+    "stage196_9_scheduler_integrity_tests",
+    "stage196_11_tlb_and_context_tests",
+    "stage196_13_smp_stress_tests",
+    "stage196_14_allocator_concurrency_tests",
+    "stage196_15_ipc_lifetime_tests",
+    "stage196_16_deterministic_replay_tests",
+    "stage196_18_integrated_concurrency_tests"
+  ],
+  "regression_summary": {
+    "release": {
+      "total_tests": 403,
+      "passed": 402,
+      "skipped": 1,
+      "failed": 0,
+      "pass_rate": "100%"
+    },
+    "debug": {
+      "total_tests": 403,
+      "passed": 402,
+      "skipped": 1,
+      "failed": 0,
+      "pass_rate": "100%"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "campaign": 196,
+  "stage": "196.17",
+  "compiler": "Zig 0.17.0 (LLVM/Clang)",
+  "workloads": [
+    {
+      "name": "guest_smp_atomic_stress",
+      "source": "tests/artifacts/src/guest_smp_atomic_stress.S",
+      "binary": "tests/artifacts/bin/guest_smp_atomic_stress",
+      "target": "aarch64-macos",
+      "sha256": "2930da19b96392b66cd92a36ff5c51185c123bf90183fde7854ccf763c5e81c1",
+      "description": "Multi-core atomic stress workload executing LDADD loops, SWP, and CAS at EL1"
+    },
+    {
+      "name": "guest_smp_message_passing",
+      "source": "tests/artifacts/src/guest_smp_message_passing.S",
+      "binary": "tests/artifacts/bin/guest_smp_message_passing",
+      "target": "aarch64-macos",
+      "sha256": "c3ea8f7255c7060d10adb6695f61a8d2d8cbd725841c10f451e9f150a3ea01c2",
+      "description": "Multi-core message passing litmus test validating LDAR / STLR acquire-release ordering"
+    },
+    {
+      "name": "guest_kernel_smp_threads",
+      "source": "tests/artifacts/src/guest_kernel_smp_threads.S",
+      "binary": "tests/artifacts/bin/guest_kernel_smp_threads",
+      "target": "aarch64-macos",
+      "sha256": "d30347dc1bc0dbf5e48594fdc42a8f5970254b18bb4a9c96a56399577ac7413c",
+      "description": "Spinlock contention and shared counter updates across multiple guest threads"
+    },
+    {
+      "name": "guest_preemption_stress",
+      "source": "tests/artifacts/src/guest_preemption_stress.S",
+      "binary": "tests/artifacts/bin/guest_preemption_stress",
+      "target": "aarch64-macos",
+      "sha256": "a4da230fb845f0126cc1bbaa5c57068d5e55a86bb1847cca3a5d054b47f43817",
+      "description": "GICv3 timer interrupt preemption stress test under contended kernel state"
+    },
+    {
+      "name": "guest_cooperative_3threads",
+      "source": "tests/artifacts/src/guest_cooperative_3threads.S",
+      "binary": "tests/artifacts/bin/guest_cooperative_3threads",
+      "target": "aarch64-macos",
+      "sha256": "e6b133d4256fd5664e2eeaf9260d812b83fed2f2bea06e431763a66dac88c24f",
+      "description": "Three cooperative threads cycling yields and state handoffs"
+    },
+    {
+      "name": "synthetic_el1_kernel",
+      "source": "tests/artifacts/src/synthetic_el1_kernel.S",
+      "binary": "tests/artifacts/bin/synthetic_el1_kernel",
+      "target": "aarch64-macos",
+      "sha256": "ef08793bdf38817e06c8d37157d5b25ba94b959269a7965ad45a82d4c4a200cf",
+      "description": "Synthetic EL1 kernel boot, exception table setup, and page table activation"
+    }
+  ]
+}

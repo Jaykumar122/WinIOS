@@ -30,6 +30,7 @@ void KernelHeapAllocator::write_header(std::uint64_t addr, const HeapBlockHeader
 }
 
 bool KernelHeapAllocator::initialize() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (heap_size_ < 64 || heap_base_ + heap_size_ > mem_.size()) {
         return false;
     }
@@ -52,6 +53,7 @@ bool KernelHeapAllocator::initialize() {
 }
 
 std::uint64_t KernelHeapAllocator::kmalloc(std::size_t bytes) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (bytes == 0) {
         return 0;
     }
@@ -96,6 +98,7 @@ std::uint64_t KernelHeapAllocator::kmalloc(std::size_t bytes) {
 }
 
 bool KernelHeapAllocator::kfree(std::uint64_t ptr) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (ptr < heap_base_ + kHeapHeaderSize || ptr >= heap_base_ + heap_size_) {
         return false; // Out of bounds
     }
@@ -147,6 +150,7 @@ bool KernelHeapAllocator::kfree(std::uint64_t ptr) {
 }
 
 std::uint64_t KernelHeapAllocator::krealloc(std::uint64_t ptr, std::size_t new_bytes) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (ptr == 0) {
         return kmalloc(new_bytes);
     }
@@ -183,6 +187,7 @@ std::uint64_t KernelHeapAllocator::krealloc(std::uint64_t ptr, std::size_t new_b
 }
 
 std::uint64_t KernelHeapAllocator::kcalloc(std::size_t count, std::size_t size) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::size_t total = count * size;
     const std::uint64_t ptr = kmalloc(total);
     if (ptr != 0) {
@@ -194,6 +199,7 @@ std::uint64_t KernelHeapAllocator::kcalloc(std::size_t count, std::size_t size) 
 }
 
 KernelHeapStats KernelHeapAllocator::get_stats() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     KernelHeapStats stats;
     stats.total_heap_bytes = heap_size_;
     stats.active_allocations = active_allocations_;
@@ -223,6 +229,7 @@ KernelHeapStats KernelHeapAllocator::get_stats() const {
 }
 
 bool KernelHeapAllocator::validate_heap_integrity(std::string* out_error) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     std::uint64_t curr = heap_base_;
     const std::uint64_t end = heap_base_ + heap_size_;
     std::uint64_t total_scanned = 0;

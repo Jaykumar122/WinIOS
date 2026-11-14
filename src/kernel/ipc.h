@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -60,6 +61,7 @@ private:
     std::deque<KernelMessage> messages_;
     WaitQueue send_waiters_{WakePolicy::Fifo};
     WaitQueue recv_waiters_{WakePolicy::Fifo};
+    mutable std::recursive_mutex mutex_;
 };
 
 class IpcManager {
@@ -88,6 +90,7 @@ public:
 private:
     std::uint32_t next_port_id_{1};
     std::unordered_map<std::uint32_t, std::unique_ptr<IpcPort>> ports_;
+    mutable std::recursive_mutex mutex_;
 };
 
 } // namespace winios::kernel

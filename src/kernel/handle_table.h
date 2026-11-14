@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace winios::kernel {
@@ -80,6 +81,7 @@ private:
     std::size_t active_count_{0};
     std::vector<HandleEntry> entries_;
     std::vector<std::int32_t> free_list_;
+    mutable std::recursive_mutex mutex_;
 };
 
 } // namespace winios::kernel

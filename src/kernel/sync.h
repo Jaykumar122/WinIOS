@@ -37,6 +37,10 @@ public:
     bool try_acquire_host(std::uint64_t tid, bool* out_deadlock = nullptr);
     bool release_host(std::uint64_t tid);
 
+    // IRQ-safe acquisition: masks DAIF IRQ (bit 1), saves previous DAIF, acquires lock
+    bool acquire_irqsave(CPU& cpu, std::uint64_t tid, std::uint8_t& out_prev_daif, bool* out_deadlock = nullptr);
+    bool release_irqrestore(CPU& cpu, std::uint64_t tid, std::uint8_t prev_daif);
+
     // Query lock status
     [[nodiscard]] bool is_locked() const;
     [[nodiscard]] std::uint32_t owner_tid() const;
@@ -54,6 +58,31 @@ private:
     std::uint64_t guest_addr_;
     std::uint64_t acquire_count_{0};
     std::uint64_t contention_count_{0};
+};
+
+class IrqSafeSpinlockGuard {
+public:
+    IrqSafeSpinlockGuard(KernelSpinlock& lock, CPU& cpu, std::uint64_t tid)
+        : lock_(lock), cpu_(cpu), tid_(tid) {
+        acquired_ = lock_.acquire_irqsave(cpu_, tid_, prev_daif_);
+    }
+    ~IrqSafeSpinlockGuard() {
+        if (acquired_) {
+            lock_.release_irqrestore(cpu_, tid_, prev_daif_);
+        }
+    }
+    IrqSafeSpinlockGuard(const IrqSafeSpinlockGuard&) = delete;
+    IrqSafeSpinlockGuard& operator=(const IrqSafeSpinlockGuard&) = delete;
+
+    [[nodiscard]] bool is_acquired() const noexcept { return acquired_; }
+    [[nodiscard]] std::uint8_t previous_daif() const noexcept { return prev_daif_; }
+
+private:
+    KernelSpinlock& lock_;
+    CPU& cpu_;
+    std::uint64_t tid_{0};
+    std::uint8_t prev_daif_{0};
+    bool acquired_{false};
 };
 
 enum class WakePolicy : std::uint32_t {

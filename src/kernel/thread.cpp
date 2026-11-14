@@ -48,6 +48,16 @@ KernelThread::KernelThread(std::uint64_t tid,
     tcb_.name[copy_len] = '\0';
 }
 
+bool KernelThread::transition_state(ThreadState new_state) noexcept {
+    const ThreadState curr = state();
+    if (!is_valid_transition(curr, new_state)) {
+        return false;
+    }
+    set_state(new_state);
+    state_history_.push_back(new_state);
+    return true;
+}
+
 void KernelThread::set_state(ThreadState new_state) noexcept {
     tcb_.state = static_cast<std::uint32_t>(new_state);
 }

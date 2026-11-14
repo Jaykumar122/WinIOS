@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,7 @@ private:
     std::uint64_t bitmap_addr_;
     std::uint64_t total_pages_;
     std::uint64_t bitmap_size_bytes_;
+    mutable std::recursive_mutex mutex_;
 
     [[nodiscard]] bool get_bit(std::size_t page_idx) const;
     void set_bit(std::size_t page_idx, bool val);

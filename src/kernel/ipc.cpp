@@ -8,6 +8,7 @@ IpcPort::IpcPort(std::uint32_t port_id, std::uint64_t owner_tid, std::size_t cap
     : port_id_(port_id), owner_tid_(owner_tid), capacity_(capacity > 0 ? capacity : kDefaultPortCapacity) {}
 
 bool IpcPort::try_send(const KernelMessage& msg, PriorityScheduler& sched) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (is_full()) {
         return false;
     }
@@ -19,6 +20,7 @@ bool IpcPort::try_send(const KernelMessage& msg, PriorityScheduler& sched) {
 }
 
 bool IpcPort::try_recv(KernelMessage& out_msg, PriorityScheduler& sched) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (is_empty()) {
         return false;
     }
@@ -31,6 +33,7 @@ bool IpcPort::try_recv(KernelMessage& out_msg, PriorityScheduler& sched) {
 }
 
 bool IpcPort::send_blocking(KernelThread* sender, const KernelMessage& msg, PriorityScheduler& sched, CPU& cpu) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (sender == nullptr) {
         return false;
     }
@@ -46,6 +49,7 @@ bool IpcPort::send_blocking(KernelThread* sender, const KernelMessage& msg, Prio
 }
 
 bool IpcPort::recv_blocking(KernelThread* receiver, KernelMessage& out_msg, PriorityScheduler& sched, CPU& cpu) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (receiver == nullptr) {
         return false;
     }
@@ -62,6 +66,7 @@ bool IpcPort::recv_blocking(KernelThread* receiver, KernelMessage& out_msg, Prio
 }
 
 IpcPort* IpcManager::create_port(std::uint64_t owner_tid, std::size_t capacity) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::uint32_t id = next_port_id_++;
     auto port = std::make_unique<IpcPort>(id, owner_tid, capacity);
     IpcPort* ptr = port.get();
@@ -70,16 +75,19 @@ IpcPort* IpcManager::create_port(std::uint64_t owner_tid, std::size_t capacity) 
 }
 
 IpcPort* IpcManager::get_port(std::uint32_t port_id) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto it = ports_.find(port_id);
     return it != ports_.end() ? it->second.get() : nullptr;
 }
 
 const IpcPort* IpcManager::get_port(std::uint32_t port_id) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto it = ports_.find(port_id);
     return it != ports_.end() ? it->second.get() : nullptr;
 }
 
 bool IpcManager::destroy_port(std::uint32_t port_id, PriorityScheduler& sched) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     auto it = ports_.find(port_id);
     if (it == ports_.end()) {
         return false;
@@ -97,6 +105,7 @@ bool IpcManager::send_from_guest(
     std::uint64_t guest_msg_addr,
     Memory& mem,
     PriorityScheduler& sched) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     IpcPort* port = get_port(port_id);
     if (port == nullptr) {
         return false;
@@ -118,6 +127,7 @@ bool IpcManager::recv_to_guest(
     std::uint64_t guest_msg_addr,
     Memory& mem,
     PriorityScheduler& sched) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     IpcPort* port = get_port(port_id);
     if (port == nullptr) {
         return false;
