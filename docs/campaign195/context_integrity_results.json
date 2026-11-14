@@ -1,0 +1,51 @@
+{
+  "campaign": 195,
+  "subsystem": "CPU Context & Exception Frame Integrity",
+  "device_target": "iPhone 15 (iPhone15,4 / D37AP / T8120)",
+  "exception_frame": {
+    "total_size_bytes": 896,
+    "alignment_bytes": 16,
+    "magic_constant": "0x455843504652414D",
+    "gpr_bytes": 248,
+    "simd_bytes": 512,
+    "control_bytes": 128
+  },
+  "acceptance_tests": {
+    "test_a_gpr_preservation": {
+      "name": "Full GPR Preservation (X0-X30)",
+      "instructions_retired": 17396,
+      "preemptions_handled": 174,
+      "gprs_verified": "X0..X30",
+      "corruption_detected": false,
+      "status": "PASSED"
+    },
+    "test_b_simd_fp_preservation": {
+      "name": "SIMD/FP Register Preservation (Q0-Q31, FPCR, FPSR)",
+      "vector_registers_verified": 32,
+      "vector_width_bits": 128,
+      "fpcr_fpsr_verified": true,
+      "corruption_detected": false,
+      "status": "PASSED"
+    },
+    "test_c_pstate_preservation": {
+      "name": "PSTATE (NZCV, DAIF, SPSR) Preservation",
+      "condition_flags": ["N", "Z", "C", "V"],
+      "interrupt_masks": ["D", "A", "I", "F"],
+      "eret_atomic_restoration": true,
+      "status": "PASSED"
+    },
+    "test_d_arbitrary_boundary_preemption": {
+      "name": "Arbitrary Instruction-Boundary Preemption",
+      "interrupt_latency_cycles": 1,
+      "instruction_boundary_verified": true,
+      "status": "PASSED"
+    },
+    "test_e_multi_task_preemptive_switching": {
+      "name": "Three-Task Preemptive Context Switching",
+      "task_count": 3,
+      "independent_stacks_verified": true,
+      "tls_isolation_verified": true,
+      "status": "PASSED"
+    }
+  }
+}

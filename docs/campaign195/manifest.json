@@ -1,0 +1,60 @@
+{
+  "campaign": 195,
+  "campaign_name": "Kernel Correctness, Preemption Integrity, Complete CPU Context Preservation & SMP Stress Validation",
+  "baseline_commit": "9e070ce7e1f5fb88b49253e3ddcec423efce62a5",
+  "device_research_identity": {
+    "device": "iPhone 15",
+    "model": "iPhone15,4",
+    "board_id": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "target_triples": ["aarch64-macos", "aarch64-ios", "aarch64-freestanding"]
+  },
+  "host_toolchain": {
+    "os": "Windows 11 x64",
+    "compiler": "Visual Studio 18 2026 MSVC C++20",
+    "compiler_flags": ["/W4", "/WX", "/permissive-"],
+    "cross_compiler": "Zig 0.17.0 (Clang 22.1.8)"
+  },
+  "artifacts": [
+    {
+      "source": "tests/artifacts/src/guest_cooperative_3threads.S",
+      "binary": "tests/artifacts/bin/guest_cooperative_3threads",
+      "size_bytes": 51064,
+      "sha256": "e6b133d4256fd5664e2eeaf9260d812b83fed2f2bea06e431763a66dac88c24f",
+      "type": "Mach-O 64-bit arm64 freestanding executable",
+      "purpose": "3-thread cooperative context switch ring validation"
+    },
+    {
+      "source": "tests/artifacts/src/guest_preemption_stress.S",
+      "binary": "tests/artifacts/bin/guest_preemption_stress",
+      "size_bytes": 50376,
+      "sha256": "a4da230fb845f0126cc1bbaa5c57068d5e55a86bb1847cca3a5d054b47f43817",
+      "type": "Mach-O 64-bit arm64 freestanding executable",
+      "purpose": "Live asynchronous timer preemption stress and full GPR (X0-X30) preservation"
+    }
+  ],
+  "test_suites": [
+    "stage195_3_cooperative_switch_tests",
+    "stage195_4_asynchronous_preemption_tests",
+    "stage195_10_timer_and_sync_stress_tests",
+    "stage195_15_demand_paging_concurrency_tests",
+    "stage195_16_allocator_stress_tests",
+    "stage195_17_long_running_workload_tests"
+  ],
+  "regression_summary": {
+    "release": {
+      "total_tests": 390,
+      "passed": 389,
+      "skipped": 1,
+      "failed": 0,
+      "pass_rate": "100%"
+    },
+    "debug": {
+      "total_tests": 390,
+      "passed": 389,
+      "skipped": 1,
+      "failed": 0,
+      "pass_rate": "100%"
+    }
+  }
+}

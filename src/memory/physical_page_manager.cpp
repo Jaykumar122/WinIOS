@@ -123,6 +123,12 @@ bool PhysicalPageManager::free_pages(std::uint64_t physical_addr, std::size_t co
     }
 
     for (std::size_t i = 0; i < count; ++i) {
+        if (!get_bit(start_pfn + i)) {
+            return false; // Double free or unallocated page rejection
+        }
+    }
+
+    for (std::size_t i = 0; i < count; ++i) {
         set_bit(start_pfn + i, false);
     }
 

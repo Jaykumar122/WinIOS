@@ -1,0 +1,49 @@
+{
+  "campaign": 195,
+  "subsystem": "SMP Synchronization & Concurrency",
+  "cores_modeled": 2,
+  "acceptance_tests": {
+    "test_f_smp_task_migration": {
+      "name": "Two-Core SMP Task Migration",
+      "dual_running_detected": false,
+      "context_integrity_after_migration": true,
+      "status": "PASSED"
+    },
+    "test_g_wait_queue_races": {
+      "name": "Wait-Queue Races & Lost-Wakeup Prevention",
+      "priority_wake_order_verified": true,
+      "fifo_wake_order_verified": true,
+      "wake_before_block_preserved": true,
+      "wake_all_contention_prevented": true,
+      "lost_wakeups": 0,
+      "status": "PASSED"
+    },
+    "test_h_demand_paging_concurrency": {
+      "name": "Concurrent Memory Faults & Race Prevention",
+      "disjoint_page_faults_resolved": true,
+      "same_page_concurrent_resolution_atomic": true,
+      "duplicate_allocations": 0,
+      "tlb_invalidation_broadcast_coherent": true,
+      "page_reclamation_and_refault_verified": true,
+      "oom_handled_gracefully": true,
+      "status": "PASSED"
+    },
+    "test_i_deterministic_replay": {
+      "name": "Long-Running Synthetic Workload Deterministic Replay",
+      "run1_retired_instructions": 641,
+      "run2_retired_instructions": 641,
+      "run1_preemptions": 4,
+      "run2_preemptions": 4,
+      "run1_context_switches": 5,
+      "run2_context_switches": 5,
+      "run1_faults_resolved": 1,
+      "run2_faults_resolved": 1,
+      "run1_spinlock_acquires": 30,
+      "run2_spinlock_acquires": 30,
+      "run1_checksum": "0x3d3ff8aef8b61e8f",
+      "run2_checksum": "0x3d3ff8aef8b61e8f",
+      "deterministic_conformance": "100%",
+      "status": "PASSED"
+    }
+  }
+}

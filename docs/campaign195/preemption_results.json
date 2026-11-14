@@ -1,0 +1,20 @@
+{
+  "campaign": 195,
+  "subsystem": "Preemption Engine & Exception Entry",
+  "timer_source": "ARM Generic Timer / GICv3 PPI 27",
+  "configurations": {
+    "timer_intervals_tested": [50, 100, 250, 500],
+    "vector_offset_sync_current_el": "0x200",
+    "vector_offset_irq_current_el": "0x280",
+    "vector_offset_sync_lower_el": "0x400",
+    "vector_offset_irq_lower_el": "0x480"
+  },
+  "results": {
+    "total_timer_preemptions_executed": 178,
+    "unmasked_delivery_rate": 1.0,
+    "masked_deferral_rate": 1.0,
+    "sp_alignment_faults": 0,
+    "critical_section_protection": "VERIFIED (DAIF.I auto-mask on entry and deferred IRQ delivery)",
+    "status": "PASSED"
+  }
+}

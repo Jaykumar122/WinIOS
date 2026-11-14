@@ -109,14 +109,33 @@ bool KernelHeapAllocator::kfree(std::uint64_t ptr) {
     hdr.set_allocated(false);
     write_header(block_addr, hdr);
 
-    // Coalesce forward if next contiguous block is also free
+    // 1. Coalesce backward if preceding contiguous block is also free
+    std::uint64_t effective_block_addr = block_addr;
+    std::uint64_t curr = heap_base_;
+    while (curr < effective_block_addr) {
+        HeapBlockHeader cur_hdr = read_header(curr);
+        if (cur_hdr.magic != kHeapBlockMagic || cur_hdr.block_size() == 0) break;
+        if (curr + cur_hdr.block_size() == effective_block_addr && !cur_hdr.is_allocated()) {
+            cur_hdr.set_size(cur_hdr.block_size() + hdr.block_size());
+            write_header(curr, cur_hdr);
+            effective_block_addr = curr;
+            hdr = cur_hdr;
+            break;
+        }
+        curr += cur_hdr.block_size();
+    }
+
+    // 2. Coalesce forward while next contiguous block is also free
     const std::uint64_t end = heap_base_ + heap_size_;
-    const std::uint64_t next_addr = block_addr + hdr.block_size();
-    if (next_addr < end) {
+    std::uint64_t next_addr = effective_block_addr + hdr.block_size();
+    while (next_addr < end) {
         const HeapBlockHeader next_hdr = read_header(next_addr);
         if (next_hdr.magic == kHeapBlockMagic && !next_hdr.is_allocated()) {
             hdr.set_size(hdr.block_size() + next_hdr.block_size());
-            write_header(block_addr, hdr);
+            write_header(effective_block_addr, hdr);
+            next_addr = effective_block_addr + hdr.block_size();
+        } else {
+            break;
         }
     }
 

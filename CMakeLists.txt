@@ -97,6 +97,8 @@ add_library(winios_core STATIC
     src/kernel/handle_table.cpp
     src/kernel/driver_manager.cpp
     src/kernel/panic.cpp
+    src/kernel/cpu_context.cpp
+    src/kernel/exception_frame_manager.cpp
     src/runtime/guest_runtime.cpp
     src/runtime/guest_syscall_dispatcher.cpp
     src/runtime/elf_session.cpp
@@ -1479,6 +1481,42 @@ if(BUILD_TESTING)
     winios_set_warnings(stage194_18_workload_corpus_tests)
     add_test(NAME stage194_18_workload_corpus_tests COMMAND stage194_18_workload_corpus_tests)
     set_tests_properties(stage194_18_workload_corpus_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage195_3_cooperative_switch_tests tests/unit/stage195_3_cooperative_switch_tests.cpp)
+    target_link_libraries(stage195_3_cooperative_switch_tests PRIVATE winios_core)
+    winios_set_warnings(stage195_3_cooperative_switch_tests)
+    add_test(NAME stage195_3_cooperative_switch_tests COMMAND stage195_3_cooperative_switch_tests)
+    set_tests_properties(stage195_3_cooperative_switch_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage195_4_asynchronous_preemption_tests tests/unit/stage195_4_asynchronous_preemption_tests.cpp)
+    target_link_libraries(stage195_4_asynchronous_preemption_tests PRIVATE winios_core)
+    winios_set_warnings(stage195_4_asynchronous_preemption_tests)
+    add_test(NAME stage195_4_asynchronous_preemption_tests COMMAND stage195_4_asynchronous_preemption_tests)
+    set_tests_properties(stage195_4_asynchronous_preemption_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage195_10_timer_and_sync_stress_tests tests/unit/stage195_10_timer_and_sync_stress_tests.cpp)
+    target_link_libraries(stage195_10_timer_and_sync_stress_tests PRIVATE winios_core)
+    winios_set_warnings(stage195_10_timer_and_sync_stress_tests)
+    add_test(NAME stage195_10_timer_and_sync_stress_tests COMMAND stage195_10_timer_and_sync_stress_tests)
+    set_tests_properties(stage195_10_timer_and_sync_stress_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage195_15_demand_paging_concurrency_tests tests/unit/stage195_15_demand_paging_concurrency_tests.cpp)
+    target_link_libraries(stage195_15_demand_paging_concurrency_tests PRIVATE winios_core)
+    winios_set_warnings(stage195_15_demand_paging_concurrency_tests)
+    add_test(NAME stage195_15_demand_paging_concurrency_tests COMMAND stage195_15_demand_paging_concurrency_tests)
+    set_tests_properties(stage195_15_demand_paging_concurrency_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage195_16_allocator_stress_tests tests/unit/stage195_16_allocator_stress_tests.cpp)
+    target_link_libraries(stage195_16_allocator_stress_tests PRIVATE winios_core)
+    winios_set_warnings(stage195_16_allocator_stress_tests)
+    add_test(NAME stage195_16_allocator_stress_tests COMMAND stage195_16_allocator_stress_tests)
+    set_tests_properties(stage195_16_allocator_stress_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage195_17_long_running_workload_tests tests/unit/stage195_17_long_running_workload_tests.cpp)
+    target_link_libraries(stage195_17_long_running_workload_tests PRIVATE winios_core)
+    winios_set_warnings(stage195_17_long_running_workload_tests)
+    add_test(NAME stage195_17_long_running_workload_tests COMMAND stage195_17_long_running_workload_tests)
+    set_tests_properties(stage195_17_long_running_workload_tests PROPERTIES TIMEOUT 60)
 
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)
