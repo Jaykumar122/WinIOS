@@ -67,6 +67,7 @@ add_library(winios_core STATIC
     src/loader/initramfs_loader.cpp
     src/loader/rootfs_builder.cpp
     src/loader/macho_loader.cpp
+    src/loader/synthetic_kernel_loader.cpp
     src/loader/ramdisk_loader.cpp
     src/loader/apple_boot_artifact_inventory.cpp
     src/loader/apple_artifact_admission.cpp
@@ -80,6 +81,22 @@ add_library(winios_core STATIC
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
     src/memory/apple_physical_memory_map.cpp
+    src/memory/kernel_memory_layout.cpp
+    src/memory/physical_page_manager.cpp
+    src/memory/virtual_page_table.cpp
+    src/memory/demand_paging_manager.cpp
+    src/memory/kernel_heap_allocator.cpp
+    src/kernel/thread.cpp
+    src/kernel/context_switch.cpp
+    src/kernel/scheduler.cpp
+    src/kernel/preemption_timer.cpp
+    src/kernel/smp_scheduler.cpp
+    src/kernel/sync.cpp
+    src/kernel/syscall_dispatcher.cpp
+    src/kernel/ipc.cpp
+    src/kernel/handle_table.cpp
+    src/kernel/driver_manager.cpp
+    src/kernel/panic.cpp
     src/runtime/guest_runtime.cpp
     src/runtime/guest_syscall_dispatcher.cpp
     src/runtime/elf_session.cpp
@@ -1354,6 +1371,114 @@ if(BUILD_TESTING)
     winios_set_warnings(stage193_17_kernel_integration_tests)
     add_test(NAME stage193_17_kernel_integration_tests COMMAND stage193_17_kernel_integration_tests)
     set_tests_properties(stage193_17_kernel_integration_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_1_kernel_boot_contract_tests tests/unit/stage194_1_kernel_boot_contract_tests.cpp)
+    target_link_libraries(stage194_1_kernel_boot_contract_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_1_kernel_boot_contract_tests)
+    add_test(NAME stage194_1_kernel_boot_contract_tests COMMAND stage194_1_kernel_boot_contract_tests)
+    set_tests_properties(stage194_1_kernel_boot_contract_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_2_kernel_memory_layout_tests tests/unit/stage194_2_kernel_memory_layout_tests.cpp)
+    target_link_libraries(stage194_2_kernel_memory_layout_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_2_kernel_memory_layout_tests)
+    add_test(NAME stage194_2_kernel_memory_layout_tests COMMAND stage194_2_kernel_memory_layout_tests)
+    set_tests_properties(stage194_2_kernel_memory_layout_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_3_physical_allocator_tests tests/unit/stage194_3_physical_allocator_tests.cpp)
+    target_link_libraries(stage194_3_physical_allocator_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_3_physical_allocator_tests)
+    add_test(NAME stage194_3_physical_allocator_tests COMMAND stage194_3_physical_allocator_tests)
+    set_tests_properties(stage194_3_physical_allocator_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_4_virtual_page_table_tests tests/unit/stage194_4_virtual_page_table_tests.cpp)
+    target_link_libraries(stage194_4_virtual_page_table_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_4_virtual_page_table_tests)
+    add_test(NAME stage194_4_virtual_page_table_tests COMMAND stage194_4_virtual_page_table_tests)
+    set_tests_properties(stage194_4_virtual_page_table_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_5_demand_paging_tests tests/unit/stage194_5_demand_paging_tests.cpp)
+    target_link_libraries(stage194_5_demand_paging_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_5_demand_paging_tests)
+    add_test(NAME stage194_5_demand_paging_tests COMMAND stage194_5_demand_paging_tests)
+    set_tests_properties(stage194_5_demand_paging_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_6_kernel_heap_tests tests/unit/stage194_6_kernel_heap_tests.cpp)
+    target_link_libraries(stage194_6_kernel_heap_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_6_kernel_heap_tests)
+    add_test(NAME stage194_6_kernel_heap_tests COMMAND stage194_6_kernel_heap_tests)
+    set_tests_properties(stage194_6_kernel_heap_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_7_thread_lifecycle_tests tests/unit/stage194_7_thread_lifecycle_tests.cpp)
+    target_link_libraries(stage194_7_thread_lifecycle_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_7_thread_lifecycle_tests)
+    add_test(NAME stage194_7_thread_lifecycle_tests COMMAND stage194_7_thread_lifecycle_tests)
+    set_tests_properties(stage194_7_thread_lifecycle_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_8_context_switch_tests tests/unit/stage194_8_context_switch_tests.cpp)
+    target_link_libraries(stage194_8_context_switch_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_8_context_switch_tests)
+    add_test(NAME stage194_8_context_switch_tests COMMAND stage194_8_context_switch_tests)
+    set_tests_properties(stage194_8_context_switch_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_9_guest_scheduler_tests tests/unit/stage194_9_guest_scheduler_tests.cpp)
+    target_link_libraries(stage194_9_guest_scheduler_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_9_guest_scheduler_tests)
+    add_test(NAME stage194_9_guest_scheduler_tests COMMAND stage194_9_guest_scheduler_tests)
+    set_tests_properties(stage194_9_guest_scheduler_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_10_preemption_tests tests/unit/stage194_10_preemption_tests.cpp)
+    target_link_libraries(stage194_10_preemption_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_10_preemption_tests)
+    add_test(NAME stage194_10_preemption_tests COMMAND stage194_10_preemption_tests)
+    set_tests_properties(stage194_10_preemption_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_11_smp_scheduler_tests tests/unit/stage194_11_smp_scheduler_tests.cpp)
+    target_link_libraries(stage194_11_smp_scheduler_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_11_smp_scheduler_tests)
+    add_test(NAME stage194_11_smp_scheduler_tests COMMAND stage194_11_smp_scheduler_tests)
+    set_tests_properties(stage194_11_smp_scheduler_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_12_sync_primitives_tests tests/unit/stage194_12_sync_primitives_tests.cpp)
+    target_link_libraries(stage194_12_sync_primitives_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_12_sync_primitives_tests)
+    add_test(NAME stage194_12_sync_primitives_tests COMMAND stage194_12_sync_primitives_tests)
+    set_tests_properties(stage194_12_sync_primitives_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_13_syscall_dispatch_tests tests/unit/stage194_13_syscall_dispatch_tests.cpp)
+    target_link_libraries(stage194_13_syscall_dispatch_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_13_syscall_dispatch_tests)
+    add_test(NAME stage194_13_syscall_dispatch_tests COMMAND stage194_13_syscall_dispatch_tests)
+    set_tests_properties(stage194_13_syscall_dispatch_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_14_kernel_ipc_tests tests/unit/stage194_14_kernel_ipc_tests.cpp)
+    target_link_libraries(stage194_14_kernel_ipc_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_14_kernel_ipc_tests)
+    add_test(NAME stage194_14_kernel_ipc_tests COMMAND stage194_14_kernel_ipc_tests)
+    set_tests_properties(stage194_14_kernel_ipc_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_15_handle_management_tests tests/unit/stage194_15_handle_management_tests.cpp)
+    target_link_libraries(stage194_15_handle_management_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_15_handle_management_tests)
+    add_test(NAME stage194_15_handle_management_tests COMMAND stage194_15_handle_management_tests)
+    set_tests_properties(stage194_15_handle_management_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_16_device_drivers_tests tests/unit/stage194_16_device_drivers_tests.cpp)
+    target_link_libraries(stage194_16_device_drivers_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_16_device_drivers_tests)
+    add_test(NAME stage194_16_device_drivers_tests COMMAND stage194_16_device_drivers_tests)
+    set_tests_properties(stage194_16_device_drivers_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_17_kernel_diagnostics_tests tests/unit/stage194_17_kernel_diagnostics_tests.cpp)
+    target_link_libraries(stage194_17_kernel_diagnostics_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_17_kernel_diagnostics_tests)
+    add_test(NAME stage194_17_kernel_diagnostics_tests COMMAND stage194_17_kernel_diagnostics_tests)
+    set_tests_properties(stage194_17_kernel_diagnostics_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage194_18_workload_corpus_tests tests/unit/stage194_18_workload_corpus_tests.cpp)
+    target_link_libraries(stage194_18_workload_corpus_tests PRIVATE winios_core)
+    winios_set_warnings(stage194_18_workload_corpus_tests)
+    add_test(NAME stage194_18_workload_corpus_tests COMMAND stage194_18_workload_corpus_tests)
+    set_tests_properties(stage194_18_workload_corpus_tests PROPERTIES TIMEOUT 60)
 
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)

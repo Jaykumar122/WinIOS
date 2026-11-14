@@ -1,0 +1,92 @@
+{
+  "campaign": 194,
+  "title": "Synthetic Kernel Boot, Memory Management, Scheduling & Kernel-Service Integration",
+  "baseline_commit": "f062731",
+  "branch": "campaign-191r",
+  "host": {
+    "os": "Windows 11 x64",
+    "compiler": "Visual Studio 18 2026, MSVC C++20",
+    "compiler_flags": "/W4 /WX /permissive-",
+    "secondary_toolchain": "Zig 0.17.0 (Clang 22.1.8 + LLVM Mach-O Linker)"
+  },
+  "target_device_research_identity": {
+    "device": "iPhone 15",
+    "model": "iPhone15,4",
+    "board_id": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "architectures": ["aarch64-macos", "aarch64-ios", "aarch64-freestanding"]
+  },
+  "stages": [
+    { "stage": "194.0", "name": "Baseline, Evidence and Kernel Architecture Audit", "status": "COMPLETED", "targets_passed": "365/366 (1 skipped)" },
+    { "stage": "194.1", "name": "Synthetic Kernel Image Loading and Entry Contract", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage194_1_kernel_boot_contract_tests" },
+    { "stage": "194.2", "name": "Kernel Virtual Memory Layout and Mapping", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage194_2_kernel_memory_layout_tests" },
+    { "stage": "194.3", "name": "Guest Physical Memory Manager (16KB Page Allocator)", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage194_3_physical_allocator_tests", "artifact": "KERNEL-002 (guest_physical_allocator)" },
+    { "stage": "194.4", "name": "Guest Virtual Memory Manager (Page Table Walker & Descriptor Writer)", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage194_4_virtual_page_table_tests" },
+    { "stage": "194.5", "name": "Demand Paging and Page-Fault Resolution", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage194_5_demand_paging_tests" },
+    { "stage": "194.6", "name": "Guest Kernel Heap Allocator (kmalloc / kfree)", "status": "COMPLETED", "tests": "6/6 passed", "suite": "stage194_6_kernel_heap_tests" },
+    { "stage": "194.7", "name": "Kernel Thread Structures and Lifecycle", "status": "COMPLETED", "tests": "6/6 passed", "suite": "stage194_7_thread_lifecycle_tests" },
+    { "stage": "194.8", "name": "Guest Context Switching", "status": "COMPLETED", "tests": "5/5 passed", "suite": "stage194_8_context_switch_tests", "artifact": "KERNEL-003 (guest_context_switch)" },
+    { "stage": "194.9", "name": "Guest Priority Scheduler and Run Queues", "status": "COMPLETED", "tests": "7/7 passed", "suite": "stage194_9_guest_scheduler_tests" },
+    { "stage": "194.10", "name": "Preemptive Scheduling with Timer Interrupts", "status": "COMPLETED", "tests": "6/6 passed", "suite": "stage194_10_preemption_tests", "artifact": "KERNEL-004 (guest_preemption_irq)" },
+    { "stage": "194.11", "name": "SMP Scheduling and CPU Affinity", "status": "COMPLETED", "tests": "6/6 passed", "suite": "stage194_11_smp_scheduler_tests" },
+    { "stage": "194.12", "name": "Kernel Synchronization Primitives (Spinlocks & Wait Queues)", "status": "COMPLETED", "tests": "62 assertions passed", "suite": "stage194_12_sync_primitives_tests" },
+    { "stage": "194.13", "name": "Guest Syscall Entry and Dispatch", "status": "COMPLETED", "tests": "30 assertions passed", "suite": "stage194_13_syscall_dispatch_tests" },
+    { "stage": "194.14", "name": "Guest Kernel IPC and Message Queues", "status": "COMPLETED", "tests": "60 assertions passed", "suite": "stage194_14_kernel_ipc_tests" },
+    { "stage": "194.15", "name": "Kernel Object and Handle Management", "status": "COMPLETED", "tests": "43 assertions passed", "suite": "stage194_15_handle_management_tests" },
+    { "stage": "194.16", "name": "Kernel Device-Driver Interface and MMIO", "status": "COMPLETED", "tests": "31 assertions passed", "suite": "stage194_16_device_drivers_tests" },
+    { "stage": "194.17", "name": "Kernel Diagnostics and Failure Recovery", "status": "COMPLETED", "tests": "29 assertions passed", "suite": "stage194_17_kernel_diagnostics_tests" },
+    { "stage": "194.18", "name": "Independently Compiled Synthetic Kernel Workload Corpus", "status": "COMPLETED", "tests": "21 assertions passed", "suite": "stage194_18_workload_corpus_tests", "artifacts": ["KERNEL-005", "KERNEL-006", "KERNEL-007"] },
+    { "stage": "194.19", "name": "Full Conformance Audit, Full Regression and Final Report", "status": "COMPLETED", "ctest_release": "383 passed, 1 skipped, 0 failed (384 total)", "ctest_debug": "18/18 Stage 194 targets passed (100%)" }
+  ],
+  "regression_summary": {
+    "total_ctest_targets": 384,
+    "release_passed": 383,
+    "release_skipped": 1,
+    "release_failed": 0,
+    "skipped_target": "inferno_integration_tests (requires proprietary host harness)"
+  },
+  "artifacts": [
+    {
+      "artifact_id": "KERNEL-002",
+      "file_name": "guest_physical_allocator",
+      "sha256": "b51b7c0cc31d02a469b1b6dff7029dd8413bd8592650c2ad572cef388161f9e4",
+      "size_bytes": 50888,
+      "instructions_retired": 113
+    },
+    {
+      "artifact_id": "KERNEL-003",
+      "file_name": "guest_context_switch",
+      "sha256": "651bd7ed44dc0a2377ec1f124a27c65f255e1d6f22d4c22dde23b251dcb723b8",
+      "size_bytes": 50088,
+      "instructions_retired": 22
+    },
+    {
+      "artifact_id": "KERNEL-004",
+      "file_name": "guest_preemption_irq",
+      "sha256": "9836f774a88af1616fc6beeab1a0732829da91a56829d13447a2678f0f2f4c9d",
+      "size_bytes": 50008,
+      "instructions_retired": 32
+    },
+    {
+      "artifact_id": "KERNEL-005",
+      "file_name": "guest_kernel_smp_threads",
+      "sha256": "d30347dc1bc0dbf5e48594fdc42a8f5970254b18bb4a9c96a56399577ac7413c",
+      "size_bytes": 50328,
+      "instructions_retired": 155
+    },
+    {
+      "artifact_id": "KERNEL-006",
+      "file_name": "guest_kernel_page_walk",
+      "sha256": "938fbffca69d62cabdca7dafde37d1b41b3cc02c1fe8920ae2f13997547d0a24",
+      "size_bytes": 50152,
+      "instructions_retired": 33
+    },
+    {
+      "artifact_id": "KERNEL-007",
+      "file_name": "guest_kernel_ipc_pingpong",
+      "sha256": "1b87c7bd5d390e6194e78a5416ff7c8bbce8f6bf67f6d717b284eb8a246323d0",
+      "size_bytes": 50424,
+      "instructions_retired": 119
+    }
+  ]
+}

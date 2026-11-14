@@ -1,0 +1,92 @@
+{
+  "campaign": 194,
+  "description": "WinIOS Campaign 194 Synthetic Kernel Artifact Manifest",
+  "toolchain": "Zig 0.17.0 (Clang 22.1.8 + LLVM Mach-O Linker)",
+  "common_flags": "-target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector -Wl,-e,_start -Wl,-pagezero_size,0",
+  "artifacts": [
+    {
+      "artifact_id": "KERNEL-001",
+      "file_name": "synthetic_el1_kernel",
+      "relative_path": "tests/artifacts/bin/synthetic_el1_kernel",
+      "source_path": "tests/artifacts/src/synthetic_el1_kernel.S",
+      "sha256": "ef08793bdf38817e06c8d37157d5b25ba94b959269a7965ad45a82d4c4a200cf",
+      "size_bytes": 51832,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "193.16",
+      "guest_instructions_retired": 178,
+      "purpose": "Freestanding ARM64 EL1 kernel baseline runtime with VBAR_EL1 vector table"
+    },
+    {
+      "artifact_id": "KERNEL-002",
+      "file_name": "guest_physical_allocator",
+      "relative_path": "tests/artifacts/bin/guest_physical_allocator",
+      "source_path": "tests/artifacts/src/guest_physical_allocator.S",
+      "sha256": "b51b7c0cc31d02a469b1b6dff7029dd8413bd8592650c2ad572cef388161f9e4",
+      "size_bytes": 50888,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "194.3",
+      "guest_instructions_retired": 113,
+      "purpose": "Guest-side 16KB physical memory allocator bitmap scanning and page management"
+    },
+    {
+      "artifact_id": "KERNEL-003",
+      "file_name": "guest_context_switch",
+      "relative_path": "tests/artifacts/bin/guest_context_switch",
+      "source_path": "tests/artifacts/src/guest_context_switch.S",
+      "sha256": "651bd7ed44dc0a2377ec1f124a27c65f255e1d6f22d4c22dde23b251dcb723b8",
+      "size_bytes": 50088,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "194.8",
+      "guest_instructions_retired": 22,
+      "purpose": "Guest register save/restore AAPCS64 callee-saved context switch routine"
+    },
+    {
+      "artifact_id": "KERNEL-004",
+      "file_name": "guest_preemption_irq",
+      "relative_path": "tests/artifacts/bin/guest_preemption_irq",
+      "source_path": "tests/artifacts/src/guest_preemption_irq.S",
+      "sha256": "9836f774a88af1616fc6beeab1a0732829da91a56829d13447a2678f0f2f4c9d",
+      "size_bytes": 50008,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "194.10",
+      "guest_instructions_retired": 32,
+      "purpose": "Hardware timer preemption vector handler with GICv3 ICC_EOIR1 acknowledgment and ERET"
+    },
+    {
+      "artifact_id": "KERNEL-005",
+      "file_name": "guest_kernel_smp_threads",
+      "relative_path": "tests/artifacts/bin/guest_kernel_smp_threads",
+      "source_path": "tests/artifacts/src/guest_kernel_smp_threads.S",
+      "sha256": "d30347dc1bc0dbf5e48594fdc42a8f5970254b18bb4a9c96a56399577ac7413c",
+      "size_bytes": 50328,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "194.18",
+      "guest_instructions_retired": 155,
+      "purpose": "Dual-core SMP execution workload with ARM64 exclusive spinlock synchronization"
+    },
+    {
+      "artifact_id": "KERNEL-006",
+      "file_name": "guest_kernel_page_walk",
+      "relative_path": "tests/artifacts/bin/guest_kernel_page_walk",
+      "source_path": "tests/artifacts/src/guest_kernel_page_walk.S",
+      "sha256": "938fbffca69d62cabdca7dafde37d1b41b3cc02c1fe8920ae2f13997547d0a24",
+      "size_bytes": 50152,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "194.18",
+      "guest_instructions_retired": 33,
+      "purpose": "16KB L2 to L3 virtual page table descriptor walking and validation routine"
+    },
+    {
+      "artifact_id": "KERNEL-007",
+      "file_name": "guest_kernel_ipc_pingpong",
+      "relative_path": "tests/artifacts/bin/guest_kernel_ipc_pingpong",
+      "source_path": "tests/artifacts/src/guest_kernel_ipc_pingpong.S",
+      "sha256": "1b87c7bd5d390e6194e78a5416ff7c8bbce8f6bf67f6d717b284eb8a246323d0",
+      "size_bytes": 50424,
+      "classification": "SYNTHETIC_KERNEL",
+      "stage": "194.18",
+      "guest_instructions_retired": 119,
+      "purpose": "Guest-side synchronous mailbox IPC message exchange loop"
+    }
+  ]
+}
