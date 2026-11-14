@@ -2,6 +2,7 @@
 #include "cpu/smp_cluster.h"
 #include "cpu/psci.h"
 #include "cpu/debug_exceptions.h"
+#include "cpu/guest_memory_order.h"
 #include "memory/memory.h"
 #include "replay/replay_input_router.h"
 #include "sndl/sndl_source_hooks.h"
@@ -4296,6 +4297,9 @@ void CPU::reset() {
     is_started_ = false;
     is_stopped_ = false;
     timer_trace_state_ = CoreTimerTraceState{};
+    dmb_count_ = 0;
+    dsb_count_ = 0;
+    isb_count_ = 0;
 }
 void CPU::note_normal_store(std::uint64_t address, std::size_t width) noexcept {
     if (smp_cluster_) {
@@ -4304,17 +4308,27 @@ void CPU::note_normal_store(std::uint64_t address, std::size_t width) noexcept {
     if (!exclusive_monitor_.valid || width == 0) {
         return;
     }
-    const auto end_of = [](std::uint64_t start, std::size_t length) noexcept {
-        const std::uint64_t limit = std::numeric_limits<std::uint64_t>::max();
-        return static_cast<std::uint64_t>(length) > limit - start
-            ? limit
-            : start + static_cast<std::uint64_t>(length);
-    };
-    const std::uint64_t store_end = end_of(address, width);
-    const std::uint64_t monitor_end =
-        end_of(exclusive_monitor_.address, exclusive_monitor_.size);
-    if (address < monitor_end && exclusive_monitor_.address < store_end) {
-        exclusive_monitor_ = ExclusiveMonitor{};
+    if (reservation_granule_ > 0) {
+        const std::uint64_t mask = ~(static_cast<std::uint64_t>(reservation_granule_ - 1));
+        const std::uint64_t monitor_granule = exclusive_monitor_.address & mask;
+        const std::uint64_t store_start_granule = address & mask;
+        const std::uint64_t store_end_granule = (address + width - 1) & mask;
+        if (monitor_granule >= store_start_granule && monitor_granule <= store_end_granule) {
+            exclusive_monitor_ = ExclusiveMonitor{};
+        }
+    } else {
+        const auto end_of = [](std::uint64_t start, std::size_t length) noexcept {
+            const std::uint64_t limit = std::numeric_limits<std::uint64_t>::max();
+            return static_cast<std::uint64_t>(length) > limit - start
+                ? limit
+                : start + static_cast<std::uint64_t>(length);
+        };
+        const std::uint64_t store_end = end_of(address, width);
+        const std::uint64_t monitor_end =
+            end_of(exclusive_monitor_.address, exclusive_monitor_.size);
+        if (address < monitor_end && exclusive_monitor_.address < store_end) {
+            exclusive_monitor_ = ExclusiveMonitor{};
+        }
     }
 }
 void CPU::initialize_entry(std::uint64_t entry_address, const Memory& memory) {
@@ -6468,6 +6482,10 @@ void CPU::step(Memory& guest_memory) {
                 if (smp_cluster_) {
                     smp_cluster_->register_exclusive_reservation(core_id_, address, width);
                 }
+                if (memory_order_model_) {
+                    memory_order_model_->record_read(core_id_, address, width, value,
+                        ordered ? winios::MemoryAccessType::AcquireRead : winios::MemoryAccessType::ExclusiveRead);
+                }
                 write_zero_register_result(*this, target, value);
             } else {
                 const std::uint64_t value =
@@ -6492,6 +6510,10 @@ void CPU::step(Memory& guest_memory) {
                     write_access_value(memory, memory_address,
                                        exclusive_size_field, value);
                     note_normal_store(address, width);
+                    if (memory_order_model_) {
+                        memory_order_model_->record_write(core_id_, address, width, value,
+                            ordered ? winios::MemoryAccessType::ReleaseWrite : winios::MemoryAccessType::ExclusiveWrite);
+                    }
                     write_zero_register_result(*this, status, 0);
                 } else {
                     write_zero_register_result(*this, status, 1);
@@ -6685,9 +6707,17 @@ void CPU::step(Memory& guest_memory) {
                 read_zero_register_operand(*this, desired) & mask;
             write_access_value(memory, memory_address, exclusive_size_field, desired_value);
             note_normal_store(address, width);
+            if (memory_order_model_) {
+                memory_order_model_->record_write(core_id_, address, width, desired_value,
+                    release ? winios::MemoryAccessType::ReleaseWrite : winios::MemoryAccessType::NormalWrite);
+            }
         }
         if (acquire) {
             std::atomic_thread_fence(std::memory_order_acquire);
+        }
+        if (memory_order_model_) {
+            memory_order_model_->record_read(core_id_, address, width, old_value,
+                acquire ? winios::MemoryAccessType::AcquireRead : winios::MemoryAccessType::NormalRead);
         }
         write_zero_register_result(*this, expected, old_value);
         program_counter_ = checked_add_address(
@@ -6768,6 +6798,12 @@ void CPU::step(Memory& guest_memory) {
         write_access_value(memory, memory_address, exclusive_size_field,
                            new_value);
         note_normal_store(address, width);
+        if (memory_order_model_) {
+            memory_order_model_->record_read(core_id_, address, width, old_value,
+                acquire ? winios::MemoryAccessType::AcquireRead : winios::MemoryAccessType::NormalRead);
+            memory_order_model_->record_write(core_id_, address, width, new_value,
+                release ? winios::MemoryAccessType::ReleaseWrite : winios::MemoryAccessType::NormalWrite);
+        }
         if (acquire) {
             std::atomic_thread_fence(std::memory_order_acquire);
         }
@@ -8099,6 +8135,19 @@ void CPU::step(Memory& guest_memory) {
             if (op2 == 4u) {
                 // DSB <opt>
                 if (rt == 31u) {
+                    const bool valid_opt = (crm == 1u || crm == 2u || crm == 3u ||
+                                            crm == 5u || crm == 6u || crm == 7u ||
+                                            crm == 9u || crm == 10u || crm == 11u ||
+                                            crm == 13u || crm == 14u || crm == 15u);
+                    if (!valid_opt && architectural_exceptions_) {
+                        raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                        return;
+                    }
+                    ++dsb_count_;
+                    if (memory_order_model_) {
+                        memory_order_model_->record_dsb(core_id_, static_cast<std::uint8_t>(crm));
+                    }
+                    // DSB ensures completion of prior explicit memory accesses
                     std::atomic_thread_fence(std::memory_order_seq_cst);
                     program_counter_ = checked_add_address(
                         instruction_address, 4u, "Instruction PC increment");
@@ -8114,6 +8163,18 @@ void CPU::step(Memory& guest_memory) {
             if (op2 == 5u) {
                 // DMB <opt>
                 if (rt == 31u) {
+                    const bool valid_opt = (crm == 1u || crm == 2u || crm == 3u ||
+                                            crm == 5u || crm == 6u || crm == 7u ||
+                                            crm == 9u || crm == 10u || crm == 11u ||
+                                            crm == 13u || crm == 14u || crm == 15u);
+                    if (!valid_opt && architectural_exceptions_) {
+                        raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                        return;
+                    }
+                    ++dmb_count_;
+                    if (memory_order_model_) {
+                        memory_order_model_->record_dmb(core_id_, static_cast<std::uint8_t>(crm));
+                    }
                     // DMB barrier option semantics:
                     // ST / ISHST / OSHST / NSHST: store-store barrier
                     // LD / ISHLD / OSHLD / NSHLD: load-load / load-store barrier
@@ -8139,7 +8200,18 @@ void CPU::step(Memory& guest_memory) {
             if (op2 == 6u) {
                 // ISB {<opt>}
                 if (rt == 31u) {
-                    std::atomic_thread_fence(std::memory_order_seq_cst);
+                    // ARM DDI 0487 Section C6.2.117: CRM=0b1111 (SY) is standard.
+                    if (crm != 15u && architectural_exceptions_) {
+                        raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                        return;
+                    }
+                    ++isb_count_;
+                    if (memory_order_model_) {
+                        memory_order_model_->record_isb(core_id_, static_cast<std::uint8_t>(crm));
+                    }
+                    // ISB is an Instruction Synchronization Barrier, NOT a data memory fence!
+                    // Synchronizes instruction stream and context (flushes prefetch buffer and MMU cache).
+                    mmu_.invalidate_tlb_all();
                     program_counter_ = checked_add_address(
                         instruction_address, 4u, "Instruction PC increment");
                     emit_trace();

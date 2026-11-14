@@ -1,0 +1,21 @@
+{
+  "campaign": "197",
+  "acceptance_test": "D",
+  "status": "PASSED",
+  "granule_size_bytes": 64,
+  "cores_tested": 8,
+  "telemetry": {
+    "load_exclusive_count": 10,
+    "store_exclusive_success_count": 1,
+    "store_exclusive_fail_count": 1,
+    "invalidation_count": 1,
+    "clrex_count": 1
+  },
+  "checks": {
+    "same_granule_invalidation": true,
+    "different_granule_isolation": true,
+    "failed_stxr_memory_preservation": true,
+    "clrex_clearance": true,
+    "eret_clearance": true
+  }
+}

@@ -4,7 +4,8 @@
 
 namespace winios {
 
-SmpExclusiveMonitorManager::SmpExclusiveMonitorManager(std::size_t max_cores) {
+SmpExclusiveMonitorManager::SmpExclusiveMonitorManager(std::size_t max_cores, std::size_t granule_size)
+    : granule_size_(granule_size > 0 ? granule_size : kDefaultGranuleSize) {
     reservations_.resize(max_cores);
     for (std::size_t i = 0; i < max_cores; ++i) {
         reservations_[i].core_id = i;
@@ -21,7 +22,7 @@ void SmpExclusiveMonitorManager::load_exclusive(std::size_t core_id, std::uint64
     }
     auto& entry = reservations_[core_id];
     entry.core_id = core_id;
-    entry.granule_address = address & kGranuleMask;
+    entry.granule_address = address & granule_mask();
     entry.exact_address = address;
     entry.size = size;
     entry.valid = true;
@@ -36,7 +37,7 @@ bool SmpExclusiveMonitorManager::is_reservation_valid(std::size_t core_id, std::
     if (!entry.valid) {
         return false;
     }
-    const std::uint64_t target_granule = address & kGranuleMask;
+    const std::uint64_t target_granule = address & granule_mask();
     return entry.granule_address == target_granule;
 }
 
@@ -63,11 +64,12 @@ bool SmpExclusiveMonitorManager::store_exclusive(std::size_t core_id, std::uint6
 
 void SmpExclusiveMonitorManager::invalidate_reservations(std::size_t writer_core_id, std::uint64_t address, std::size_t size) noexcept {
     if (size == 0) return;
-    const std::uint64_t start_granule = address & kGranuleMask;
+    const std::uint64_t mask = granule_mask();
+    const std::uint64_t start_granule = address & mask;
     const std::uint64_t end_address = (address > std::numeric_limits<std::uint64_t>::max() - size)
         ? std::numeric_limits<std::uint64_t>::max()
         : (address + size - 1);
-    const std::uint64_t end_granule = end_address & kGranuleMask;
+    const std::uint64_t end_granule = end_address & mask;
 
     for (std::size_t i = 0; i < reservations_.size(); ++i) {
         if (i == writer_core_id) continue;

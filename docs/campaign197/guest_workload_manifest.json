@@ -1,0 +1,64 @@
+{
+  "stage": "197.16",
+  "acceptance_tests": ["M", "N"],
+  "manifest_version": "1.0",
+  "toolchain": "Zig 0.17.0 (Clang / LLVM 21)",
+  "target_triple": "aarch64-macos",
+  "workloads": [
+    {
+      "name": "guest_atomics_benchmark",
+      "source": "tests/artifacts/src/guest_atomics_benchmark.S",
+      "binary": "tests/artifacts/bin/guest_atomics_benchmark",
+      "size_bytes": 50152,
+      "sha256": "31b180f933f45b976c47f3a68dd70bb3445a3b539d92dfa939c5d05e0e1acf16",
+      "compilation_command": "zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector \"-Wl,-e,_start\" \"-Wl,-pagezero_size,0\" tests/artifacts/src/guest_atomics_benchmark.S -o tests/artifacts/bin/guest_atomics_benchmark",
+      "features_tested": [
+        "DMB ISH",
+        "DSB SY",
+        "ISB SY",
+        "LDXR / STXR (Exclusive Monitor LL/SC loop)",
+        "LDADD (LSE 64-bit fetch-and-add)",
+        "LDSET (LSE bitwise OR)",
+        "LDCLR (LSE bitwise clear)",
+        "LDEOR (LSE bitwise XOR)",
+        "SWP (LSE 64-bit atomic swap)",
+        "CAS (LSE compare-and-swap)"
+      ],
+      "instructions_retired": 98,
+      "exit_signature": "0x197A10CC",
+      "status": "PASS"
+    },
+    {
+      "name": "guest_smp_atomic_stress",
+      "source": "tests/artifacts/src/guest_smp_atomic_stress.S",
+      "binary": "tests/artifacts/bin/guest_smp_atomic_stress",
+      "size_bytes": 50152,
+      "sha256": "4066369596f6c63f3de2a48959508baafb75e66320618e6ca9e731c84a4491d4",
+      "compilation_command": "zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector \"-Wl,-e,_start\" \"-Wl,-pagezero_size,0\" tests/artifacts/src/guest_smp_atomic_stress.S -o tests/artifacts/bin/guest_smp_atomic_stress",
+      "features_tested": [
+        "50-iteration LDADD atomic increment",
+        "SWP atomic exchange",
+        "CAS atomic compare-and-swap"
+      ],
+      "instructions_retired": 180,
+      "exit_signature": "0x41544F4D",
+      "status": "PASS"
+    },
+    {
+      "name": "guest_smp_message_passing",
+      "source": "tests/artifacts/src/guest_smp_message_passing.S",
+      "binary": "tests/artifacts/bin/guest_smp_message_passing",
+      "size_bytes": 50056,
+      "sha256": "d73ba8b97fecd68f329e12b58c7e0c2d37db439ec046b87f4b8989ed87d972a5",
+      "compilation_command": "zig cc -target aarch64-macos -nostdlib -fno-sanitize=undefined -fno-stack-protector \"-Wl,-e,_start\" \"-Wl,-pagezero_size,0\" tests/artifacts/src/guest_smp_message_passing.S -o tests/artifacts/bin/guest_smp_message_passing",
+      "features_tested": [
+        "STLR release-store message passing publication",
+        "LDAR acquire-load message passing acquisition",
+        "Data payload verification"
+      ],
+      "instructions_retired": 20,
+      "exit_signature": "0x4D534750",
+      "status": "PASS"
+    }
+  ]
+}

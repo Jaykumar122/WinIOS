@@ -72,6 +72,11 @@ divergence_report.json
 !docs/campaign196/*.md
 !docs/campaign196/*.json
 !docs/campaign196/*.txt
+!docs/campaign197/
+!docs/campaign197/*.md
+!docs/campaign197/*.json
+!docs/campaign197/*.txt
+Testing/
 reports/
 __pycache__/
 *.pyc

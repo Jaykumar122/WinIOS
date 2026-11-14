@@ -33,6 +33,7 @@ add_library(winios_core STATIC
     src/cpu/smp_cluster.cpp
     src/cpu/smp_core_state.cpp
     src/cpu/smp_topology.cpp
+    src/cpu/guest_memory_order.cpp
     src/device/virtual_device.cpp
     src/device/virtual_device_bus.cpp
     src/device/virtual_dma_engine.cpp
@@ -1596,6 +1597,79 @@ if(BUILD_TESTING)
     winios_set_warnings(stage196_18_integrated_concurrency_tests)
     add_test(NAME stage196_18_integrated_concurrency_tests COMMAND stage196_18_integrated_concurrency_tests)
     set_tests_properties(stage196_18_integrated_concurrency_tests PROPERTIES TIMEOUT 60)
+
+    # Campaign 197: ARM64 Memory Model Fidelity, Atomic Instruction Correctness, Weak-Memory Simulation & SMP Conformance
+    add_executable(stage197_2_guest_memory_order_tests tests/unit/stage197_2_guest_memory_order_tests.cpp)
+    target_link_libraries(stage197_2_guest_memory_order_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_2_guest_memory_order_tests)
+    add_test(NAME stage197_2_guest_memory_order_tests COMMAND stage197_2_guest_memory_order_tests)
+    set_tests_properties(stage197_2_guest_memory_order_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_3_barrier_semantics_tests tests/unit/stage197_3_barrier_semantics_tests.cpp)
+    target_link_libraries(stage197_3_barrier_semantics_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_3_barrier_semantics_tests)
+    add_test(NAME stage197_3_barrier_semantics_tests COMMAND stage197_3_barrier_semantics_tests)
+    set_tests_properties(stage197_3_barrier_semantics_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_6_exclusive_monitor_tests tests/unit/stage197_6_exclusive_monitor_tests.cpp)
+    target_link_libraries(stage197_6_exclusive_monitor_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_6_exclusive_monitor_tests)
+    add_test(NAME stage197_6_exclusive_monitor_tests COMMAND stage197_6_exclusive_monitor_tests)
+    set_tests_properties(stage197_6_exclusive_monitor_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_7_lse_matrix_tests tests/unit/stage197_7_lse_matrix_tests.cpp)
+    target_link_libraries(stage197_7_lse_matrix_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_7_lse_matrix_tests)
+    add_test(NAME stage197_7_lse_matrix_tests COMMAND stage197_7_lse_matrix_tests)
+    set_tests_properties(stage197_7_lse_matrix_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_8_atomic_fault_tests tests/unit/stage197_8_atomic_fault_tests.cpp)
+    target_link_libraries(stage197_8_atomic_fault_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_8_atomic_fault_tests)
+    add_test(NAME stage197_8_atomic_fault_tests COMMAND stage197_8_atomic_fault_tests)
+    set_tests_properties(stage197_8_atomic_fault_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_10_litmus_tests tests/unit/stage197_10_litmus_tests.cpp)
+    target_link_libraries(stage197_10_litmus_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_10_litmus_tests)
+    add_test(NAME stage197_10_litmus_tests COMMAND stage197_10_litmus_tests)
+    set_tests_properties(stage197_10_litmus_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_12_host_synchronization_isolation_tests tests/unit/stage197_12_host_synchronization_isolation_tests.cpp)
+    target_link_libraries(stage197_12_host_synchronization_isolation_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_12_host_synchronization_isolation_tests)
+    add_test(NAME stage197_12_host_synchronization_isolation_tests COMMAND stage197_12_host_synchronization_isolation_tests)
+    set_tests_properties(stage197_12_host_synchronization_isolation_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_13_deterministic_replay_tests tests/unit/stage197_13_deterministic_replay_tests.cpp)
+    target_link_libraries(stage197_13_deterministic_replay_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_13_deterministic_replay_tests)
+    add_test(NAME stage197_13_deterministic_replay_tests COMMAND stage197_13_deterministic_replay_tests)
+    set_tests_properties(stage197_13_deterministic_replay_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_14_tlbi_page_reuse_tests tests/unit/stage197_14_tlbi_page_reuse_tests.cpp)
+    target_link_libraries(stage197_14_tlbi_page_reuse_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_14_tlbi_page_reuse_tests)
+    add_test(NAME stage197_14_tlbi_page_reuse_tests COMMAND stage197_14_tlbi_page_reuse_tests)
+    set_tests_properties(stage197_14_tlbi_page_reuse_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_15_interrupt_atomic_tests tests/unit/stage197_15_interrupt_atomic_tests.cpp)
+    target_link_libraries(stage197_15_interrupt_atomic_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_15_interrupt_atomic_tests)
+    add_test(NAME stage197_15_interrupt_atomic_tests COMMAND stage197_15_interrupt_atomic_tests)
+    set_tests_properties(stage197_15_interrupt_atomic_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_16_workload_corpus_tests tests/unit/stage197_16_workload_corpus_tests.cpp)
+    target_link_libraries(stage197_16_workload_corpus_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_16_workload_corpus_tests)
+    add_test(NAME stage197_16_workload_corpus_tests COMMAND stage197_16_workload_corpus_tests)
+    set_tests_properties(stage197_16_workload_corpus_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(stage197_18_integrated_smp_conformance_tests tests/unit/stage197_18_integrated_smp_conformance_tests.cpp)
+    target_link_libraries(stage197_18_integrated_smp_conformance_tests PRIVATE winios_core)
+    winios_set_warnings(stage197_18_integrated_smp_conformance_tests)
+    add_test(NAME stage197_18_integrated_smp_conformance_tests COMMAND stage197_18_integrated_smp_conformance_tests)
+    set_tests_properties(stage197_18_integrated_smp_conformance_tests PROPERTIES TIMEOUT 60)
 
     add_executable(stage53_manifest_tests tests/unit/stage53_manifest_tests.cpp)
     target_link_libraries(stage53_manifest_tests PRIVATE winios_core)

@@ -1,0 +1,82 @@
+{
+  "campaign": 197,
+  "title": "ARM64 Memory Model Fidelity, Atomic Instruction Correctness, Weak-Memory Simulation & SMP Conformance",
+  "baseline_commit": "f76ec480c5092c9375c00a3d86f8b92893be8753",
+  "branch": "campaign-191r",
+  "host": {
+    "os": "Windows 11 x64",
+    "compiler": "Visual Studio 18 2026, MSVC C++20",
+    "compiler_flags": "/W4 /WX /permissive-",
+    "cross_compiler": "Zig 0.17.0"
+  },
+  "research_target": {
+    "device": "iPhone 15",
+    "model": "iPhone15,4",
+    "board": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "architecture": "ARM64 / ARM64e",
+    "page_granule_kb": 16,
+    "exclusive_reservation_granule_bytes": 64
+  },
+  "test_regression_summary": {
+    "total_ctest_targets": 415,
+    "runnable_targets": 414,
+    "skipped_targets": 1,
+    "skipped_target_name": "inferno_integration_tests",
+    "release": {
+      "passed": 414,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "log_file": "docs/campaign197/test_results_release.txt"
+    },
+    "debug": {
+      "passed": 414,
+      "failed": 0,
+      "pass_rate_pct": 100.0,
+      "log_file": "docs/campaign197/test_results_debug.txt"
+    }
+  },
+  "acceptance_tests": {
+    "test_a": { "name": "DMB semantics distinct from DSB/ISB", "status": "PASSED", "evidence": "stage197_3_barrier_semantics_tests" },
+    "test_b": { "name": "DSB completion behavior independently verified", "status": "PASSED", "evidence": "stage197_3_barrier_semantics_tests" },
+    "test_c": { "name": "ISB instruction synchronization verified", "status": "PASSED", "evidence": "stage197_3_barrier_semantics_tests" },
+    "test_d": { "name": "Exclusive-monitor reservation granule (64B) & invalidation", "status": "PASSED", "evidence": "stage197_6_exclusive_monitor_tests" },
+    "test_e": { "name": "LSE acquire/release variants (8/16/32/64-bit, 96 variants)", "status": "PASSED", "evidence": "stage197_7_lse_matrix_tests" },
+    "test_f": { "name": "Atomic accesses do not partially modify memory on faults", "status": "PASSED", "evidence": "stage197_8_atomic_fault_tests" },
+    "test_g": { "name": "Guest acquire/release message passing correct", "status": "PASSED", "evidence": "stage197_10_litmus_tests" },
+    "test_h": { "name": "Weak-memory litmus outcomes match declared model", "status": "PASSED", "evidence": "stage197_10_litmus_tests" },
+    "test_i": { "name": "Host synchronization isolated from guest architectural behavior", "status": "PASSED", "evidence": "stage197_12_host_synchronization_isolation_tests" },
+    "test_j": { "name": "Deterministic memory-ordering replay reproducible (FNV-1a)", "status": "PASSED", "evidence": "stage197_13_deterministic_replay_tests" },
+    "test_k": { "name": "Cross-core TLBI and page reuse preserve memory safety", "status": "PASSED", "evidence": "stage197_14_tlbi_page_reuse_tests" },
+    "test_l": { "name": "Interrupts and preemption preserve atomic state and clear reservations", "status": "PASSED", "evidence": "stage197_15_interrupt_atomic_tests" },
+    "test_m": { "name": "Independently compiled guest workloads execute successfully", "status": "PASSED", "evidence": "stage197_16_workload_corpus_tests" },
+    "test_n": { "name": "Differential diagnostic tests report exact mismatches", "status": "PASSED", "evidence": "stage197_16_workload_corpus_tests" },
+    "test_o": { "name": "8-core integrated workloads preserve all declared invariants", "status": "PASSED", "evidence": "stage197_18_integrated_smp_conformance_tests" }
+  },
+  "workload_binaries": [
+    {
+      "name": "guest_atomics_benchmark",
+      "path": "tests/artifacts/bin/guest_atomics_benchmark",
+      "size_bytes": 50152,
+      "sha256": "31b180f933f45b976c47f3a68dd70bb3445a3b539d92dfa939c5d05e0e1acf16",
+      "instructions_retired": 98,
+      "signature": "0x197A10CC"
+    },
+    {
+      "name": "guest_smp_atomic_stress",
+      "path": "tests/artifacts/bin/guest_smp_atomic_stress",
+      "size_bytes": 50152,
+      "sha256": "4066369596f6c63f3de2a48959508baafb75e66320618e6ca9e731c84a4491d4",
+      "instructions_retired": 180,
+      "signature": "0x41544F4D"
+    },
+    {
+      "name": "guest_smp_message_passing",
+      "path": "tests/artifacts/bin/guest_smp_message_passing",
+      "size_bytes": 50056,
+      "sha256": "d73ba8b97fecd68f329e12b58c7e0c2d37db439ec046b87f4b8989ed87d972a5",
+      "instructions_retired": 20,
+      "signature": "0x4D534750"
+    }
+  ]
+}

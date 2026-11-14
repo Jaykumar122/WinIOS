@@ -20,6 +20,7 @@ class Memory;
 namespace winios {
 class SMPCluster;
 class PSCIService;
+class GuestMemoryOrderModel;
 namespace trace {
 class TraceManager;
 enum class TraceEventFlags : std::uint32_t;
@@ -311,6 +312,15 @@ public:
     const winios::PSCIService* get_psci_service() const noexcept { return psci_service_; }
     void set_psci_service(winios::PSCIService* svc) noexcept { psci_service_ = svc; }
 
+    // Campaign 197: Guest Memory Ordering Architecture
+    winios::GuestMemoryOrderModel* get_memory_order_model() noexcept { return memory_order_model_; }
+    const winios::GuestMemoryOrderModel* get_memory_order_model() const noexcept { return memory_order_model_; }
+    void set_memory_order_model(winios::GuestMemoryOrderModel* model) noexcept { memory_order_model_ = model; }
+
+    std::uint64_t get_dmb_count() const noexcept { return dmb_count_; }
+    std::uint64_t get_dsb_count() const noexcept { return dsb_count_; }
+    std::uint64_t get_isb_count() const noexcept { return isb_count_; }
+
     bool is_halted() const noexcept {
         return is_halted_.load(std::memory_order_acquire);
     }
@@ -461,6 +471,9 @@ public:
     }
     void clear_exclusive_monitor() noexcept { exclusive_monitor_ = ExclusiveMonitor{}; }
 
+    [[nodiscard]] std::size_t get_reservation_granule() const noexcept { return reservation_granule_; }
+    void set_reservation_granule(std::size_t bytes) noexcept { reservation_granule_ = bytes; }
+
     // Informs the monitor that an ordinary (non-exclusive) store wrote `width`
     // bytes at `address`. Any overlapping reservation is invalidated; a
     // disjoint store leaves it intact. Called by every normal store path.
@@ -593,6 +606,7 @@ private:
     std::uint32_t fpcr_{};
     std::uint32_t fpsr_{};
     ExclusiveMonitor exclusive_monitor_{};
+    std::size_t reservation_granule_{0};
     TraceSink trace_sink_{};
 
     // Phase 35: Exception architecture state.
@@ -663,6 +677,10 @@ private:
     std::size_t core_id_{0};
     winios::SMPCluster* smp_cluster_{nullptr};
     winios::PSCIService* psci_service_{nullptr}; // Phase 48: PSCI service
+    winios::GuestMemoryOrderModel* memory_order_model_{nullptr}; // Campaign 197: Memory ordering model
+    std::uint64_t dmb_count_{0};
+    std::uint64_t dsb_count_{0};
+    std::uint64_t isb_count_{0};
     std::atomic<bool> is_halted_{false};
     std::atomic<bool> waiting_for_interrupt_{false};
     std::atomic<bool> waiting_for_event_{false};

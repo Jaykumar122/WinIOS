@@ -41,10 +41,17 @@ struct SmpExclusiveMonitorTelemetry {
 // -----------------------------------------------------------------------------
 class SmpExclusiveMonitorManager {
 public:
-    static constexpr std::uint64_t kGranuleSize = 64;
-    static constexpr std::uint64_t kGranuleMask = ~(kGranuleSize - 1);
+    static constexpr std::uint64_t kDefaultGranuleSize = 64;
 
-    explicit SmpExclusiveMonitorManager(std::size_t max_cores = 16);
+    explicit SmpExclusiveMonitorManager(std::size_t max_cores = 16, std::size_t granule_size = kDefaultGranuleSize);
+
+    [[nodiscard]] std::size_t granule_size() const noexcept { return granule_size_; }
+    void set_granule_size(std::size_t size) noexcept {
+        granule_size_ = size > 0 ? size : 64;
+    }
+    [[nodiscard]] std::uint64_t granule_mask() const noexcept {
+        return ~(static_cast<std::uint64_t>(granule_size_ - 1));
+    }
 
     void load_exclusive(std::size_t core_id, std::uint64_t address, std::size_t size) noexcept;
     [[nodiscard]] bool is_reservation_valid(std::size_t core_id, std::uint64_t address, std::size_t size) const noexcept;
@@ -75,6 +82,7 @@ public:
     [[nodiscard]] const ReservationEntry& get_core_reservation(std::size_t core_id) const;
 
 private:
+    std::size_t granule_size_{kDefaultGranuleSize};
     std::vector<ReservationEntry> reservations_;
     mutable SmpExclusiveMonitorTelemetry telemetry_{};
 };

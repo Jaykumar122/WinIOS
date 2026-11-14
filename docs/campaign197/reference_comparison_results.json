@@ -1,0 +1,98 @@
+{
+  "campaign": "197",
+  "stage": "197.11",
+  "reference_model": "ARMv8-A Axiomatic Memory Model (ARM DDI 0487 / Herd7 / POPL 2018)",
+  "status": "CONFORMANT",
+  "comparisons": [
+    {
+      "pattern": "SB (Store Buffering)",
+      "configuration": "Relaxed (no barriers)",
+      "herd7_expected": "Allowed",
+      "winios_verdict": "Allowed",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "SB (Store Buffering)",
+      "configuration": "DMB ISH",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "MP (Message Passing)",
+      "configuration": "Relaxed (no barriers)",
+      "herd7_expected": "Allowed",
+      "winios_verdict": "Allowed",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "MP (Message Passing)",
+      "configuration": "STLR + LDAR",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "LB (Load Buffering)",
+      "configuration": "Axiomatic causality",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "IRIW (Independent Reads of Independent Writes)",
+      "configuration": "DMB ISH / Other-Multi-Copy Atomic",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "WRC (Write-to-Read Causality)",
+      "configuration": "Relaxed",
+      "herd7_expected": "Allowed",
+      "winios_verdict": "Allowed",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "WRC (Write-to-Read Causality)",
+      "configuration": "Acquire/Release",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "RWC (Read-to-Write Causality)",
+      "configuration": "Relaxed",
+      "herd7_expected": "Allowed",
+      "winios_verdict": "Allowed",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "RWC (Read-to-Write Causality)",
+      "configuration": "DMB Barriers",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "Coherence (CoRR)",
+      "configuration": "Single location read-read coherence",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    },
+    {
+      "pattern": "Coherence (CoWW)",
+      "configuration": "Single location write-write coherence",
+      "herd7_expected": "Forbidden",
+      "winios_verdict": "Forbidden",
+      "conformance": "MATCH"
+    }
+  ],
+  "summary": {
+    "total_compared": 12,
+    "total_matched": 12,
+    "total_mismatches": 0,
+    "fidelity_rate_percent": 100.0
+  }
+}

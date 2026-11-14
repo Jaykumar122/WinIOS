@@ -1,0 +1,49 @@
+{
+  "stage": "197.13",
+  "acceptance_test": "J",
+  "title": "Deterministic Weak-Memory Scheduler and Replay Verification",
+  "hash_algorithm": "64-bit FNV-1a over canonical global memory ordering log",
+  "seeds_tested": [
+    {
+      "seed": 1001,
+      "event_count": 200,
+      "replays": 3,
+      "fnv1a_hash": "0x3f29bcdbed812849",
+      "verdict": "BIT_EXACT_REPRODUCIBLE"
+    },
+    {
+      "seed": 1002,
+      "event_count": 200,
+      "replays": 3,
+      "fnv1a_hash": "0x35430f186086bb3c",
+      "verdict": "BIT_EXACT_REPRODUCIBLE"
+    },
+    {
+      "seed": 1003,
+      "event_count": 200,
+      "replays": 3,
+      "fnv1a_hash": "0xf9d3eec1b06692ac",
+      "verdict": "BIT_EXACT_REPRODUCIBLE"
+    },
+    {
+      "seed": 1004,
+      "event_count": 200,
+      "replays": 3,
+      "fnv1a_hash": "0x021719361d3f98cb",
+      "verdict": "BIT_EXACT_REPRODUCIBLE"
+    },
+    {
+      "seed": 1005,
+      "event_count": 200,
+      "replays": 3,
+      "fnv1a_hash": "0x00b302ae1e0a04ef",
+      "verdict": "BIT_EXACT_REPRODUCIBLE"
+    }
+  ],
+  "sensitivity_tests": {
+    "address_mutation_detected": true,
+    "value_mutation_detected": true,
+    "access_type_mutation_detected": true
+  },
+  "overall_verdict": "PASS"
+}

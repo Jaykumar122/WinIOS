@@ -1,0 +1,684 @@
+{
+  "campaign": "197",
+  "acceptance_test": "E",
+  "status": "PASSED",
+  "total_variants": 96,
+  "passed_variants": 96,
+  "families": ["CAS", "SWP", "LDADD", "LDCLR", "LDEOR", "LDSET"],
+  "widths": ["8-bit", "16-bit", "32-bit", "64-bit"],
+  "orderings": ["Relaxed", "Acquire", "Release", "Acquire-Release"],
+  "results": [
+    {
+      "mnemonic": "CAS",
+      "width": "8-bit (B)",
+      "ordering": "Relaxed",
+      "opcode": "0x08A17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASA",
+      "width": "8-bit (B)",
+      "ordering": "Acquire",
+      "opcode": "0x08E17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASL",
+      "width": "8-bit (B)",
+      "ordering": "Release",
+      "opcode": "0x08A1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASAL",
+      "width": "8-bit (B)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x08E1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CAS",
+      "width": "16-bit (H)",
+      "ordering": "Relaxed",
+      "opcode": "0x48A17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASA",
+      "width": "16-bit (H)",
+      "ordering": "Acquire",
+      "opcode": "0x48E17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASL",
+      "width": "16-bit (H)",
+      "ordering": "Release",
+      "opcode": "0x48A1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASAL",
+      "width": "16-bit (H)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x48E1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CAS",
+      "width": "32-bit (W)",
+      "ordering": "Relaxed",
+      "opcode": "0x88A17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASA",
+      "width": "32-bit (W)",
+      "ordering": "Acquire",
+      "opcode": "0x88E17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASL",
+      "width": "32-bit (W)",
+      "ordering": "Release",
+      "opcode": "0x88A1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASAL",
+      "width": "32-bit (W)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x88E1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CAS",
+      "width": "64-bit (X)",
+      "ordering": "Relaxed",
+      "opcode": "0xC8A17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASA",
+      "width": "64-bit (X)",
+      "ordering": "Acquire",
+      "opcode": "0xC8E17C02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASL",
+      "width": "64-bit (X)",
+      "ordering": "Release",
+      "opcode": "0xC8A1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "CASAL",
+      "width": "64-bit (X)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xC8E1FC02",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWP",
+      "width": "8-bit (B)",
+      "ordering": "Relaxed",
+      "opcode": "0x38218002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPA",
+      "width": "8-bit (B)",
+      "ordering": "Acquire",
+      "opcode": "0x38A18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPL",
+      "width": "8-bit (B)",
+      "ordering": "Release",
+      "opcode": "0x38618002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPAL",
+      "width": "8-bit (B)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x38E18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWP",
+      "width": "16-bit (H)",
+      "ordering": "Relaxed",
+      "opcode": "0x78218002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPA",
+      "width": "16-bit (H)",
+      "ordering": "Acquire",
+      "opcode": "0x78A18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPL",
+      "width": "16-bit (H)",
+      "ordering": "Release",
+      "opcode": "0x78618002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPAL",
+      "width": "16-bit (H)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x78E18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWP",
+      "width": "32-bit (W)",
+      "ordering": "Relaxed",
+      "opcode": "0xB8218002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPA",
+      "width": "32-bit (W)",
+      "ordering": "Acquire",
+      "opcode": "0xB8A18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPL",
+      "width": "32-bit (W)",
+      "ordering": "Release",
+      "opcode": "0xB8618002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPAL",
+      "width": "32-bit (W)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xB8E18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWP",
+      "width": "64-bit (X)",
+      "ordering": "Relaxed",
+      "opcode": "0xF8218002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPA",
+      "width": "64-bit (X)",
+      "ordering": "Acquire",
+      "opcode": "0xF8A18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPL",
+      "width": "64-bit (X)",
+      "ordering": "Release",
+      "opcode": "0xF8618002",
+      "passed": true
+    },
+    {
+      "mnemonic": "SWPAL",
+      "width": "64-bit (X)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xF8E18002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADD",
+      "width": "8-bit (B)",
+      "ordering": "Relaxed",
+      "opcode": "0x38210002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDA",
+      "width": "8-bit (B)",
+      "ordering": "Acquire",
+      "opcode": "0x38A10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDL",
+      "width": "8-bit (B)",
+      "ordering": "Release",
+      "opcode": "0x38610002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDAL",
+      "width": "8-bit (B)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x38E10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADD",
+      "width": "16-bit (H)",
+      "ordering": "Relaxed",
+      "opcode": "0x78210002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDA",
+      "width": "16-bit (H)",
+      "ordering": "Acquire",
+      "opcode": "0x78A10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDL",
+      "width": "16-bit (H)",
+      "ordering": "Release",
+      "opcode": "0x78610002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDAL",
+      "width": "16-bit (H)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x78E10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADD",
+      "width": "32-bit (W)",
+      "ordering": "Relaxed",
+      "opcode": "0xB8210002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDA",
+      "width": "32-bit (W)",
+      "ordering": "Acquire",
+      "opcode": "0xB8A10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDL",
+      "width": "32-bit (W)",
+      "ordering": "Release",
+      "opcode": "0xB8610002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDAL",
+      "width": "32-bit (W)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xB8E10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADD",
+      "width": "64-bit (X)",
+      "ordering": "Relaxed",
+      "opcode": "0xF8210002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDA",
+      "width": "64-bit (X)",
+      "ordering": "Acquire",
+      "opcode": "0xF8A10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDL",
+      "width": "64-bit (X)",
+      "ordering": "Release",
+      "opcode": "0xF8610002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDADDAL",
+      "width": "64-bit (X)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xF8E10002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLR",
+      "width": "8-bit (B)",
+      "ordering": "Relaxed",
+      "opcode": "0x38211002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRA",
+      "width": "8-bit (B)",
+      "ordering": "Acquire",
+      "opcode": "0x38A11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRL",
+      "width": "8-bit (B)",
+      "ordering": "Release",
+      "opcode": "0x38611002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRAL",
+      "width": "8-bit (B)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x38E11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLR",
+      "width": "16-bit (H)",
+      "ordering": "Relaxed",
+      "opcode": "0x78211002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRA",
+      "width": "16-bit (H)",
+      "ordering": "Acquire",
+      "opcode": "0x78A11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRL",
+      "width": "16-bit (H)",
+      "ordering": "Release",
+      "opcode": "0x78611002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRAL",
+      "width": "16-bit (H)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x78E11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLR",
+      "width": "32-bit (W)",
+      "ordering": "Relaxed",
+      "opcode": "0xB8211002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRA",
+      "width": "32-bit (W)",
+      "ordering": "Acquire",
+      "opcode": "0xB8A11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRL",
+      "width": "32-bit (W)",
+      "ordering": "Release",
+      "opcode": "0xB8611002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRAL",
+      "width": "32-bit (W)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xB8E11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLR",
+      "width": "64-bit (X)",
+      "ordering": "Relaxed",
+      "opcode": "0xF8211002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRA",
+      "width": "64-bit (X)",
+      "ordering": "Acquire",
+      "opcode": "0xF8A11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRL",
+      "width": "64-bit (X)",
+      "ordering": "Release",
+      "opcode": "0xF8611002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDCLRAL",
+      "width": "64-bit (X)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xF8E11002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEOR",
+      "width": "8-bit (B)",
+      "ordering": "Relaxed",
+      "opcode": "0x38212002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORA",
+      "width": "8-bit (B)",
+      "ordering": "Acquire",
+      "opcode": "0x38A12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORL",
+      "width": "8-bit (B)",
+      "ordering": "Release",
+      "opcode": "0x38612002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORAL",
+      "width": "8-bit (B)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x38E12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEOR",
+      "width": "16-bit (H)",
+      "ordering": "Relaxed",
+      "opcode": "0x78212002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORA",
+      "width": "16-bit (H)",
+      "ordering": "Acquire",
+      "opcode": "0x78A12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORL",
+      "width": "16-bit (H)",
+      "ordering": "Release",
+      "opcode": "0x78612002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORAL",
+      "width": "16-bit (H)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x78E12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEOR",
+      "width": "32-bit (W)",
+      "ordering": "Relaxed",
+      "opcode": "0xB8212002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORA",
+      "width": "32-bit (W)",
+      "ordering": "Acquire",
+      "opcode": "0xB8A12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORL",
+      "width": "32-bit (W)",
+      "ordering": "Release",
+      "opcode": "0xB8612002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORAL",
+      "width": "32-bit (W)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xB8E12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEOR",
+      "width": "64-bit (X)",
+      "ordering": "Relaxed",
+      "opcode": "0xF8212002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORA",
+      "width": "64-bit (X)",
+      "ordering": "Acquire",
+      "opcode": "0xF8A12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORL",
+      "width": "64-bit (X)",
+      "ordering": "Release",
+      "opcode": "0xF8612002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDEORAL",
+      "width": "64-bit (X)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xF8E12002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSET",
+      "width": "8-bit (B)",
+      "ordering": "Relaxed",
+      "opcode": "0x38213002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETA",
+      "width": "8-bit (B)",
+      "ordering": "Acquire",
+      "opcode": "0x38A13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETL",
+      "width": "8-bit (B)",
+      "ordering": "Release",
+      "opcode": "0x38613002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETAL",
+      "width": "8-bit (B)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x38E13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSET",
+      "width": "16-bit (H)",
+      "ordering": "Relaxed",
+      "opcode": "0x78213002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETA",
+      "width": "16-bit (H)",
+      "ordering": "Acquire",
+      "opcode": "0x78A13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETL",
+      "width": "16-bit (H)",
+      "ordering": "Release",
+      "opcode": "0x78613002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETAL",
+      "width": "16-bit (H)",
+      "ordering": "Acquire-Release",
+      "opcode": "0x78E13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSET",
+      "width": "32-bit (W)",
+      "ordering": "Relaxed",
+      "opcode": "0xB8213002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETA",
+      "width": "32-bit (W)",
+      "ordering": "Acquire",
+      "opcode": "0xB8A13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETL",
+      "width": "32-bit (W)",
+      "ordering": "Release",
+      "opcode": "0xB8613002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETAL",
+      "width": "32-bit (W)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xB8E13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSET",
+      "width": "64-bit (X)",
+      "ordering": "Relaxed",
+      "opcode": "0xF8213002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETA",
+      "width": "64-bit (X)",
+      "ordering": "Acquire",
+      "opcode": "0xF8A13002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETL",
+      "width": "64-bit (X)",
+      "ordering": "Release",
+      "opcode": "0xF8613002",
+      "passed": true
+    },
+    {
+      "mnemonic": "LDSETAL",
+      "width": "64-bit (X)",
+      "ordering": "Acquire-Release",
+      "opcode": "0xF8E13002",
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "campaign": "197",
+  "acceptance_tests": ["G", "H"],
+  "status": "PASSED",
+  "total_tests": 12,
+  "passed_tests": 12,
+  "results": [
+    {
+      "test_name": "MP_AcqRel",
+      "pattern": "MP",
+      "configuration": "STLR + LDAR",
+      "outcome_description": "flag=1, data=0",
+      "verdict": "Forbidden",
+      "passed": true
+    },
+    {
+      "test_name": "MP_AcqRel_Valid",
+      "pattern": "MP",
+      "configuration": "STLR + LDAR",
+      "outcome_description": "flag=1, data=CAFEBABE",
+      "verdict": "Allowed",
+      "passed": true
+    },
+    {
+      "test_name": "SB_Relaxed",
+      "pattern": "SB",
+      "configuration": "No barriers",
+      "outcome_description": "r0=0, r1=0",
+      "verdict": "Allowed",
+      "passed": true
+    },
+    {
+      "test_name": "SB_DMB",
+      "pattern": "SB",
+      "configuration": "DMB ISH",
+      "outcome_description": "r0=0, r1=0",
+      "verdict": "Forbidden",
+      "passed": true
+    },
+    {
+      "test_name": "MP_Relaxed",
+      "pattern": "MP",
+      "configuration": "No barriers",
+      "outcome_description": "flag=1, data=0",
+      "verdict": "Allowed",
+      "passed": true
+    },
+    {
+      "test_name": "MP_DMB",
+      "pattern": "MP",
+      "configuration": "DMB ISH",
+      "outcome_description": "flag=1, data=0",
+      "verdict": "Forbidden",
+      "passed": true
+    },
+    {
+      "test_name": "LB_Causality",
+      "pattern": "LB",
+      "configuration": "Axiomatic",
+      "outcome_description": "r0=1, r1=1",
+      "verdict": "Forbidden",
+      "passed": true
+    },
+    {
+      "test_name": "IRIW_OMCA",
+      "pattern": "IRIW",
+      "configuration": "DMB ISH / OMCA",
+      "outcome_description": "c2(x=1,y=0), c3(y=1,x=0)",
+      "verdict": "Forbidden",
+      "passed": true
+    },
+    {
+      "test_name": "WRC_Relaxed",
+      "pattern": "WRC",
+      "configuration": "No barriers",
+      "outcome_description": "r0=0",
+      "verdict": "Allowed",
+      "passed": true
+    },
+    {
+      "test_name": "WRC_Ordered",
+      "pattern": "WRC",
+      "configuration": "Acquire/Release",
+      "outcome_description": "r0=0",
+      "verdict": "Forbidden",
+      "passed": true
+    },
+    {
+      "test_name": "RWC_Relaxed",
+      "pattern": "RWC",
+      "configuration": "No barriers",
+      "outcome_description": "r0=0, r1=0",
+      "verdict": "Allowed",
+      "passed": true
+    },
+    {
+      "test_name": "RWC_Ordered",
+      "pattern": "RWC",
+      "configuration": "Barriers",
+      "outcome_description": "r0=0, r1=0",
+      "verdict": "Forbidden",
+      "passed": true
+    }
+  ]
+}
