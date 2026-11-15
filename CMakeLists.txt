@@ -2826,6 +2826,120 @@ target_link_libraries(stage199_18_guest_workload_tests PRIVATE winios_core)
 winios_set_warnings(stage199_18_guest_workload_tests)
 add_test(NAME stage199_18_guest_workload_tests COMMAND stage199_18_guest_workload_tests)
 
+# ==============================================================================
+# Campaign 200: Advanced ARM64e Integration, Architectural Conformance, Security Validation & Genuine Guest Execution
+# ==============================================================================
+add_executable(stage200_3_stage1_translation_tests tests/unit/stage200_3_stage1_translation_tests.cpp)
+target_link_libraries(stage200_3_stage1_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage200_3_stage1_translation_tests)
+add_test(NAME stage200_3_stage1_translation_tests COMMAND stage200_3_stage1_translation_tests)
+
+add_executable(stage200_4_stage2_translation_tests tests/unit/stage200_4_stage2_translation_tests.cpp)
+target_link_libraries(stage200_4_stage2_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage200_4_stage2_translation_tests)
+add_test(NAME stage200_4_stage2_translation_tests COMMAND stage200_4_stage2_translation_tests)
+
+add_executable(stage200_5_combined_fault_propagation_tests tests/unit/stage200_5_combined_fault_propagation_tests.cpp)
+target_link_libraries(stage200_5_combined_fault_propagation_tests PRIVATE winios_core)
+winios_set_warnings(stage200_5_combined_fault_propagation_tests)
+add_test(NAME stage200_5_combined_fault_propagation_tests COMMAND stage200_5_combined_fault_propagation_tests)
+
+add_executable(stage200_6_tlb_concurrency_tests tests/unit/stage200_6_tlb_concurrency_tests.cpp)
+target_link_libraries(stage200_6_tlb_concurrency_tests PRIVATE winios_core)
+winios_set_warnings(stage200_6_tlb_concurrency_tests)
+add_test(NAME stage200_6_tlb_concurrency_tests COMMAND stage200_6_tlb_concurrency_tests)
+
+add_executable(stage200_7_memory_cache_integration_tests tests/unit/stage200_7_memory_cache_integration_tests.cpp)
+target_link_libraries(stage200_7_memory_cache_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage200_7_memory_cache_integration_tests)
+add_test(NAME stage200_7_memory_cache_integration_tests COMMAND stage200_7_memory_cache_integration_tests)
+
+add_executable(stage200_8_iommu_lifecycle_tests tests/unit/stage200_8_iommu_lifecycle_tests.cpp)
+target_link_libraries(stage200_8_iommu_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage200_8_iommu_lifecycle_tests)
+add_test(NAME stage200_8_iommu_lifecycle_tests COMMAND stage200_8_iommu_lifecycle_tests)
+
+add_executable(stage200_9_iova_fault_tests tests/unit/stage200_9_iova_fault_tests.cpp)
+target_link_libraries(stage200_9_iova_fault_tests PRIVATE winios_core)
+winios_set_warnings(stage200_9_iova_fault_tests)
+add_test(NAME stage200_9_iova_fault_tests COMMAND stage200_9_iova_fault_tests)
+
+add_executable(stage200_10_dma_coherency_tests tests/unit/stage200_10_dma_coherency_tests.cpp)
+target_link_libraries(stage200_10_dma_coherency_tests PRIVATE winios_core)
+winios_set_warnings(stage200_10_dma_coherency_tests)
+add_test(NAME stage200_10_dma_coherency_tests COMMAND stage200_10_dma_coherency_tests)
+
+add_executable(stage200_11_dma_interrupt_tests tests/unit/stage200_11_dma_interrupt_tests.cpp)
+target_link_libraries(stage200_11_dma_interrupt_tests PRIVATE winios_core)
+winios_set_warnings(stage200_11_dma_interrupt_tests)
+add_test(NAME stage200_11_dma_interrupt_tests COMMAND stage200_11_dma_interrupt_tests)
+
+add_executable(stage200_12_pac_conformance_tests tests/unit/stage200_12_pac_conformance_tests.cpp)
+target_link_libraries(stage200_12_pac_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage200_12_pac_conformance_tests)
+add_test(NAME stage200_12_pac_conformance_tests COMMAND stage200_12_pac_conformance_tests)
+
+add_executable(stage200_13_pac_isolation_tests tests/unit/stage200_13_pac_isolation_tests.cpp)
+target_link_libraries(stage200_13_pac_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage200_13_pac_isolation_tests)
+add_test(NAME stage200_13_pac_isolation_tests COMMAND stage200_13_pac_isolation_tests)
+
+add_executable(stage200_14_pac_exception_tests tests/unit/stage200_14_pac_exception_tests.cpp)
+target_link_libraries(stage200_14_pac_exception_tests PRIVATE winios_core)
+winios_set_warnings(stage200_14_pac_exception_tests)
+add_test(NAME stage200_14_pac_exception_tests COMMAND stage200_14_pac_exception_tests)
+
+add_executable(stage200_15_exception_level_tests tests/unit/stage200_15_exception_level_tests.cpp)
+target_link_libraries(stage200_15_exception_level_tests PRIVATE winios_core)
+winios_set_warnings(stage200_15_exception_level_tests)
+add_test(NAME stage200_15_exception_level_tests COMMAND stage200_15_exception_level_tests)
+
+add_executable(stage200_16_gicv3_conformance_tests tests/unit/stage200_16_gicv3_conformance_tests.cpp)
+target_link_libraries(stage200_16_gicv3_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage200_16_gicv3_conformance_tests)
+add_test(NAME stage200_16_gicv3_conformance_tests COMMAND stage200_16_gicv3_conformance_tests)
+
+add_executable(stage200_17_multicore_interrupt_race_tests tests/unit/stage200_17_multicore_interrupt_race_tests.cpp)
+target_link_libraries(stage200_17_multicore_interrupt_race_tests PRIVATE winios_core)
+winios_set_warnings(stage200_17_multicore_interrupt_race_tests)
+add_test(NAME stage200_17_multicore_interrupt_race_tests COMMAND stage200_17_multicore_interrupt_race_tests)
+
+add_executable(stage200_18_devicetree_consistency_tests tests/unit/stage200_18_devicetree_consistency_tests.cpp)
+target_link_libraries(stage200_18_devicetree_consistency_tests PRIVATE winios_core)
+winios_set_warnings(stage200_18_devicetree_consistency_tests)
+add_test(NAME stage200_18_devicetree_consistency_tests COMMAND stage200_18_devicetree_consistency_tests)
+
+add_executable(stage200_19_boot_handoff_tests tests/unit/stage200_19_boot_handoff_tests.cpp)
+target_link_libraries(stage200_19_boot_handoff_tests PRIVATE winios_core)
+winios_set_warnings(stage200_19_boot_handoff_tests)
+add_test(NAME stage200_19_boot_handoff_tests COMMAND stage200_19_boot_handoff_tests)
+
+add_executable(stage200_20_complete_snapshot_tests tests/unit/stage200_20_complete_snapshot_tests.cpp)
+target_link_libraries(stage200_20_complete_snapshot_tests PRIVATE winios_core)
+winios_set_warnings(stage200_20_complete_snapshot_tests)
+add_test(NAME stage200_20_complete_snapshot_tests COMMAND stage200_20_complete_snapshot_tests)
+
+add_executable(stage200_21_snapshot_recovery_tests tests/unit/stage200_21_snapshot_recovery_tests.cpp)
+target_link_libraries(stage200_21_snapshot_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage200_21_snapshot_recovery_tests)
+add_test(NAME stage200_21_snapshot_recovery_tests COMMAND stage200_21_snapshot_recovery_tests)
+
+add_executable(stage200_22_deterministic_replay_tests tests/unit/stage200_22_deterministic_replay_tests.cpp)
+target_link_libraries(stage200_22_deterministic_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage200_22_deterministic_replay_tests)
+add_test(NAME stage200_22_deterministic_replay_tests COMMAND stage200_22_deterministic_replay_tests)
+
+add_executable(stage200_23_guest_workload_tests tests/unit/stage200_23_guest_workload_tests.cpp)
+target_link_libraries(stage200_23_guest_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage200_23_guest_workload_tests)
+add_test(NAME stage200_23_guest_workload_tests COMMAND stage200_23_guest_workload_tests)
+
+
+
+
+
+
+
 
 
 

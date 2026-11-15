@@ -1,0 +1,191 @@
+﻿{
+    "campaign":  "200",
+    "title":  "Advanced ARM64e Integration, Architectural Conformance, Security Validation \u0026 Genuine Guest Execution",
+    "device_profile":  "iPhone 15 / iPhone15,4 / D37AP / Apple A16 Bionic T8120",
+    "host":  "Windows 11 x64 (MSVC C++20 /W4 /WX /permissive-)",
+    "secondary_compiler":  "Zig 0.17.0 (aarch64-macos -mcpu=apple_a16)",
+    "timestamp":  "2026-11-16T01:01:21Z",
+    "file_count":  36,
+    "files":  [
+                  {
+                      "path":  "docs/campaign200/stage200_0_baseline_audit.md",
+                      "sha256":  "b066ed60c4ace9b69eebda0d4009c40856944e716c01206cdd8278e680a03b20",
+                      "bytes":  5523
+                  },
+                  {
+                      "path":  "docs/campaign200/architecture_dependency_audit.md",
+                      "sha256":  "16e231e5eecfef1c01c0a6adddf32f46111e4166bcb4efc6585eea09a0ba72e9",
+                      "bytes":  5398
+                  },
+                  {
+                      "path":  "docs/campaign200/integration_contracts.md",
+                      "sha256":  "efcf03980b2532e4f872f01ac098913f807335a3f0578bf3381b681f7a92c2b0",
+                      "bytes":  4684
+                  },
+                  {
+                      "path":  "docs/campaign200/dma_end_to_end_validation.md",
+                      "sha256":  "b4e6a0334452fa34f2873cb18cb11738b276c522e445bccd91eee1d559146e6b",
+                      "bytes":  4060
+                  },
+                  {
+                      "path":  "docs/campaign200/platform_handoff_validation.md",
+                      "sha256":  "a7e3f1e2b55a2b8aad228b3edd6c10bcb2cf8ff5e98f1f616d55465450461684",
+                      "bytes":  3243
+                  },
+                  {
+                      "path":  "docs/campaign200/snapshot_replay_validation.md",
+                      "sha256":  "0bc7138f4e398fd98de73b87e1b5c19155aee91617e86b483bbcd7b836c57024",
+                      "bytes":  3581
+                  },
+                  {
+                      "path":  "docs/campaign200/end_to_end_guest_workload.md",
+                      "sha256":  "9e7c10aacaa0e0ff4207ebefcbb8119d93285759f6dfdc45fa818b026ddcdde0",
+                      "bytes":  3104
+                  },
+                  {
+                      "path":  "docs/campaign200/architecture_conformance_report.md",
+                      "sha256":  "e736c5453e0535b4a0f467702ced534e8746214b28b5ba5ef017edcf6c30ff94",
+                      "bytes":  9404
+                  },
+                  {
+                      "path":  "docs/campaign200/known_limitations.md",
+                      "sha256":  "4d2c59e681a53d885280406ee238aa48af3bc0cfa84aaa97cd79ebc74ad8a55a",
+                      "bytes":  4324
+                  },
+                  {
+                      "path":  "docs/campaign200/evidence_matrix.md",
+                      "sha256":  "6bd5ab4b73233b03be1370aa14a51c3e5c1151a6b239aa1b5c37163b556fea3e",
+                      "bytes":  5853
+                  },
+                  {
+                      "path":  "docs/campaign200/campaign200_final_report.md",
+                      "sha256":  "54aee8aa02919f73d053d44b0d59b96e5dd7995ff7161b64dd4b2b619f7a3836",
+                      "bytes":  10064
+                  },
+                  {
+                      "path":  "docs/campaign200/test_results_release.txt",
+                      "sha256":  "ba73766c8a62a234272332e3738836fc18ec7a8a0b490c3b0d4f4dfc0d9d6448",
+                      "bytes":  67786
+                  },
+                  {
+                      "path":  "docs/campaign200/test_results_debug.txt",
+                      "sha256":  "3d8269bb681cbc303b56974411bd86ec5878e8b880de1fcd11c4460ca68b3c26",
+                      "bytes":  67786
+                  },
+                  {
+                      "path":  "tests/artifacts/src/guest_stage200_end_to_end_workload.S",
+                      "sha256":  "bc6826f66decc74817a3d3dd6883ac7fe4223d05a86b1599b5c4ecd676d95a65",
+                      "bytes":  3055
+                  },
+                  {
+                      "path":  "tests/artifacts/bin/guest_stage200_end_to_end_workload",
+                      "sha256":  "998b268c20caee67dfe96550fe7ce1f023c97967a6ca5b0585b98f0d0b6e8933",
+                      "bytes":  50176
+                  },
+                  {
+                      "path":  "tests/unit/stage200_3_stage1_translation_tests.cpp",
+                      "sha256":  "c8735b9504a9a33138b1f85e3de6b1f564fd0f20267ded73ea8896935e3a1456",
+                      "bytes":  7556
+                  },
+                  {
+                      "path":  "tests/unit/stage200_4_stage2_translation_tests.cpp",
+                      "sha256":  "38de2018fc0368c05e894dbbbb283147f47da8758118aa193e552feeaa739336",
+                      "bytes":  6790
+                  },
+                  {
+                      "path":  "tests/unit/stage200_5_combined_fault_propagation_tests.cpp",
+                      "sha256":  "b99a0e216d163534eeaec447f0f15854d2f41411eb334ddcad3161f1e87683a9",
+                      "bytes":  11293
+                  },
+                  {
+                      "path":  "tests/unit/stage200_6_tlb_concurrency_tests.cpp",
+                      "sha256":  "2fd13852d852e1972518b51878809520c6d9101d06fc948bcc8f17970b873bab",
+                      "bytes":  9882
+                  },
+                  {
+                      "path":  "tests/unit/stage200_7_memory_cache_integration_tests.cpp",
+                      "sha256":  "4fc4a7203b5f4400b61314db7356cd520a9806e8eb7291fd0cf24af7ea8a0390",
+                      "bytes":  6299
+                  },
+                  {
+                      "path":  "tests/unit/stage200_8_iommu_lifecycle_tests.cpp",
+                      "sha256":  "865548532ea92e8b114e570749e428f9c12a2b64e9cf81d0fc85c17003cb7e02",
+                      "bytes":  5735
+                  },
+                  {
+                      "path":  "tests/unit/stage200_9_iova_fault_tests.cpp",
+                      "sha256":  "c2ef8f0efb8497ac5bc43d800be12d7301ad0ed85129700a25a1afe32d0550c7",
+                      "bytes":  5717
+                  },
+                  {
+                      "path":  "tests/unit/stage200_10_dma_coherency_tests.cpp",
+                      "sha256":  "a49ef5f1eaedc90b8846bee17a7bc304f8a6e7b416a09f3cf7d32f48a2a344b0",
+                      "bytes":  5728
+                  },
+                  {
+                      "path":  "tests/unit/stage200_11_dma_interrupt_tests.cpp",
+                      "sha256":  "71dba3e8bd3c5a5f368e92d94c5e91584d0218ef01f8a0af93d1e673347be188",
+                      "bytes":  5191
+                  },
+                  {
+                      "path":  "tests/unit/stage200_12_pac_conformance_tests.cpp",
+                      "sha256":  "540732fc164bec9096d2263b5187dd9e5dbcd310af462a2e6e3314581337b9ce",
+                      "bytes":  8477
+                  },
+                  {
+                      "path":  "tests/unit/stage200_13_pac_isolation_tests.cpp",
+                      "sha256":  "087d6601ec731171597adac86561e8c867eee45abf003a315dc747aef41d6b31",
+                      "bytes":  6295
+                  },
+                  {
+                      "path":  "tests/unit/stage200_14_pac_exception_tests.cpp",
+                      "sha256":  "471c5967efa9011131c0a6db928ec9aa7e9a76f0f9c1242c30b01418dee54c05",
+                      "bytes":  5700
+                  },
+                  {
+                      "path":  "tests/unit/stage200_15_exception_level_tests.cpp",
+                      "sha256":  "85fad168e5b34e6f9428788f1345159a5ab8668298aa7f965838ba4e3e7b4d7f",
+                      "bytes":  5641
+                  },
+                  {
+                      "path":  "tests/unit/stage200_16_gicv3_conformance_tests.cpp",
+                      "sha256":  "c41530edd60232cd65c9eab30c660a42941e8071b60b24d8928baa156cd6b9b6",
+                      "bytes":  5490
+                  },
+                  {
+                      "path":  "tests/unit/stage200_17_multicore_interrupt_race_tests.cpp",
+                      "sha256":  "0796aa835e234671b2eb7aa68a448e54088433cc9e7173152e4e4140736320c7",
+                      "bytes":  5155
+                  },
+                  {
+                      "path":  "tests/unit/stage200_18_devicetree_consistency_tests.cpp",
+                      "sha256":  "399608f326658763e4f41e933c2ab2234025c503d1552aae6b48dd0141991ed7",
+                      "bytes":  4206
+                  },
+                  {
+                      "path":  "tests/unit/stage200_19_boot_handoff_tests.cpp",
+                      "sha256":  "e22828de579eee2fb83eadcf76bee6a1be468fe1fa6ccb63abef82ddc81837d1",
+                      "bytes":  3272
+                  },
+                  {
+                      "path":  "tests/unit/stage200_20_complete_snapshot_tests.cpp",
+                      "sha256":  "7a5dc885a1e8e4b012b3edac6fe88def5b9e5e576e0b13fd7db9efc35b34d216",
+                      "bytes":  3184
+                  },
+                  {
+                      "path":  "tests/unit/stage200_21_snapshot_recovery_tests.cpp",
+                      "sha256":  "9311c0a3eacf970630cfae753bcd6334895dfada11bafbf713dc09847e423d38",
+                      "bytes":  5226
+                  },
+                  {
+                      "path":  "tests/unit/stage200_22_deterministic_replay_tests.cpp",
+                      "sha256":  "c2c27a8821851dfe16eff3879deb6b55dca746f5667d63c21a0822e3a2e0f1ec",
+                      "bytes":  6273
+                  },
+                  {
+                      "path":  "tests/unit/stage200_23_guest_workload_tests.cpp",
+                      "sha256":  "e1059108ce2a1455e6b7fd470e4e67dc45e0e5a016c934e5e58e6ef8d4681fb1",
+                      "bytes":  6838
+                  }
+              ]
+}

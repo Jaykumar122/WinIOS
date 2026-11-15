@@ -166,42 +166,42 @@ bool Arm64ePointerAuth::execute_pacdzb(std::uint64_t& xd) noexcept {
 
 bool Arm64ePointerAuth::execute_autia(std::uint64_t& xd, std::uint64_t xn, std::uint64_t pc) {
     xd = authenticate_pointer(xd, xn, PacKeyType::InstructionA, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autib(std::uint64_t& xd, std::uint64_t xn, std::uint64_t pc) {
     xd = authenticate_pointer(xd, xn, PacKeyType::InstructionB, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autda(std::uint64_t& xd, std::uint64_t xn, std::uint64_t pc) {
     xd = authenticate_pointer(xd, xn, PacKeyType::DataA, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autdb(std::uint64_t& xd, std::uint64_t xn, std::uint64_t pc) {
     xd = authenticate_pointer(xd, xn, PacKeyType::DataB, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autiza(std::uint64_t& xd, std::uint64_t pc) {
     xd = authenticate_pointer(xd, 0, PacKeyType::InstructionA, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autizb(std::uint64_t& xd, std::uint64_t pc) {
     xd = authenticate_pointer(xd, 0, PacKeyType::InstructionB, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autdza(std::uint64_t& xd, std::uint64_t pc) {
     xd = authenticate_pointer(xd, 0, PacKeyType::DataA, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_autdzb(std::uint64_t& xd, std::uint64_t pc) {
     xd = authenticate_pointer(xd, 0, PacKeyType::DataB, pc);
-    return (mode_ == PacFaultMode::CorruptUpperBits) || !last_syndrome_.has_fault;
+    return !last_syndrome_.has_fault;
 }
 
 bool Arm64ePointerAuth::execute_xpaci(std::uint64_t& xd) noexcept {

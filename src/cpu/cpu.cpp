@@ -7559,12 +7559,14 @@ void CPU::step(Memory& guest_memory) {
                 throw std::runtime_error("Unallocated PAC data processing sub-opcode: " + std::to_string(subop));
         }
         if (!ok) {
-            if (architectural_exceptions_) {
-                const auto& syn = pac_.last_syndrome();
-                raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
-                return;
+            if (pac_.get_fault_mode() == winios::cpu::PacFaultMode::TrapException) {
+                if (architectural_exceptions_) {
+                    const auto& syn = pac_.last_syndrome();
+                    raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
+                    return;
+                }
+                throw std::runtime_error("PAC authentication failure: " + pac_.last_syndrome().description);
             }
-            throw std::runtime_error("PAC authentication failure: " + pac_.last_syndrome().description);
         }
         if (rd != 31u) {
             write_register(rd, ptr);

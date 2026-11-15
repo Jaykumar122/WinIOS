@@ -1,0 +1,951 @@
+﻿Test project D:/WinISO26/WinIOS/build
+        Start   1: memory_tests
+  1/470 Test   #1: memory_tests .......................................   Passed    0.01 sec
+        Start   2: cpu_tests
+  2/470 Test   #2: cpu_tests ..........................................   Passed    0.02 sec
+        Start   3: debugger_tests
+  3/470 Test   #3: debugger_tests .....................................   Passed    0.01 sec
+        Start   4: loader_tests
+  4/470 Test   #4: loader_tests .......................................   Passed    0.03 sec
+        Start   5: runtime_tests
+  5/470 Test   #5: runtime_tests ......................................   Passed    0.03 sec
+        Start   6: elf_loader_tests
+  6/470 Test   #6: elf_loader_tests ...................................   Passed    0.02 sec
+        Start   7: elf_execution_tests
+  7/470 Test   #7: elf_execution_tests ................................   Passed    0.04 sec
+        Start   8: elf_boundary_hardening_tests
+  8/470 Test   #8: elf_boundary_hardening_tests .......................   Passed    0.37 sec
+        Start   9: elf_runtime_hardening_tests
+  9/470 Test   #9: elf_runtime_hardening_tests ........................   Passed    0.03 sec
+        Start  10: elf_session_unit_tests
+ 10/470 Test  #10: elf_session_unit_tests .............................   Passed    0.02 sec
+        Start  11: elf_session_integration_tests
+ 11/470 Test  #11: elf_session_integration_tests ......................   Passed    0.23 sec
+        Start  12: elf_continuation_unit_tests
+ 12/470 Test  #12: elf_continuation_unit_tests ........................   Passed    0.01 sec
+        Start  13: elf_continuation_integration_tests
+ 13/470 Test  #13: elf_continuation_integration_tests .................   Passed    0.14 sec
+        Start  14: elf_admission_unit_tests
+ 14/470 Test  #14: elf_admission_unit_tests ...........................   Passed    0.09 sec
+        Start  15: elf_admission_integration_tests
+ 15/470 Test  #15: elf_admission_integration_tests ....................   Passed    0.11 sec
+        Start  16: elf_publication_unit_tests
+ 16/470 Test  #16: elf_publication_unit_tests .........................   Passed    0.06 sec
+        Start  17: elf_publication_integration_tests
+ 17/470 Test  #17: elf_publication_integration_tests ..................   Passed    0.47 sec
+        Start  18: elf_transaction_tests
+ 18/470 Test  #18: elf_transaction_tests ..............................   Passed    1.22 sec
+        Start  19: elf_recovery_tests
+ 19/470 Test  #19: elf_recovery_tests .................................   Passed    1.20 sec
+        Start  20: elf_conformance_tests
+ 20/470 Test  #20: elf_conformance_tests ..............................   Passed    0.53 sec
+        Start  21: elf_integration_hardening_tests
+ 21/470 Test  #21: elf_integration_hardening_tests ....................   Passed    2.73 sec
+        Start  22: stage59_audit_tests
+ 22/470 Test  #22: stage59_audit_tests ................................   Passed    0.04 sec
+        Start  23: stage60_mmu_tests
+ 23/470 Test  #23: stage60_mmu_tests ..................................   Passed    0.02 sec
+        Start  24: stage61_tlb_tests
+ 24/470 Test  #24: stage61_tlb_tests ..................................   Passed    0.02 sec
+        Start  25: stage62_exception_tests
+ 25/470 Test  #25: stage62_exception_tests ............................   Passed    0.01 sec
+        Start  26: stage63_interrupt_tests
+ 26/470 Test  #26: stage63_interrupt_tests ............................   Passed    0.01 sec
+        Start  27: stage64_fp_simd_tests
+ 27/470 Test  #27: stage64_fp_simd_tests ..............................   Passed    0.01 sec
+        Start  28: stage65_atomic_ordering_tests
+ 28/470 Test  #28: stage65_atomic_ordering_tests ......................   Passed    0.01 sec
+        Start  29: stage66_virtual_device_tests
+ 29/470 Test  #29: stage66_virtual_device_tests .......................   Passed    0.01 sec
+        Start  30: stage67_platform_topology_tests
+ 30/470 Test  #30: stage67_platform_topology_tests ....................   Passed    0.22 sec
+        Start  31: stage68_smp_runtime_tests
+ 31/470 Test  #31: stage68_smp_runtime_tests ..........................   Passed    0.01 sec
+        Start  32: stage69_guest_abi_tests
+ 32/470 Test  #32: stage69_guest_abi_tests ............................   Passed    0.01 sec
+        Start  33: stage70_integrated_runtime_tests
+ 33/470 Test  #33: stage70_integrated_runtime_tests ...................   Passed    0.11 sec
+        Start  34: stage71_performance_tests
+ 34/470 Test  #34: stage71_performance_tests ..........................   Passed    7.35 sec
+        Start  35: stage72_release_readiness_tests
+ 35/470 Test  #35: stage72_release_readiness_tests ....................   Passed    0.04 sec
+        Start  36: stage73_firmware_lifecycle_tests
+ 36/470 Test  #36: stage73_firmware_lifecycle_tests ...................   Passed    0.21 sec
+        Start  37: stage74_boot_protocol_tests
+ 37/470 Test  #37: stage74_boot_protocol_tests ........................   Passed    0.01 sec
+        Start  38: stage75_fdt_tests
+ 38/470 Test  #38: stage75_fdt_tests ..................................   Passed    0.02 sec
+        Start  39: stage76_gic_timer_integration_tests
+ 39/470 Test  #39: stage76_gic_timer_integration_tests ................   Passed    0.17 sec
+        Start  40: stage77_uart_earlycon_tests
+ 40/470 Test  #40: stage77_uart_earlycon_tests ........................   Passed    0.04 sec
+        Start  41: stage78_memory_map_tests
+ 41/470 Test  #41: stage78_memory_map_tests ...........................   Passed    0.01 sec
+        Start  42: stage79_image_loader_tests
+ 42/470 Test  #42: stage79_image_loader_tests .........................   Passed    0.42 sec
+        Start  43: stage80_initramfs_tests
+ 43/470 Test  #43: stage80_initramfs_tests ............................   Passed    0.30 sec
+        Start  44: stage81_boot_manager_tests
+ 44/470 Test  #44: stage81_boot_manager_tests .........................   Passed    2.24 sec
+        Start  45: stage82_boot_milestone_tests
+ 45/470 Test  #45: stage82_boot_milestone_tests .......................   Passed    0.57 sec
+        Start  46: stage83_userspace_syscall_tests
+ 46/470 Test  #46: stage83_userspace_syscall_tests ....................   Passed    0.02 sec
+        Start  47: stage84_rootfs_validation_tests
+ 47/470 Test  #47: stage84_rootfs_validation_tests ....................   Passed    0.36 sec
+        Start  48: stage85_deterministic_boot_tests
+ 48/470 Test  #48: stage85_deterministic_boot_tests ...................   Passed    0.38 sec
+        Start  49: stage86_readiness_audit_tests
+ 49/470 Test  #49: stage86_readiness_audit_tests ......................   Passed    0.14 sec
+        Start  50: macho_loader_tests
+ 50/470 Test  #50: macho_loader_tests .................................   Passed    0.04 sec
+        Start  51: apple_devicetree_tests
+ 51/470 Test  #51: apple_devicetree_tests .............................   Passed    0.02 sec
+        Start  52: apple_aic_tests
+ 52/470 Test  #52: apple_aic_tests ....................................   Passed    0.03 sec
+        Start  53: darwin_boot_session_tests
+ 53/470 Test  #53: darwin_boot_session_tests ..........................   Passed    0.37 sec
+        Start  54: darwin_sysreg_and_trap_tests
+ 54/470 Test  #54: darwin_sysreg_and_trap_tests .......................   Passed    0.05 sec
+        Start  55: display_window_tests
+ 55/470 Test  #55: display_window_tests ...............................   Passed    0.17 sec
+        Start  56: darwin_boot_cli_tests
+ 56/470 Test  #56: darwin_boot_cli_tests ..............................   Passed    0.20 sec
+        Start  57: xnu_mmu_kaslr_tests
+ 57/470 Test  #57: xnu_mmu_kaslr_tests ................................   Passed    0.02 sec
+        Start  58: darwin_platform_probing_tests
+ 58/470 Test  #58: darwin_platform_probing_tests ......................   Passed    0.19 sec
+        Start  59: stage93_native_ios_readiness_audit_tests
+ 59/470 Test  #59: stage93_native_ios_readiness_audit_tests ...........   Passed    0.10 sec
+        Start  60: stage94_hardware_profile_verification_tests
+ 60/470 Test  #60: stage94_hardware_profile_verification_tests ........   Passed    0.01 sec
+        Start  61: stage95_boot_artifact_inventory_tests
+ 61/470 Test  #61: stage95_boot_artifact_inventory_tests ..............   Passed    0.01 sec
+        Start  62: stage96_artifact_admission_tests
+ 62/470 Test  #62: stage96_artifact_admission_tests ...................   Passed    0.02 sec
+        Start  63: stage97_boot_config_manager_tests
+ 63/470 Test  #63: stage97_boot_config_manager_tests ..................   Passed    0.01 sec
+        Start  64: stage98_boot_dependency_graph_tests
+ 64/470 Test  #64: stage98_boot_dependency_graph_tests ................   Passed    0.01 sec
+        Start  65: stage99_physical_memory_map_tests
+ 65/470 Test  #65: stage99_physical_memory_map_tests ..................   Passed    0.01 sec
+        Start  66: stage100_kernel_loader_tests
+ 66/470 Test  #66: stage100_kernel_loader_tests .......................   Passed    0.70 sec
+        Start  67: stage101_kernel_relocation_tests
+ 67/470 Test  #67: stage101_kernel_relocation_tests ...................   Passed    2.08 sec
+        Start  68: stage102_kernel_entry_execution_tests
+ 68/470 Test  #68: stage102_kernel_entry_execution_tests ..............   Passed    3.00 sec
+        Start  69: stage103_kernel_fault_analysis_tests
+ 69/470 Test  #69: stage103_kernel_fault_analysis_tests ...............   Passed    2.36 sec
+        Start  70: stage104_boot_args_abi_tests
+ 70/470 Test  #70: stage104_boot_args_abi_tests .......................   Passed    0.89 sec
+        Start  71: stage105_devicetree_handoff_tests
+ 71/470 Test  #71: stage105_devicetree_handoff_tests ..................   Passed    2.20 sec
+        Start  72: stage106_xnu_early_boot_tests
+ 72/470 Test  #72: stage106_xnu_early_boot_tests ......................   Passed    0.27 sec
+        Start  73: stage107_mmu_translation_tests
+ 73/470 Test  #73: stage107_mmu_translation_tests .....................   Passed    0.02 sec
+        Start  74: stage108_exception_sysreg_tests
+ 74/470 Test  #74: stage108_exception_sysreg_tests ....................   Passed    0.02 sec
+        Start  75: stage109_aic2_interrupt_tests
+ 75/470 Test  #75: stage109_aic2_interrupt_tests ......................   Passed    0.02 sec
+        Start  76: stage110_timer_clock_tests
+ 76/470 Test  #76: stage110_timer_clock_tests .........................   Passed    0.02 sec
+        Start  77: stage111_smp_boot_tests
+ 77/470 Test  #77: stage111_smp_boot_tests ............................   Passed    0.02 sec
+        Start  78: stage112_kernel_entry_tests
+ 78/470 Test  #78: stage112_kernel_entry_tests ........................   Passed    3.54 sec
+        Start  79: stage113_iokit_foundation_tests
+ 79/470 Test  #79: stage113_iokit_foundation_tests ....................   Passed    0.03 sec
+        Start  80: stage114_platform_expert_pmgr_tests
+ 80/470 Test  #80: stage114_platform_expert_pmgr_tests ................   Passed    0.03 sec
+        Start  81: stage115_peripheral_readiness_tests
+ 81/470 Test  #81: stage115_peripheral_readiness_tests ................   Passed    0.52 sec
+        Start  82: stage116_apfs_parser_tests
+ 82/470 Test  #82: stage116_apfs_parser_tests .........................   Passed    0.01 sec
+        Start  83: stage117_rootfs_discovery_tests
+ 83/470 Test  #83: stage117_rootfs_discovery_tests ....................   Passed    0.02 sec
+        Start  84: stage118_ramdisk_volume_tests
+ 84/470 Test  #84: stage118_ramdisk_volume_tests ......................   Passed    0.75 sec
+        Start  85: stage119_storage_io_tests
+ 85/470 Test  #85: stage119_storage_io_tests ..........................   Passed    0.69 sec
+        Start  86: stage120_root_boot_handoff_tests
+ 86/470 Test  #86: stage120_root_boot_handoff_tests ...................   Passed    0.93 sec
+        Start  87: stage121_userspace_macho_tests
+ 87/470 Test  #87: stage121_userspace_macho_tests .....................   Passed    0.02 sec
+        Start  88: stage122_arm64e_pac_tests
+ 88/470 Test  #88: stage122_arm64e_pac_tests ..........................   Passed    0.01 sec
+        Start  89: stage123_dyld_dynamic_linking_tests
+ 89/470 Test  #89: stage123_dyld_dynamic_linking_tests ................   Passed    0.01 sec
+        Start  90: stage124_mach_syscall_ipc_tests
+ 90/470 Test  #90: stage124_mach_syscall_ipc_tests ....................   Passed    0.01 sec
+        Start  91: stage125_bsd_posix_subsystem_tests
+ 91/470 Test  #91: stage125_bsd_posix_subsystem_tests .................   Passed    0.02 sec
+        Start  92: stage126_launchd_daemon_tests
+ 92/470 Test  #92: stage126_launchd_daemon_tests ......................   Passed    0.02 sec
+        Start  93: stage127_windowserver_graphics_tests
+ 93/470 Test  #93: stage127_windowserver_graphics_tests ...............   Passed    0.17 sec
+        Start  94: stage128_springboard_native_app_tests
+ 94/470 Test  #94: stage128_springboard_native_app_tests ..............   Passed    0.22 sec
+        Start  95: stage130_end_to_end_pipeline_tests
+ 95/470 Test  #95: stage130_end_to_end_pipeline_tests .................   Passed    0.27 sec
+        Start  96: stage131_artifact_admission_tests
+ 96/470 Test  #96: stage131_artifact_admission_tests ..................   Passed    0.04 sec
+        Start  97: stage132_macho_execution_tests
+ 97/470 Test  #97: stage132_macho_execution_tests .....................   Passed    0.29 sec
+        Start  98: stage133_dyld_integration_tests
+ 98/470 Test  #98: stage133_dyld_integration_tests ....................   Passed    0.01 sec
+        Start  99: stage134_mach_bsd_integration_tests
+ 99/470 Test  #99: stage134_mach_bsd_integration_tests ................   Passed    0.23 sec
+        Start 100: stage135_launchd_execution_gate_tests
+100/470 Test #100: stage135_launchd_execution_gate_tests ..............   Passed    0.16 sec
+        Start 101: stage136_darwin_service_startup_tests
+101/470 Test #101: stage136_darwin_service_startup_tests ..............   Passed    0.12 sec
+        Start 102: stage137_graphics_execution_tests
+102/470 Test #102: stage137_graphics_execution_tests ..................   Passed    0.22 sec
+        Start 103: stage138_springboard_execution_tests
+103/470 Test #103: stage138_springboard_execution_tests ...............   Passed    0.41 sec
+        Start 104: stage139_native_app_execution_tests
+104/470 Test #104: stage139_native_app_execution_tests ................   Passed    0.19 sec
+        Start 105: stage142_el0_conformance_tests
+105/470 Test #105: stage142_el0_conformance_tests .....................   Passed    0.01 sec
+        Start 106: stage143_svc_exception_tests
+106/470 Test #106: stage143_svc_exception_tests .......................   Passed    0.02 sec
+        Start 107: stage144_bsd_syscall_abi_tests
+107/470 Test #107: stage144_bsd_syscall_abi_tests .....................   Passed    0.02 sec
+        Start 108: stage145_mach_ipc_abi_tests
+108/470 Test #108: stage145_mach_ipc_abi_tests ........................   Passed    0.02 sec
+        Start 109: stage146_userspace_memory_tests
+109/470 Test #109: stage146_userspace_memory_tests ....................   Passed    0.02 sec
+        Start 110: stage147_macho_admission_tests
+110/470 Test #110: stage147_macho_admission_tests .....................   Passed    0.02 sec
+        Start 111: stage148_dyld_compatibility_tests
+111/470 Test #111: stage148_dyld_compatibility_tests ..................   Passed    0.01 sec
+        Start 112: stage149_pac_conformance_tests
+112/470 Test #112: stage149_pac_conformance_tests .....................   Passed    0.01 sec
+        Start 113: stage150_process_thread_tests
+113/470 Test #113: stage150_process_thread_tests ......................   Passed    0.01 sec
+        Start 114: stage151_vfs_integration_tests
+114/470 Test #114: stage151_vfs_integration_tests .....................   Passed    0.01 sec
+        Start 115: stage152_service_lifecycle_tests
+115/470 Test #115: stage152_service_lifecycle_tests ...................   Passed    0.06 sec
+        Start 116: stage153_genuine_artifact_readiness_tests
+116/470 Test #116: stage153_genuine_artifact_readiness_tests ..........   Passed    0.02 sec
+        Start 117: stage154_end_to_end_execution_tests
+117/470 Test #117: stage154_end_to_end_execution_tests ................   Passed    0.09 sec
+        Start 118: stage155_campaign_audit_tests
+118/470 Test #118: stage155_campaign_audit_tests ......................   Passed    0.02 sec
+        Start 119: stage157_xnu_exception_conformance_tests
+119/470 Test #119: stage157_xnu_exception_conformance_tests ...........   Passed    0.02 sec
+        Start 120: stage158_bsd_syscall_conformance_tests
+120/470 Test #120: stage158_bsd_syscall_conformance_tests .............   Passed    0.02 sec
+        Start 121: stage159_mach_ipc_conformance_tests
+121/470 Test #121: stage159_mach_ipc_conformance_tests ................   Passed    0.02 sec
+        Start 122: stage160_memory_conformance_tests
+122/470 Test #122: stage160_memory_conformance_tests ..................   Passed    0.01 sec
+        Start 123: stage161_arm64e_pac_validation_tests
+123/470 Test #123: stage161_arm64e_pac_validation_tests ...............   Passed    0.01 sec
+        Start 124: stage162_macho_loader_audit_tests
+124/470 Test #124: stage162_macho_loader_audit_tests ..................   Passed    0.02 sec
+        Start 125: stage163_dyld_compatibility_tests
+125/470 Test #125: stage163_dyld_compatibility_tests ..................   Passed    0.01 sec
+        Start 126: stage164_real_artifact_harness_tests
+126/470 Test #126: stage164_real_artifact_harness_tests ...............   Passed    0.02 sec
+        Start 127: stage165_process_thread_conformance_tests
+127/470 Test #127: stage165_process_thread_conformance_tests ..........   Passed    0.02 sec
+        Start 128: stage166_launchd_bootstrap_conformance_tests
+128/470 Test #128: stage166_launchd_bootstrap_conformance_tests .......   Passed    0.02 sec
+        Start 129: stage167_genuine_macho_corpus_tests
+129/470 Test #129: stage167_genuine_macho_corpus_tests ................   Passed    0.03 sec
+        Start 130: stage168_execution_diagnostics_tests
+130/470 Test #130: stage168_execution_diagnostics_tests ...............   Passed    0.01 sec
+        Start 131: stage169_end_to_end_conformance_tests
+131/470 Test #131: stage169_end_to_end_conformance_tests ..............   Passed    0.11 sec
+        Start 132: stage170_independent_release_audit_tests
+132/470 Test #132: stage170_independent_release_audit_tests ...........   Passed    0.04 sec
+        Start 133: stage172_macho_corpus_tests
+133/470 Test #133: stage172_macho_corpus_tests ........................   Passed    0.04 sec
+        Start 134: stage173_real_entry_execution_tests
+134/470 Test #134: stage173_real_entry_execution_tests ................   Passed    0.17 sec
+        Start 135: stage174_guest_process_environment_tests
+135/470 Test #135: stage174_guest_process_environment_tests ...........   Passed    0.02 sec
+        Start 136: stage175_dependency_graph_tests
+136/470 Test #136: stage175_dependency_graph_tests ....................   Passed    0.02 sec
+        Start 137: stage176_chained_fixups_tests
+137/470 Test #137: stage176_chained_fixups_tests ......................   Passed    0.01 sec
+        Start 138: stage177_symbol_binding_tests
+138/470 Test #138: stage177_symbol_binding_tests ......................   Passed    0.01 sec
+        Start 139: stage178_shared_library_mapping_tests
+139/470 Test #139: stage178_shared_library_mapping_tests ..............   Passed    0.11 sec
+        Start 140: stage179_minimal_darwin_runtime_tests
+140/470 Test #140: stage179_minimal_darwin_runtime_tests ..............   Passed    0.02 sec
+        Start 141: stage180_bsd_syscall_expansion_tests
+141/470 Test #141: stage180_bsd_syscall_expansion_tests ...............   Passed    0.02 sec
+        Start 142: stage181_mach_ipc_guest_integration_tests
+142/470 Test #142: stage181_mach_ipc_guest_integration_tests ..........   Passed    0.01 sec
+        Start 143: stage182_vfs_runtime_integration_tests
+143/470 Test #143: stage182_vfs_runtime_integration_tests .............   Passed    0.01 sec
+        Start 144: stage183_process_thread_execution_tests
+144/470 Test #144: stage183_process_thread_execution_tests ............   Passed    0.02 sec
+        Start 145: stage184_real_macho_smoke_tests
+145/470 Test #145: stage184_real_macho_smoke_tests ....................   Passed    0.08 sec
+        Start 146: stage185_real_dependency_execution_tests
+146/470 Test #146: stage185_real_dependency_execution_tests ...........   Passed    0.04 sec
+        Start 147: stage186_real_file_memory_tests
+147/470 Test #147: stage186_real_file_memory_tests ....................   Passed    0.08 sec
+        Start 148: stage187_multi_image_execution_tests
+148/470 Test #148: stage187_multi_image_execution_tests ...............   Passed    0.07 sec
+        Start 149: stage188_instruction_execution_evidence_tests
+149/470 Test #149: stage188_instruction_execution_evidence_tests ......   Passed    0.04 sec
+        Start 150: stage189_runtime_reliability_tests
+150/470 Test #150: stage189_runtime_reliability_tests .................   Passed    2.15 sec
+        Start 151: stage190_independent_release_audit_tests
+151/470 Test #151: stage190_independent_release_audit_tests ...........   Passed    0.13 sec
+        Start 152: stage199_replay_and_reliability_tests
+152/470 Test #152: stage199_replay_and_reliability_tests ..............   Passed    0.27 sec
+        Start 153: stage_r3_real_artifact_execution_tests
+153/470 Test #153: stage_r3_real_artifact_execution_tests .............   Passed    0.04 sec
+        Start 154: adr_adrp_conformance_tests
+154/470 Test #154: adr_adrp_conformance_tests .........................   Passed    0.07 sec
+        Start 155: stage_s1_compiler_generated_execution_tests
+155/470 Test #155: stage_s1_compiler_generated_execution_tests ........   Passed    0.07 sec
+        Start 156: stage_s2_real_dylib_execution_tests
+156/470 Test #156: stage_s2_real_dylib_execution_tests ................   Passed    0.05 sec
+        Start 157: stage_t0_stack_protector_tests
+157/470 Test #157: stage_t0_stack_protector_tests .....................   Passed    0.07 sec
+        Start 158: stage_t1_ios_target_tests
+158/470 Test #158: stage_t1_ios_target_tests ..........................   Passed    0.05 sec
+        Start 159: stage_t2_three_image_chain_tests
+159/470 Test #159: stage_t2_three_image_chain_tests ...................   Passed    0.05 sec
+        Start 160: stage_t3_initializers_and_tlv_tests
+160/470 Test #160: stage_t3_initializers_and_tlv_tests ................   Passed    0.10 sec
+        Start 161: stage_t4_arm64e_probe_tests
+161/470 Test #161: stage_t4_arm64e_probe_tests ........................   Passed    0.05 sec
+        Start 162: stage_u1_guest_minidyld_tests
+162/470 Test #162: stage_u1_guest_minidyld_tests ......................   Passed    0.29 sec
+        Start 163: stage_u2_libsystem_lite_tests
+163/470 Test #163: stage_u2_libsystem_lite_tests ......................   Passed    0.23 sec
+        Start 164: stage_u3_real_mach_trap_tests
+164/470 Test #164: stage_u3_real_mach_trap_tests ......................   Passed    0.10 sec
+        Start 165: stage_v0_chained_fixups_tests
+165/470 Test #165: stage_v0_chained_fixups_tests ......................   Passed    0.13 sec
+        Start 166: stage_v1_userspace_memory_model_tests
+166/470 Test #166: stage_v1_userspace_memory_model_tests ..............   Passed    0.11 sec
+        Start 167: stage_v2_differential_cpu_tests
+167/470 Test #167: stage_v2_differential_cpu_tests ....................   Passed    0.01 sec
+        Start 168: stage_v3_large_opensource_tests
+168/470 Test #168: stage_v3_large_opensource_tests ....................   Passed    6.69 sec
+        Start 169: stage_192_2_macho_hardening_tests
+169/470 Test #169: stage_192_2_macho_hardening_tests ..................   Passed    0.01 sec
+        Start 170: stage_192_3_chained_fixups_conformance_tests
+170/470 Test #170: stage_192_3_chained_fixups_conformance_tests .......   Passed    0.03 sec
+        Start 171: stage_192_4_dyld_binding_tests
+171/470 Test #171: stage_192_4_dyld_binding_tests .....................   Passed    0.01 sec
+        Start 172: stage_192_5_multi_image_graph_tests
+172/470 Test #172: stage_192_5_multi_image_graph_tests ................   Passed    0.01 sec
+        Start 173: stage_192_6_libsystem_abi_tests
+173/470 Test #173: stage_192_6_libsystem_abi_tests ....................   Passed    0.27 sec
+        Start 174: stage_192_7_virtual_memory_tests
+174/470 Test #174: stage_192_7_virtual_memory_tests ...................   Passed    0.03 sec
+        Start 175: stage_192_8_bsd_syscall_tests
+175/470 Test #175: stage_192_8_bsd_syscall_tests ......................   Passed    0.08 sec
+        Start 176: stage_192_9_vfs_tests
+176/470 Test #176: stage_192_9_vfs_tests ..............................   Passed    0.01 sec
+        Start 177: stage_192_10_mach_ipc_tests
+177/470 Test #177: stage_192_10_mach_ipc_tests ........................   Passed    0.04 sec
+        Start 178: stage_192_11_threads_tls_tests
+178/470 Test #178: stage_192_11_threads_tls_tests .....................   Passed    0.03 sec
+        Start 179: stage_192_12_process_lifecycle_tests
+179/470 Test #179: stage_192_12_process_lifecycle_tests ...............   Passed    0.04 sec
+        Start 180: stage_192_13_pac_boundary_tests
+180/470 Test #180: stage_192_13_pac_boundary_tests ....................   Passed    0.02 sec
+        Start 181: stage_192_14_execution_tracing_tests
+181/470 Test #181: stage_192_14_execution_tracing_tests ...............   Passed    0.03 sec
+        Start 182: stage_192_16_integrated_conformance_tests
+182/470 Test #182: stage_192_16_integrated_conformance_tests ..........   Passed    0.04 sec
+        Start 183: stage193_1_execution_level_tests
+183/470 Test #183: stage193_1_execution_level_tests ...................   Passed    0.01 sec
+        Start 184: stage193_2_exception_entry_tests
+184/470 Test #184: stage193_2_exception_entry_tests ...................   Passed    0.01 sec
+        Start 185: stage193_3_syndrome_register_tests
+185/470 Test #185: stage193_3_syndrome_register_tests .................   Passed    0.01 sec
+        Start 186: stage193_4_vector_table_tests
+186/470 Test #186: stage193_4_vector_table_tests ......................   Passed    0.01 sec
+        Start 187: stage193_5_eret_return_tests
+187/470 Test #187: stage193_5_eret_return_tests .......................   Passed    0.01 sec
+        Start 188: stage193_6_sysreg_privilege_tests
+188/470 Test #188: stage193_6_sysreg_privilege_tests ..................   Passed    0.01 sec
+        Start 189: stage193_7_mmu_translation_fault_tests
+189/470 Test #189: stage193_7_mmu_translation_fault_tests .............   Passed    0.02 sec
+        Start 190: stage193_8_tlb_invalidation_tests
+190/470 Test #190: stage193_8_tlb_invalidation_tests ..................   Passed    0.02 sec
+        Start 191: stage193_9_asid_isolation_tests
+191/470 Test #191: stage193_9_asid_isolation_tests ....................   Passed    0.02 sec
+        Start 192: stage193_10_memory_protection_tests
+192/470 Test #192: stage193_10_memory_protection_tests ................   Passed    0.02 sec
+        Start 193: stage193_11_stack_management_tests
+193/470 Test #193: stage193_11_stack_management_tests .................   Passed    0.02 sec
+        Start 194: stage193_12_gic_delivery_tests
+194/470 Test #194: stage193_12_gic_delivery_tests .....................   Passed    0.01 sec
+        Start 195: stage193_13_irq_routing_tests
+195/470 Test #195: stage193_13_irq_routing_tests ......................   Passed    0.02 sec
+        Start 196: stage193_14_virtual_timer_tests
+196/470 Test #196: stage193_14_virtual_timer_tests ....................   Passed    0.01 sec
+        Start 197: stage193_15_smp_exception_tests
+197/470 Test #197: stage193_15_smp_exception_tests ....................   Passed    0.01 sec
+        Start 198: stage193_16_synthetic_kernel_tests
+198/470 Test #198: stage193_16_synthetic_kernel_tests .................   Passed    0.03 sec
+        Start 199: stage193_17_kernel_integration_tests
+199/470 Test #199: stage193_17_kernel_integration_tests ...............   Passed    0.02 sec
+        Start 200: stage194_1_kernel_boot_contract_tests
+200/470 Test #200: stage194_1_kernel_boot_contract_tests ..............   Passed    0.03 sec
+        Start 201: stage194_2_kernel_memory_layout_tests
+201/470 Test #201: stage194_2_kernel_memory_layout_tests ..............   Passed    0.01 sec
+        Start 202: stage194_3_physical_allocator_tests
+202/470 Test #202: stage194_3_physical_allocator_tests ................   Passed    0.02 sec
+        Start 203: stage194_4_virtual_page_table_tests
+203/470 Test #203: stage194_4_virtual_page_table_tests ................   Passed    0.03 sec
+        Start 204: stage194_5_demand_paging_tests
+204/470 Test #204: stage194_5_demand_paging_tests .....................   Passed    0.05 sec
+        Start 205: stage194_6_kernel_heap_tests
+205/470 Test #205: stage194_6_kernel_heap_tests .......................   Passed    0.04 sec
+        Start 206: stage194_7_thread_lifecycle_tests
+206/470 Test #206: stage194_7_thread_lifecycle_tests ..................   Passed    0.02 sec
+        Start 207: stage194_8_context_switch_tests
+207/470 Test #207: stage194_8_context_switch_tests ....................   Passed    0.02 sec
+        Start 208: stage194_9_guest_scheduler_tests
+208/470 Test #208: stage194_9_guest_scheduler_tests ...................   Passed    0.02 sec
+        Start 209: stage194_10_preemption_tests
+209/470 Test #209: stage194_10_preemption_tests .......................   Passed    0.02 sec
+        Start 210: stage194_11_smp_scheduler_tests
+210/470 Test #210: stage194_11_smp_scheduler_tests ....................   Passed    0.02 sec
+        Start 211: stage194_12_sync_primitives_tests
+211/470 Test #211: stage194_12_sync_primitives_tests ..................   Passed    0.01 sec
+        Start 212: stage194_13_syscall_dispatch_tests
+212/470 Test #212: stage194_13_syscall_dispatch_tests .................   Passed    0.01 sec
+        Start 213: stage194_14_kernel_ipc_tests
+213/470 Test #213: stage194_14_kernel_ipc_tests .......................   Passed    0.01 sec
+        Start 214: stage194_15_handle_management_tests
+214/470 Test #214: stage194_15_handle_management_tests ................   Passed    0.01 sec
+        Start 215: stage194_16_device_drivers_tests
+215/470 Test #215: stage194_16_device_drivers_tests ...................   Passed    0.01 sec
+        Start 216: stage194_17_kernel_diagnostics_tests
+216/470 Test #216: stage194_17_kernel_diagnostics_tests ...............   Passed    0.01 sec
+        Start 217: stage194_18_workload_corpus_tests
+217/470 Test #217: stage194_18_workload_corpus_tests ..................   Passed    0.03 sec
+        Start 218: stage195_3_cooperative_switch_tests
+218/470 Test #218: stage195_3_cooperative_switch_tests ................   Passed    0.02 sec
+        Start 219: stage195_4_asynchronous_preemption_tests
+219/470 Test #219: stage195_4_asynchronous_preemption_tests ...........   Passed    0.07 sec
+        Start 220: stage195_10_timer_and_sync_stress_tests
+220/470 Test #220: stage195_10_timer_and_sync_stress_tests ............   Passed    0.02 sec
+        Start 221: stage195_15_demand_paging_concurrency_tests
+221/470 Test #221: stage195_15_demand_paging_concurrency_tests ........   Passed    0.06 sec
+        Start 222: stage195_16_allocator_stress_tests
+222/470 Test #222: stage195_16_allocator_stress_tests .................   Passed    0.06 sec
+        Start 223: stage195_17_long_running_workload_tests
+223/470 Test #223: stage195_17_long_running_workload_tests ............   Passed    0.04 sec
+        Start 224: stage196_2_exclusive_monitor_tests
+224/470 Test #224: stage196_2_exclusive_monitor_tests .................   Passed    0.01 sec
+        Start 225: stage196_3_atomic_instructions_tests
+225/470 Test #225: stage196_3_atomic_instructions_tests ...............   Passed    0.01 sec
+        Start 226: stage196_4_smp_atomics_tests
+226/470 Test #226: stage196_4_smp_atomics_tests .......................   Passed    0.03 sec
+        Start 227: stage196_5_barrier_tests
+227/470 Test #227: stage196_5_barrier_tests ...........................   Passed    0.01 sec
+        Start 228: stage196_6_acquire_release_tests
+228/470 Test #228: stage196_6_acquire_release_tests ...................   Passed    0.01 sec
+        Start 229: stage196_7_spinlock_stress_tests
+229/470 Test #229: stage196_7_spinlock_stress_tests ...................   Passed    0.01 sec
+        Start 230: stage196_9_scheduler_integrity_tests
+230/470 Test #230: stage196_9_scheduler_integrity_tests ...............   Passed    0.01 sec
+        Start 231: stage196_11_tlb_and_context_tests
+231/470 Test #231: stage196_11_tlb_and_context_tests ..................   Passed    0.01 sec
+        Start 232: stage196_13_smp_stress_tests
+232/470 Test #232: stage196_13_smp_stress_tests .......................   Passed    0.03 sec
+        Start 233: stage196_14_allocator_concurrency_tests
+233/470 Test #233: stage196_14_allocator_concurrency_tests ............   Passed    0.09 sec
+        Start 234: stage196_15_ipc_lifetime_tests
+234/470 Test #234: stage196_15_ipc_lifetime_tests .....................   Passed    0.02 sec
+        Start 235: stage196_16_deterministic_replay_tests
+235/470 Test #235: stage196_16_deterministic_replay_tests .............   Passed    0.02 sec
+        Start 236: stage196_18_integrated_concurrency_tests
+236/470 Test #236: stage196_18_integrated_concurrency_tests ...........   Passed    0.03 sec
+        Start 237: stage197_2_guest_memory_order_tests
+237/470 Test #237: stage197_2_guest_memory_order_tests ................   Passed    0.01 sec
+        Start 238: stage197_3_barrier_semantics_tests
+238/470 Test #238: stage197_3_barrier_semantics_tests .................   Passed    0.01 sec
+        Start 239: stage197_6_exclusive_monitor_tests
+239/470 Test #239: stage197_6_exclusive_monitor_tests .................   Passed    0.01 sec
+        Start 240: stage197_7_lse_matrix_tests
+240/470 Test #240: stage197_7_lse_matrix_tests ........................   Passed    0.01 sec
+        Start 241: stage197_8_atomic_fault_tests
+241/470 Test #241: stage197_8_atomic_fault_tests ......................   Passed    0.01 sec
+        Start 242: stage197_10_litmus_tests
+242/470 Test #242: stage197_10_litmus_tests ...........................   Passed    0.01 sec
+        Start 243: stage197_12_host_synchronization_isolation_tests
+243/470 Test #243: stage197_12_host_synchronization_isolation_tests ...   Passed    0.01 sec
+        Start 244: stage197_13_deterministic_replay_tests
+244/470 Test #244: stage197_13_deterministic_replay_tests .............   Passed    0.02 sec
+        Start 245: stage197_14_tlbi_page_reuse_tests
+245/470 Test #245: stage197_14_tlbi_page_reuse_tests ..................   Passed    0.02 sec
+        Start 246: stage197_15_interrupt_atomic_tests
+246/470 Test #246: stage197_15_interrupt_atomic_tests .................   Passed    0.02 sec
+        Start 247: stage197_16_workload_corpus_tests
+247/470 Test #247: stage197_16_workload_corpus_tests ..................   Passed    0.04 sec
+        Start 248: stage197_18_integrated_smp_conformance_tests
+248/470 Test #248: stage197_18_integrated_smp_conformance_tests .......   Passed    0.02 sec
+        Start 249: elf_manifest_tests
+249/470 Test #249: elf_manifest_tests .................................   Passed    0.18 sec
+        Start 250: elf_session_cli_tests
+250/470 Test #250: elf_session_cli_tests ..............................   Passed    0.81 sec
+        Start 251: elf_cli_success_tests
+251/470 Test #251: elf_cli_success_tests ..............................   Passed    0.17 sec
+        Start 252: elf_cli_failures_tests
+252/470 Test #252: elf_cli_failures_tests .............................   Passed    0.20 sec
+        Start 253: elf_cli_arguments_tests
+253/470 Test #253: elf_cli_arguments_tests ............................   Passed    0.24 sec
+        Start 254: threading_tests
+254/470 Test #254: threading_tests ....................................   Passed    1.40 sec
+        Start 255: memory_ordering_tests
+255/470 Test #255: memory_ordering_tests ..............................   Passed    5.10 sec
+        Start 256: advanced_mmu_tests
+256/470 Test #256: advanced_mmu_tests .................................   Passed    0.03 sec
+        Start 257: gicv3_tests
+257/470 Test #257: gicv3_tests ........................................   Passed    0.02 sec
+        Start 258: el3_tests
+258/470 Test #258: el3_tests ..........................................   Passed    0.02 sec
+        Start 259: psci_tests
+259/470 Test #259: psci_tests .........................................   Passed    0.02 sec
+        Start 260: pmu_tests
+260/470 Test #260: pmu_tests ..........................................   Passed    0.02 sec
+        Start 261: pmu_reference_tests
+261/470 Test #261: pmu_reference_tests ................................   Passed    0.02 sec
+        Start 262: pmu_recording_replay_tests
+262/470 Test #262: pmu_recording_replay_tests .........................   Passed    0.04 sec
+        Start 263: timer_tests
+263/470 Test #263: timer_tests ........................................   Passed    0.02 sec
+        Start 264: generic_timer_register_tests
+264/470 Test #264: generic_timer_register_tests .......................   Passed    0.03 sec
+        Start 265: physical_timer_tests
+265/470 Test #265: physical_timer_tests ...............................   Passed    0.03 sec
+        Start 266: virtual_timer_tests
+266/470 Test #266: virtual_timer_tests ................................   Passed    0.03 sec
+        Start 267: timer_privilege_tests
+267/470 Test #267: timer_privilege_tests ..............................   Passed    0.03 sec
+        Start 268: timer_gic_integration_tests
+268/470 Test #268: timer_gic_integration_tests ........................   Passed    0.03 sec
+        Start 269: timer_smp_isolation_tests
+269/470 Test #269: timer_smp_isolation_tests ..........................   Passed    0.02 sec
+        Start 270: timer_snapshot_replay_tests
+270/470 Test #270: timer_snapshot_replay_tests ........................   Passed    0.02 sec
+        Start 271: timer_reference_tests
+271/470 Test #271: timer_reference_tests ..............................   Passed    0.02 sec
+        Start 272: fp_simd_register_tests
+272/470 Test #272: fp_simd_register_tests .............................   Passed    0.02 sec
+        Start 273: fpcr_fpsr_tests
+273/470 Test #273: fpcr_fpsr_tests ....................................   Passed    0.02 sec
+        Start 274: scalar_fp_execution_tests
+274/470 Test #274: scalar_fp_execution_tests ..........................   Passed    0.02 sec
+        Start 275: advanced_simd_execution_tests
+275/470 Test #275: advanced_simd_execution_tests ......................   Passed    0.02 sec
+        Start 276: fp_simd_trap_tests
+276/470 Test #276: fp_simd_trap_tests .................................   Passed    0.02 sec
+        Start 277: fp_simd_smp_tests
+277/470 Test #277: fp_simd_smp_tests ..................................   Passed    0.02 sec
+        Start 278: fp_simd_snapshot_replay_tests
+278/470 Test #278: fp_simd_snapshot_replay_tests ......................   Passed    0.02 sec
+        Start 279: fp_simd_reference_tests
+279/470 Test #279: fp_simd_reference_tests ............................   Passed    0.02 sec
+        Start 280: exclusive_load_store_tests
+280/470 Test #280: exclusive_load_store_tests .........................   Passed    0.03 sec
+        Start 281: exclusive_monitor_tests
+281/470 Test #281: exclusive_monitor_tests ............................   Passed    0.03 sec
+        Start 282: exclusive_pair_tests
+282/470 Test #282: exclusive_pair_tests ...............................   Passed    0.03 sec
+        Start 283: clrex_tests
+283/470 Test #283: clrex_tests ........................................   Passed    0.03 sec
+        Start 284: acquire_release_tests
+284/470 Test #284: acquire_release_tests ..............................   Passed    0.03 sec
+        Start 285: exclusive_smp_tests
+285/470 Test #285: exclusive_smp_tests ................................   Passed    0.03 sec
+        Start 286: exclusive_snapshot_replay_tests
+286/470 Test #286: exclusive_snapshot_replay_tests ....................   Passed    0.03 sec
+        Start 287: exclusive_reference_tests
+287/470 Test #287: exclusive_reference_tests ..........................   Passed    0.03 sec
+        Start 288: lse_cas_tests
+288/470 Test #288: lse_cas_tests ......................................   Passed    0.03 sec
+        Start 289: lse_swap_tests
+289/470 Test #289: lse_swap_tests .....................................   Passed    0.02 sec
+        Start 290: lse_atomic_arithmetic_tests
+290/470 Test #290: lse_atomic_arithmetic_tests ........................   Passed    0.02 sec
+        Start 291: lse_atomic_logical_tests
+291/470 Test #291: lse_atomic_logical_tests ...........................   Passed    0.02 sec
+        Start 292: lse_acquire_release_tests
+292/470 Test #292: lse_acquire_release_tests ..........................   Passed    0.02 sec
+        Start 293: lse_smp_tests
+293/470 Test #293: lse_smp_tests ......................................   Passed    0.02 sec
+        Start 294: lse_memory_fault_tests
+294/470 Test #294: lse_memory_fault_tests .............................   Passed    0.02 sec
+        Start 295: lse_snapshot_replay_tests
+295/470 Test #295: lse_snapshot_replay_tests ..........................   Passed    0.02 sec
+        Start 296: lse_reference_tests
+296/470 Test #296: lse_reference_tests ................................   Passed    0.02 sec
+        Start 297: cache_register_tests
+297/470 Test #297: cache_register_tests ...............................   Passed    0.01 sec
+        Start 298: dc_zva_tests
+298/470 Test #298: dc_zva_tests .......................................   Passed    0.01 sec
+        Start 299: dc_maintenance_tests
+299/470 Test #299: dc_maintenance_tests ...............................   Passed    0.01 sec
+        Start 300: ic_maintenance_tests
+300/470 Test #300: ic_maintenance_tests ...............................   Passed    0.01 sec
+        Start 301: cache_barrier_tests
+301/470 Test #301: cache_barrier_tests ................................   Passed    0.01 sec
+        Start 302: self_modifying_code_tests
+302/470 Test #302: self_modifying_code_tests ..........................   Passed    0.01 sec
+        Start 303: cache_smp_dma_tests
+303/470 Test #303: cache_smp_dma_tests ................................   Passed    0.01 sec
+        Start 304: cache_snapshot_replay_tests
+304/470 Test #304: cache_snapshot_replay_tests ........................   Passed    0.01 sec
+        Start 305: cache_reference_tests
+305/470 Test #305: cache_reference_tests ..............................   Passed    0.01 sec
+        Start 306: debug_architecture_tests
+306/470 Test #306: debug_architecture_tests ...........................   Passed    0.01 sec
+        Start 307: debug_sysreg_tests
+307/470 Test #307: debug_sysreg_tests .................................   Passed    0.01 sec
+        Start 308: breakpoint_tests
+308/470 Test #308: breakpoint_tests ...................................   Passed    0.34 sec
+        Start 309: watchpoint_tests
+309/470 Test #309: watchpoint_tests ...................................   Passed    0.33 sec
+        Start 310: debug_exception_tests
+310/470 Test #310: debug_exception_tests ..............................   Passed    0.56 sec
+        Start 311: linked_debug_tests
+311/470 Test #311: linked_debug_tests .................................   Passed    0.06 sec
+        Start 312: single_step_tests
+312/470 Test #312: single_step_tests ..................................   Passed    0.56 sec
+        Start 313: debug_integration_tests
+313/470 Test #313: debug_integration_tests ............................   Passed    0.32 sec
+        Start 314: trace_schema_tests
+314/470 Test #314: trace_schema_tests .................................   Passed    0.01 sec
+        Start 315: trace_ring_buffer_tests
+315/470 Test #315: trace_ring_buffer_tests ............................   Passed    0.05 sec
+        Start 316: trace_serializer_tests
+316/470 Test #316: trace_serializer_tests .............................   Passed    0.01 sec
+        Start 317: trace_file_writer_tests
+317/470 Test #317: trace_file_writer_tests ............................   Passed    0.03 sec
+        Start 318: trace_file_reader_tests
+318/470 Test #318: trace_file_reader_tests ............................   Passed    0.13 sec
+        Start 319: trace_config_tests
+319/470 Test #319: trace_config_tests .................................   Passed    0.01 sec
+        Start 320: trace_manager_tests
+320/470 Test #320: trace_manager_tests ................................   Passed    0.07 sec
+        Start 321: trace_pipeline_tests
+321/470 Test #321: trace_pipeline_tests ...............................   Passed    0.08 sec
+        Start 322: cpu_trace_tests
+322/470 Test #322: cpu_trace_tests ....................................   Passed    0.01 sec
+        Start 323: cpu_trace_pipeline_tests
+323/470 Test #323: cpu_trace_pipeline_tests ...........................   Passed    0.03 sec
+        Start 324: branch_trace_tests
+324/470 Test #324: branch_trace_tests .................................   Passed    0.02 sec
+        Start 325: branch_trace_pipeline_tests
+325/470 Test #325: branch_trace_pipeline_tests ........................   Passed    0.03 sec
+        Start 326: exception_trace_tests
+326/470 Test #326: exception_trace_tests ..............................   Passed    0.02 sec
+        Start 327: exception_trace_pipeline_tests
+327/470 Test #327: exception_trace_pipeline_tests .....................   Passed    0.03 sec
+        Start 328: sysreg_trace_tests
+328/470 Test #328: sysreg_trace_tests .................................   Passed    0.02 sec
+        Start 329: sysreg_trace_pipeline_tests
+329/470 Test #329: sysreg_trace_pipeline_tests ........................   Passed    0.03 sec
+        Start 330: memory_trace_tests
+330/470 Test #330: memory_trace_tests .................................   Passed    0.50 sec
+        Start 331: memory_trace_pipeline_tests
+331/470 Test #331: memory_trace_pipeline_tests ........................   Passed    0.03 sec
+        Start 332: debug_trace_tests
+332/470 Test #332: debug_trace_tests ..................................   Passed    0.67 sec
+        Start 333: debug_trace_pipeline_tests
+333/470 Test #333: debug_trace_pipeline_tests .........................   Passed    0.07 sec
+        Start 334: interrupt_trace_tests
+334/470 Test #334: interrupt_trace_tests ..............................   Passed    0.50 sec
+        Start 335: interrupt_trace_pipeline_tests
+335/470 Test #335: interrupt_trace_pipeline_tests .....................   Passed    0.06 sec
+        Start 336: cpu_lifecycle_trace_tests
+336/470 Test #336: cpu_lifecycle_trace_tests ..........................   Passed    0.25 sec
+        Start 337: context_change_trace_tests
+337/470 Test #337: context_change_trace_tests .........................   Passed    0.20 sec
+        Start 338: lifecycle_trace_pipeline_tests
+338/470 Test #338: lifecycle_trace_pipeline_tests .....................   Passed    0.19 sec
+        Start 339: timer_trace_tests
+339/470 Test #339: timer_trace_tests ..................................   Passed    0.57 sec
+        Start 340: timer_trace_pipeline_tests
+340/470 Test #340: timer_trace_pipeline_tests .........................   Passed    0.16 sec
+        Start 341: trace_analyzer_tests
+341/470 Test #341: trace_analyzer_tests ...............................   Passed    0.46 sec
+        Start 342: trace_analysis_pipeline_tests
+342/470 Test #342: trace_analysis_pipeline_tests ......................   Passed    0.16 sec
+        Start 343: inferno_launcher_tests
+343/470 Test #343: inferno_launcher_tests .............................   Passed    1.20 sec
+        Start 344: snapshot_tests
+344/470 Test #344: snapshot_tests .....................................   Passed    0.03 sec
+        Start 345: sndl_tests
+345/470 Test #345: sndl_tests .........................................   Passed    0.07 sec
+        Start 346: replay_tests
+346/470 Test #346: replay_tests .......................................   Passed    0.24 sec
+        Start 347: replay_hardening_tests
+347/470 Test #347: replay_hardening_tests .............................   Passed    0.33 sec
+        Start 348: replay_scalability_tests
+348/470 Test #348: replay_scalability_tests ...........................   Passed    2.47 sec
+        Start 349: smp_foundation_tests
+349/470 Test #349: smp_foundation_tests ...............................   Passed    0.06 sec
+        Start 350: smp_snapshot_tests
+350/470 Test #350: smp_snapshot_tests .................................   Passed    0.30 sec
+        Start 351: smp_sndl_v2_tests
+351/470 Test #351: smp_sndl_v2_tests ..................................   Passed    0.12 sec
+        Start 352: sndl_v2_hardening_tests
+352/470 Test #352: sndl_v2_hardening_tests ............................   Passed    0.59 sec
+        Start 353: smp_replay_tests
+353/470 Test #353: smp_replay_tests ...................................   Passed    0.27 sec
+        Start 354: smp_four_core_replay_tests
+354/470 Test #354: smp_four_core_replay_tests .........................   Passed    0.40 sec
+        Start 355: smp_topology_scalability_tests
+355/470 Test #355: smp_topology_scalability_tests .....................   Passed    0.03 sec
+        Start 356: smp_eight_core_architecture_tests
+356/470 Test #356: smp_eight_core_architecture_tests ..................   Passed    0.02 sec
+        Start 357: smp_eight_core_replay_tests
+357/470 Test #357: smp_eight_core_replay_tests ........................   Passed    0.52 sec
+        Start 358: smp_eight_core_replay_hardening_tests
+358/470 Test #358: smp_eight_core_replay_hardening_tests ..............   Passed    0.24 sec
+        Start 359: smp_long_duration_replay_tests
+359/470 Test #359: smp_long_duration_replay_tests .....................   Passed  104.71 sec
+        Start 360: smp_cross_topology_tests
+360/470 Test #360: smp_cross_topology_tests ...........................   Passed    0.16 sec
+        Start 361: smp_independent_state_validation_tests
+361/470 Test #361: smp_independent_state_validation_tests .............   Passed    0.14 sec
+        Start 362: smp_event_corruption_stress_tests
+362/470 Test #362: smp_event_corruption_stress_tests ..................   Passed    0.10 sec
+        Start 363: smp_large_snapshot_stress_tests
+363/470 Test #363: smp_large_snapshot_stress_tests ....................   Passed    0.48 sec
+        Start 364: smp_scheduler_fairness_tests
+364/470 Test #364: smp_scheduler_fairness_tests .......................   Passed    0.08 sec
+        Start 365: smp_interrupt_timer_stress_tests
+365/470 Test #365: smp_interrupt_timer_stress_tests ...................   Passed    0.15 sec
+        Start 366: smp_replay_performance_profile
+366/470 Test #366: smp_replay_performance_profile .....................   Passed    2.97 sec
+        Start 367: virtual_device_bus_tests
+367/470 Test #367: virtual_device_bus_tests ...........................   Passed    0.01 sec
+        Start 368: virtual_dma_descriptor_tests
+368/470 Test #368: virtual_dma_descriptor_tests .......................   Passed    0.01 sec
+        Start 369: virtual_dma_memory_integrity_tests
+369/470 Test #369: virtual_dma_memory_integrity_tests .................   Passed    0.01 sec
+        Start 370: virtual_dma_snapshot_tests
+370/470 Test #370: virtual_dma_snapshot_tests .........................   Passed    0.01 sec
+        Start 371: virtual_dma_smp_tests
+371/470 Test #371: virtual_dma_smp_tests ..............................   Passed    0.02 sec
+        Start 372: dma_payload_store_tests
+372/470 Test #372: dma_payload_store_tests ............................   Passed    0.04 sec
+        Start 373: dma_recording_replay_tests
+373/470 Test #373: dma_recording_replay_tests .........................   Passed    0.11 sec
+        Start 374: dma_smp_determinism_tests
+374/470 Test #374: dma_smp_determinism_tests ..........................   Passed    0.49 sec
+        Start 375: dma_adversarial_tests
+375/470 Test #375: dma_adversarial_tests ..............................   Passed    0.08 sec
+        Start 376: dma_crash_recovery_tests
+376/470 Test #376: dma_crash_recovery_tests ...........................   Passed    0.25 sec
+        Start 377: dma_replay_checkpoint_tests
+377/470 Test #377: dma_replay_checkpoint_tests ........................   Passed    0.54 sec
+        Start 378: dma_snapshot_continuation_tests
+378/470 Test #378: dma_snapshot_continuation_tests ....................   Passed    0.05 sec
+        Start 379: dma_long_duration_stress_tests
+379/470 Test #379: dma_long_duration_stress_tests .....................   Passed    5.00 sec
+        Start 380: differential_validation_tests
+380/470 Test #380: differential_validation_tests ......................   Passed    0.13 sec
+        Start 381: independent_recording_recovery_tests
+381/470 Test #381: independent_recording_recovery_tests ...............   Passed    0.06 sec
+        Start 382: smp_endurance_certification_tests
+382/470 Test #382: smp_endurance_certification_tests ..................   Passed   11.30 sec
+        Start 383: inferno_integration_tests
+383/470 Test #383: inferno_integration_tests ..........................***Skipped   0.01 sec
+        Start 384: ArchitecturalStateIntegrityTests
+384/470 Test #384: ArchitecturalStateIntegrityTests ...................   Passed    0.01 sec
+        Start 385: MmuConformanceTests
+385/470 Test #385: MmuConformanceTests ................................   Passed    0.02 sec
+        Start 386: GicMemoryOrderingTests
+386/470 Test #386: GicMemoryOrderingTests .............................   Passed    0.02 sec
+        Start 387: SystemRegisterConformanceTests
+387/470 Test #387: SystemRegisterConformanceTests .....................   Passed    0.03 sec
+        Start 388: MmuCpacrConformanceTests
+388/470 Test #388: MmuCpacrConformanceTests ...........................   Passed    0.04 sec
+        Start 389: ArchitecturalExceptionDeliveryTests
+389/470 Test #389: ArchitecturalExceptionDeliveryTests ................   Passed    0.01 sec
+        Start 390: ExceptionVectorSelectionTests
+390/470 Test #390: ExceptionVectorSelectionTests ......................   Passed    0.01 sec
+        Start 391: EretStateValidationTests
+391/470 Test #391: EretStateValidationTests ...........................   Passed    0.01 sec
+        Start 392: DaifInterruptMaskingTests
+392/470 Test #392: DaifInterruptMaskingTests ..........................   Passed    0.01 sec
+        Start 393: GicInterruptLifecycleTests
+393/470 Test #393: GicInterruptLifecycleTests .........................   Passed    0.01 sec
+        Start 394: GicPriorityAndPreemptionTests
+394/470 Test #394: GicPriorityAndPreemptionTests ......................   Passed    0.01 sec
+        Start 395: GicSystemRegisterTests
+395/470 Test #395: GicSystemRegisterTests .............................   Passed    0.01 sec
+        Start 396: VirtualTimerConformanceTests
+396/470 Test #396: VirtualTimerConformanceTests .......................   Passed    0.01 sec
+        Start 397: TimerPpiIntegrationTests
+397/470 Test #397: TimerPpiIntegrationTests ...........................   Passed    0.01 sec
+        Start 398: SmpInterruptDeterminismTests
+398/470 Test #398: SmpInterruptDeterminismTests .......................   Passed    0.01 sec
+        Start 399: ExceptionInterruptReplayTests
+399/470 Test #399: ExceptionInterruptReplayTests ......................   Passed    0.01 sec
+        Start 400: Stage38SnapshotRestoreTests
+400/470 Test #400: Stage38SnapshotRestoreTests ........................   Passed    0.01 sec
+        Start 401: Stage38ReferenceDifferentialTests
+401/470 Test #401: Stage38ReferenceDifferentialTests ..................   Passed    0.01 sec
+        Start 402: Stage38FuzzAndEnduranceTests
+402/470 Test #402: Stage38FuzzAndEnduranceTests .......................   Passed    0.03 sec
+        Start 403: DebugRegisterArchitectureTests
+403/470 Test #403: DebugRegisterArchitectureTests .....................   Passed    0.01 sec
+        Start 404: HardwareBreakpointMatchingTests
+404/470 Test #404: HardwareBreakpointMatchingTests ....................   Passed    0.01 sec
+        Start 405: HardwareWatchpointMatchingTests
+405/470 Test #405: HardwareWatchpointMatchingTests ....................   Passed    0.01 sec
+        Start 406: DebugPrivilegeEnforcementTests
+406/470 Test #406: DebugPrivilegeEnforcementTests .....................   Passed    0.09 sec
+        Start 407: DebugExceptionSyndromeTests
+407/470 Test #407: DebugExceptionSyndromeTests ........................   Passed    0.01 sec
+        Start 408: DebugVectorSelectionTests
+408/470 Test #408: DebugVectorSelectionTests ..........................   Passed    0.05 sec
+        Start 409: SingleStepExecutionTests
+409/470 Test #409: SingleStepExecutionTests ...........................   Passed    0.08 sec
+        Start 410: DebugMmuInteractionTests
+410/470 Test #410: DebugMmuInteractionTests ...........................   Passed    0.74 sec
+        Start 411: DebugSmpIsolationTests
+411/470 Test #411: DebugSmpIsolationTests .............................   Passed    0.07 sec
+        Start 412: DebugSnapshotReplayTests
+412/470 Test #412: DebugSnapshotReplayTests ...........................   Passed    0.03 sec
+        Start 413: DebugReferenceDifferentialTests
+413/470 Test #413: DebugReferenceDifferentialTests ....................   Passed    0.02 sec
+        Start 414: Stage39DebugFuzzTests
+414/470 Test #414: Stage39DebugFuzzTests ..............................   Passed    0.08 sec
+        Start 415: Stage39DebugEnduranceTests
+415/470 Test #415: Stage39DebugEnduranceTests .........................   Passed    0.38 sec
+        Start 416: stage198_1_unified_memory_tests
+416/470 Test #416: stage198_1_unified_memory_tests ....................   Passed    0.01 sec
+        Start 417: stage198_2_memory_attribute_tests
+417/470 Test #417: stage198_2_memory_attribute_tests ..................   Passed    0.01 sec
+        Start 418: stage198_3_cross_core_translation_tests
+418/470 Test #418: stage198_3_cross_core_translation_tests ............   Passed    0.01 sec
+        Start 419: stage198_5_data_cache_tests
+419/470 Test #419: stage198_5_data_cache_tests ........................   Passed    0.01 sec
+        Start 420: stage198_6_icache_sync_tests
+420/470 Test #420: stage198_6_icache_sync_tests .......................   Passed    0.01 sec
+        Start 421: stage198_7_coherency_protocol_tests
+421/470 Test #421: stage198_7_coherency_protocol_tests ................   Passed    0.01 sec
+        Start 422: stage198_8_dma_memory_tests
+422/470 Test #422: stage198_8_dma_memory_tests ........................   Passed    0.01 sec
+        Start 423: stage198_9_dma_visibility_tests
+423/470 Test #423: stage198_9_dma_visibility_tests ....................   Passed    0.01 sec
+        Start 424: stage198_10_dma_concurrency_tests
+424/470 Test #424: stage198_10_dma_concurrency_tests ..................   Passed    0.03 sec
+        Start 425: stage198_11_eight_core_memory_tests
+425/470 Test #425: stage198_11_eight_core_memory_tests ................   Passed    0.02 sec
+        Start 426: stage198_12_atomic_integration_tests
+426/470 Test #426: stage198_12_atomic_integration_tests ...............   Passed    0.01 sec
+        Start 427: stage198_13_advanced_smp_litmus_tests
+427/470 Test #427: stage198_13_advanced_smp_litmus_tests ..............   Passed    0.01 sec
+        Start 428: stage198_14_snapshot_memory_tests
+428/470 Test #428: stage198_14_snapshot_memory_tests ..................   Passed    0.02 sec
+        Start 429: stage198_15_deterministic_replay_tests
+429/470 Test #429: stage198_15_deterministic_replay_tests .............   Passed    0.05 sec
+        Start 430: stage198_16_crash_recovery_tests
+430/470 Test #430: stage198_16_crash_recovery_tests ...................   Passed    0.01 sec
+        Start 431: stage198_17_guest_workload_tests
+431/470 Test #431: stage198_17_guest_workload_tests ...................   Passed    0.02 sec
+        Start 432: stage198_18_differential_validation_tests
+432/470 Test #432: stage198_18_differential_validation_tests ..........   Passed    0.01 sec
+        Start 433: stage199_1_stage2_translation_tests
+433/470 Test #433: stage199_1_stage2_translation_tests ................   Passed    0.02 sec
+        Start 434: stage199_2_combined_translation_tests
+434/470 Test #434: stage199_2_combined_translation_tests ..............   Passed    0.02 sec
+        Start 435: stage199_3_stage2_tlb_invalidation_tests
+435/470 Test #435: stage199_3_stage2_tlb_invalidation_tests ...........   Passed    0.03 sec
+        Start 436: stage199_4_iommu_architecture_tests
+436/470 Test #436: stage199_4_iommu_architecture_tests ................   Passed    0.02 sec
+        Start 437: stage199_5_dma_translation_tests
+437/470 Test #437: stage199_5_dma_translation_tests ...................   Passed    0.02 sec
+        Start 438: stage199_6_device_isolation_tests
+438/470 Test #438: stage199_6_device_isolation_tests ..................   Passed    0.02 sec
+        Start 439: stage199_7_iommu_smp_integration_tests
+439/470 Test #439: stage199_7_iommu_smp_integration_tests .............   Passed    0.03 sec
+        Start 440: stage199_9_pac_key_register_tests
+440/470 Test #440: stage199_9_pac_key_register_tests ..................   Passed    0.01 sec
+        Start 441: stage199_10_pac_instruction_tests
+441/470 Test #441: stage199_10_pac_instruction_tests ..................   Passed    0.01 sec
+        Start 442: stage199_11_pac_fault_tests
+442/470 Test #442: stage199_11_pac_fault_tests ........................   Passed    0.01 sec
+        Start 443: stage199_12_exception_level_tests
+443/470 Test #443: stage199_12_exception_level_tests ..................   Passed    0.02 sec
+        Start 444: stage199_13_virtual_gic_tests
+444/470 Test #444: stage199_13_virtual_gic_tests ......................   Passed    0.01 sec
+        Start 445: stage199_14_multicore_interrupt_tests
+445/470 Test #445: stage199_14_multicore_interrupt_tests ..............   Passed    0.01 sec
+        Start 446: stage199_15_devicetree_tests
+446/470 Test #446: stage199_15_devicetree_tests .......................   Passed    0.02 sec
+        Start 447: stage199_16_platform_boot_handoff_tests
+447/470 Test #447: stage199_16_platform_boot_handoff_tests ............   Passed    0.24 sec
+        Start 448: stage199_17_snapshot_iommu_pac_tests
+448/470 Test #448: stage199_17_snapshot_iommu_pac_tests ...............   Passed    0.01 sec
+        Start 449: stage199_18_guest_workload_tests
+449/470 Test #449: stage199_18_guest_workload_tests ...................   Passed    0.04 sec
+        Start 450: stage200_3_stage1_translation_tests
+450/470 Test #450: stage200_3_stage1_translation_tests ................   Passed    0.03 sec
+        Start 451: stage200_4_stage2_translation_tests
+451/470 Test #451: stage200_4_stage2_translation_tests ................   Passed    0.03 sec
+        Start 452: stage200_5_combined_fault_propagation_tests
+452/470 Test #452: stage200_5_combined_fault_propagation_tests ........   Passed    0.05 sec
+        Start 453: stage200_6_tlb_concurrency_tests
+453/470 Test #453: stage200_6_tlb_concurrency_tests ...................   Passed    0.05 sec
+        Start 454: stage200_7_memory_cache_integration_tests
+454/470 Test #454: stage200_7_memory_cache_integration_tests ..........   Passed    0.02 sec
+        Start 455: stage200_8_iommu_lifecycle_tests
+455/470 Test #455: stage200_8_iommu_lifecycle_tests ...................   Passed    0.02 sec
+        Start 456: stage200_9_iova_fault_tests
+456/470 Test #456: stage200_9_iova_fault_tests ........................   Passed    0.02 sec
+        Start 457: stage200_10_dma_coherency_tests
+457/470 Test #457: stage200_10_dma_coherency_tests ....................   Passed    0.03 sec
+        Start 458: stage200_11_dma_interrupt_tests
+458/470 Test #458: stage200_11_dma_interrupt_tests ....................   Passed    0.03 sec
+        Start 459: stage200_12_pac_conformance_tests
+459/470 Test #459: stage200_12_pac_conformance_tests ..................   Passed    0.02 sec
+        Start 460: stage200_13_pac_isolation_tests
+460/470 Test #460: stage200_13_pac_isolation_tests ....................   Passed    0.02 sec
+        Start 461: stage200_14_pac_exception_tests
+461/470 Test #461: stage200_14_pac_exception_tests ....................   Passed    0.02 sec
+        Start 462: stage200_15_exception_level_tests
+462/470 Test #462: stage200_15_exception_level_tests ..................   Passed    0.02 sec
+        Start 463: stage200_16_gicv3_conformance_tests
+463/470 Test #463: stage200_16_gicv3_conformance_tests ................   Passed    0.02 sec
+        Start 464: stage200_17_multicore_interrupt_race_tests
+464/470 Test #464: stage200_17_multicore_interrupt_race_tests .........   Passed    0.04 sec
+        Start 465: stage200_18_devicetree_consistency_tests
+465/470 Test #465: stage200_18_devicetree_consistency_tests ...........   Passed    0.02 sec
+        Start 466: stage200_19_boot_handoff_tests
+466/470 Test #466: stage200_19_boot_handoff_tests .....................   Passed    0.03 sec
+        Start 467: stage200_20_complete_snapshot_tests
+467/470 Test #467: stage200_20_complete_snapshot_tests ................   Passed    0.02 sec
+        Start 468: stage200_21_snapshot_recovery_tests
+468/470 Test #468: stage200_21_snapshot_recovery_tests ................   Passed    0.03 sec
+        Start 469: stage200_22_deterministic_replay_tests
+469/470 Test #469: stage200_22_deterministic_replay_tests .............   Passed    0.03 sec
+        Start 470: stage200_23_guest_workload_tests
+470/470 Test #470: stage200_23_guest_workload_tests ...................   Passed    0.04 sec
+
+100% tests passed out of 470
+
+Label Time Summary:
+integration    =   0.01 sec*proc (1 test)
+
+Total Test time (real) = 209.50 sec
+
+The following tests did not run:
+	383 - inferno_integration_tests (Skipped)
