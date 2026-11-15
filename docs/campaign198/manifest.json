@@ -1,0 +1,84 @@
+{
+  "campaign": 198,
+  "campaign_name": "ARM64 Memory-System Integration, Cache Coherency, DMA Consistency & SMP Virtual Platform Conformance",
+  "baseline_commit": "0791c76822c864c802da65893fc9671b3879b857",
+  "target_device": {
+    "identity": "iPhone 15",
+    "model": "iPhone15,4",
+    "board_id": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "architecture": "ARMv8.1-A / ARM64e",
+    "page_granule_bytes": 16384,
+    "cache_line_bytes": 64,
+    "reservation_granule_bytes": 64
+  },
+  "host": {
+    "os": "Windows 11 x64",
+    "compiler": "MSVC C++20 (Visual Studio 2026)",
+    "compiler_flags": "/W4 /WX /permissive-",
+    "cross_compiler": "Zig 0.17.0 (aarch64-macos)"
+  },
+  "stages": {
+    "198.0": { "name": "Baseline Audit & Verification", "status": "COMPLETED" },
+    "198.1": { "name": "Unified Guest Memory Access Architecture", "status": "COMPLETED" },
+    "198.2": { "name": "Memory Attribute and Translation Integration", "status": "COMPLETED" },
+    "198.3": { "name": "Cross-Core Translation and Memory Integration", "status": "COMPLETED" },
+    "198.4": { "name": "Data Cache Architecture & Audit", "status": "COMPLETED" },
+    "198.5": { "name": "Data Cache Maintenance Operations Implementation", "status": "COMPLETED" },
+    "198.6": { "name": "Instruction Cache Synchronization & PoU Coherency", "status": "COMPLETED" },
+    "198.7": { "name": "Multicore Coherency Protocol Foundation", "status": "COMPLETED" },
+    "198.8": { "name": "DMA Memory Integration", "status": "COMPLETED" },
+    "198.9": { "name": "CPU-DMA Visibility & Synchronization", "status": "COMPLETED" },
+    "198.10": { "name": "DMA Concurrency & Fault Recovery", "status": "COMPLETED" },
+    "198.11": { "name": "8-Core Shared-Memory Architecture Conformance", "status": "COMPLETED" },
+    "198.12": { "name": "Atomic Memory Integration Across All 96 Variants", "status": "COMPLETED" },
+    "198.13": { "name": "Advanced SMP Litmus Test Suite", "status": "COMPLETED" },
+    "198.14": { "name": "Memory System Snapshot Integration", "status": "COMPLETED" },
+    "198.15": { "name": "Deterministic Replay with Memory, DMA, and Cache Events", "status": "COMPLETED" },
+    "198.16": { "name": "Crash Recovery and Boundary Stress", "status": "COMPLETED" },
+    "198.17": { "name": "Guest Workload Execution Under Integrated Memory", "status": "COMPLETED" },
+    "198.18": { "name": "Differential Architectural Validation", "status": "COMPLETED" },
+    "198.19": { "name": "Final Regression & Closeout Deliverables", "status": "COMPLETED" }
+  },
+  "test_metrics": {
+    "total_tests": 432,
+    "release": {
+      "passed": 431,
+      "skipped": 1,
+      "failed": 0,
+      "duration_seconds": 85.45
+    },
+    "debug": {
+      "passed": 431,
+      "skipped": 1,
+      "failed": 0,
+      "duration_seconds": 238.51
+    }
+  },
+  "artifacts": [
+    {
+      "name": "guest_memory_dma_cache_workload",
+      "path": "tests/artifacts/bin/guest_memory_dma_cache_workload",
+      "sha256": "a593ff27dad71b862f577fe303127667454d3e20e401023f508cd5336db2475f",
+      "format": "Mach-O 64-bit arm64 executable",
+      "source": "tests/artifacts/src/guest_memory_dma_cache_workload.S"
+    }
+  ],
+  "documentation_hashes": {
+    "architecture_audit.md": "D576F66273356F0E6871C04E2C437DFBBA6306FB3778CE537FF9134C90BC0FEB",
+    "architecture_decisions.md": "5C98E872BB68818B8D0A6DFC55143F430C18C7F5365AE769CA8395FFFC0C7A43",
+    "baseline_test_results_debug.txt": "1CFE4FC07AF14D838A139ED62FABB1367AFE64EACBA743FC34B66BCDDE06DCF4",
+    "baseline_test_results_release.txt": "C793C56D10DB60C5AD5CFE9EAB1DFA2EED8879D4644ADCE5D283FCBCDDCF126E",
+    "campaign198_final_report.md": "CC53ADC4B9F9D2AE0206A89002EFB282C39B0F2930B9159CA4379BBD450E5ADB",
+    "dma_coherency_report.md": "1CCAFC5806E28649E909F1705D7FA01E99C04D41A8FEF257D44CE82C4C84B217",
+    "evidence_matrix.md": "99D33D6A4668B14E5FF54B618564370278144899ADC34A1A0C57A205DDD678A7",
+    "guest_workload_execution_report.md": "DC58927E666765A8D471EAB59CA4DE398061CCA007A473755204B50C27EB3280",
+    "known_limitations.md": "5C849728441786690E986E1FC335FD5E1750A53D5C853E5E68497F38D593E9ED",
+    "smp_conformance_report.md": "4716E21A00793E24D92EB5DE3CA3E8186B5AA2D0A0353AD6EF29DD724954CCAE",
+    "snapshot_replay_report.md": "5CF2E08F35E7EEC3D9E9F3CF35CC8FDC55326EF76543DB41C45BA98078FE5802",
+    "stage198_0_baseline_audit.md": "E35893362951EECE0833140DF31F3A8A40672A91E9D2BB5EA13BCA15F0213CD0",
+    "stage198_4_cache_audit.md": "5406387A2CC59728447245DAAC91126594E853EDBBC950379A6192751EBF32D9",
+    "test_results_debug.txt": "4A6814CA727F4BEB6743E77A05A74375988A6B67BE31558B7E81DCEDC1195101",
+    "test_results_release.txt": "D4683B252521423D0ED7C861E5C85753F8A8B57E7C8DB078B45F03A7A531DCCB"
+  }
+}

@@ -913,6 +913,42 @@ public:
                                false, reject_device,
                                pa1, first_bytes, pa2, second_bytes);
     }
+    // Architectural cache block zeroing (DC ZVA)
+    void cache_zero_block(std::uint64_t block_va, std::size_t size) {
+        if (!architectural_) {
+            for (std::size_t offset = 0; offset < size; offset += 8u) {
+                memory_.write_u64(static_cast<std::size_t>(block_va + offset), 0ULL);
+            }
+            return;
+        }
+        std::uint64_t pa1 = 0;
+        std::uint64_t pa2 = 0;
+        unsigned first_bytes = 0;
+        unsigned second_bytes = 0;
+        // ARM DDI 0487 C6.2.69 / D8.2.3: DC ZVA to Device memory faults with Alignment.
+        translate_access_pages(block_va, static_cast<unsigned>(size), AccessType::Write, false,
+                               false, true, pa1, first_bytes, pa2, second_bytes);
+        check_watchpoint(block_va, static_cast<unsigned>(size), AccessType::Write);
+        const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_MEM_ACCESS, static_cast<unsigned>(cpu_.get_current_el()));
+        const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_L1D_CACHE_WRITE, static_cast<unsigned>(cpu_.get_current_el()));
+        if (second_bytes == 0u) {
+            for (std::size_t offset = 0; offset < size; offset += 8u) {
+                memory_.write_u64(static_cast<std::size_t>(pa1 + offset), 0ULL);
+            }
+        } else {
+            for (std::size_t offset = 0; offset < first_bytes; ++offset) {
+                memory_.write_u8(static_cast<std::size_t>(pa1 + offset), 0u);
+            }
+            for (std::size_t offset = 0; offset < second_bytes; ++offset) {
+                memory_.write_u8(static_cast<std::size_t>(pa2 + offset), 0u);
+            }
+        }
+        if (cpu_.get_trace_manager()) {
+            const_cast<CPU&>(cpu_).emit_memory_write_trace(
+                instruction_address_, block_va, pa1, 0ULL,
+                static_cast<std::uint16_t>(size), is_atomic_, instruction_);
+        }
+    }
     // Reports an alignment fault at an explicit address. Used for the
     // reference's exclusive-pair quirk, where FAR holds the second doubleword.
     [[noreturn]] void raise_alignment_fault(std::uint64_t address,
@@ -8259,17 +8295,12 @@ void CPU::step(Memory& guest_memory) {
                 const std::uint64_t va = read_zero_register_operand(*this, rt);
                 const std::uint64_t block_va =
                     va & ~(static_cast<std::uint64_t>(kCacheLineBytes) - 1u);
-                // ARM DDI 0487 C6.2.69 / D8.2.3: DC ZVA to Device memory faults with Alignment.
-                memory.check_range(block_va, static_cast<unsigned>(kCacheLineBytes),
-                                   AccessType::Write, true);
                 // Phase 44: the 64-byte block clear is serialized against every
                 // other guest store. It is still emitted as eight 8-byte
                 // stores, so a concurrent *reader* may observe a partially
                 // cleared block; this is documented as a model limitation.
                 auto store_guard = lock_store_serialization();
-                for (std::size_t offset = 0; offset < kCacheLineBytes; offset += 8u) {
-                    memory.write_u64(static_cast<std::size_t>(block_va + offset), 0ULL);
-                }
+                memory.cache_zero_block(block_va, kCacheLineBytes);
                 note_normal_store(block_va, kCacheLineBytes);
                 program_counter_ = checked_add_address(
                     instruction_address, 4u, "Instruction PC increment");
@@ -8279,7 +8310,6 @@ void CPU::step(Memory& guest_memory) {
 
             if ((op1 == 3u && crm == 10u && op2 == 1u) || // DC CVAC
                 (op1 == 3u && crm == 11u && op2 == 1u) || // DC CVAU
-                (op1 == 3u && crm == 14u && op2 == 1u) || // DC CIVAC
                 (op1 == 3u && crm == 5u  && op2 == 1u)) {  // IC IVAU
                 if (current_el_ == 0 && !el0_uci_enabled()) {
                     if (reject_el0_cache_op(
@@ -8296,7 +8326,8 @@ void CPU::step(Memory& guest_memory) {
                 emit_trace();
                 return;
             }
-            if (op1 == 0u && crm == 6u && op2 == 1u) { // DC IVAC
+            if ((op1 == 3u && crm == 14u && op2 == 1u) || // DC CIVAC
+                (op1 == 0u && crm == 6u  && op2 == 1u)) {  // DC IVAC
                 if (current_el_ == 0 && !el0_uci_enabled()) {
                     if (reject_el0_cache_op(
                             "Privilege violation: EL1 cache instruction executed at EL0")) {

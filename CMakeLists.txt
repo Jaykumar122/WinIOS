@@ -81,6 +81,8 @@ add_library(winios_core STATIC
     src/loader/macho_dependency_graph.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
+    src/memory/unified_memory.cpp
+    src/memory/memory_attributes.cpp
     src/memory/apple_physical_memory_map.cpp
     src/memory/kernel_memory_layout.cpp
     src/memory/physical_page_manager.cpp
@@ -2633,3 +2635,114 @@ add_test(NAME DebugSnapshotReplayTests COMMAND stage39_debug_tests --suite 10)
 add_test(NAME DebugReferenceDifferentialTests COMMAND stage39_debug_tests --suite 11)
 add_test(NAME Stage39DebugFuzzTests COMMAND stage39_debug_tests --suite 12)
 add_test(NAME Stage39DebugEnduranceTests COMMAND stage39_debug_tests --suite 13)
+
+# Campaign 198 Stage 1 Tests
+add_executable(stage198_1_unified_memory_tests tests/unit/stage198_1_unified_memory_tests.cpp)
+target_link_libraries(stage198_1_unified_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage198_1_unified_memory_tests)
+add_test(NAME stage198_1_unified_memory_tests COMMAND stage198_1_unified_memory_tests)
+
+# Campaign 198 Stage 2 Tests
+add_executable(stage198_2_memory_attribute_tests tests/unit/stage198_2_memory_attribute_tests.cpp)
+target_link_libraries(stage198_2_memory_attribute_tests PRIVATE winios_core)
+winios_set_warnings(stage198_2_memory_attribute_tests)
+add_test(NAME stage198_2_memory_attribute_tests COMMAND stage198_2_memory_attribute_tests)
+
+# Campaign 198 Stage 3 Tests
+add_executable(stage198_3_cross_core_translation_tests tests/unit/stage198_3_cross_core_translation_tests.cpp)
+target_link_libraries(stage198_3_cross_core_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage198_3_cross_core_translation_tests)
+add_test(NAME stage198_3_cross_core_translation_tests COMMAND stage198_3_cross_core_translation_tests)
+
+# Campaign 198 Stage 5 Tests
+add_executable(stage198_5_data_cache_tests tests/unit/stage198_5_data_cache_tests.cpp)
+target_link_libraries(stage198_5_data_cache_tests PRIVATE winios_core)
+winios_set_warnings(stage198_5_data_cache_tests)
+add_test(NAME stage198_5_data_cache_tests COMMAND stage198_5_data_cache_tests)
+
+# Campaign 198 Stage 6 Tests
+add_executable(stage198_6_icache_sync_tests tests/unit/stage198_6_icache_sync_tests.cpp)
+target_link_libraries(stage198_6_icache_sync_tests PRIVATE winios_core)
+winios_set_warnings(stage198_6_icache_sync_tests)
+add_test(NAME stage198_6_icache_sync_tests COMMAND stage198_6_icache_sync_tests)
+
+# Campaign 198 Stage 7 Tests
+add_executable(stage198_7_coherency_protocol_tests tests/unit/stage198_7_coherency_protocol_tests.cpp)
+target_link_libraries(stage198_7_coherency_protocol_tests PRIVATE winios_core)
+winios_set_warnings(stage198_7_coherency_protocol_tests)
+add_test(NAME stage198_7_coherency_protocol_tests COMMAND stage198_7_coherency_protocol_tests)
+
+# Campaign 198 Stage 8 Tests
+add_executable(stage198_8_dma_memory_tests tests/unit/stage198_8_dma_memory_tests.cpp)
+target_link_libraries(stage198_8_dma_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage198_8_dma_memory_tests)
+add_test(NAME stage198_8_dma_memory_tests COMMAND stage198_8_dma_memory_tests)
+
+# Campaign 198 Stage 9 Tests
+add_executable(stage198_9_dma_visibility_tests tests/unit/stage198_9_dma_visibility_tests.cpp)
+target_link_libraries(stage198_9_dma_visibility_tests PRIVATE winios_core)
+winios_set_warnings(stage198_9_dma_visibility_tests)
+add_test(NAME stage198_9_dma_visibility_tests COMMAND stage198_9_dma_visibility_tests)
+
+# Campaign 198 Stage 10 Tests
+add_executable(stage198_10_dma_concurrency_tests tests/unit/stage198_10_dma_concurrency_tests.cpp)
+target_link_libraries(stage198_10_dma_concurrency_tests PRIVATE winios_core)
+winios_set_warnings(stage198_10_dma_concurrency_tests)
+add_test(NAME stage198_10_dma_concurrency_tests COMMAND stage198_10_dma_concurrency_tests)
+
+# Campaign 198 Stage 11 Tests
+add_executable(stage198_11_eight_core_memory_tests tests/unit/stage198_11_eight_core_memory_tests.cpp)
+target_link_libraries(stage198_11_eight_core_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage198_11_eight_core_memory_tests)
+add_test(NAME stage198_11_eight_core_memory_tests COMMAND stage198_11_eight_core_memory_tests)
+
+# Campaign 198 Stage 12 Tests
+add_executable(stage198_12_atomic_integration_tests tests/unit/stage198_12_atomic_integration_tests.cpp)
+target_link_libraries(stage198_12_atomic_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage198_12_atomic_integration_tests)
+add_test(NAME stage198_12_atomic_integration_tests COMMAND stage198_12_atomic_integration_tests)
+
+# Campaign 198 Stage 13 Tests
+add_executable(stage198_13_advanced_smp_litmus_tests tests/unit/stage198_13_advanced_smp_litmus_tests.cpp)
+target_link_libraries(stage198_13_advanced_smp_litmus_tests PRIVATE winios_core)
+winios_set_warnings(stage198_13_advanced_smp_litmus_tests)
+add_test(NAME stage198_13_advanced_smp_litmus_tests COMMAND stage198_13_advanced_smp_litmus_tests)
+
+# Campaign 198 Stage 14 Tests
+add_executable(stage198_14_snapshot_memory_tests tests/unit/stage198_14_snapshot_memory_tests.cpp)
+target_link_libraries(stage198_14_snapshot_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage198_14_snapshot_memory_tests)
+add_test(NAME stage198_14_snapshot_memory_tests COMMAND stage198_14_snapshot_memory_tests)
+
+# Campaign 198 Stage 15 Tests
+add_executable(stage198_15_deterministic_replay_tests tests/unit/stage198_15_deterministic_replay_tests.cpp)
+target_link_libraries(stage198_15_deterministic_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage198_15_deterministic_replay_tests)
+add_test(NAME stage198_15_deterministic_replay_tests COMMAND stage198_15_deterministic_replay_tests)
+
+# Campaign 198 Stage 16 Tests
+add_executable(stage198_16_crash_recovery_tests tests/unit/stage198_16_crash_recovery_tests.cpp)
+target_link_libraries(stage198_16_crash_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage198_16_crash_recovery_tests)
+add_test(NAME stage198_16_crash_recovery_tests COMMAND stage198_16_crash_recovery_tests)
+
+# Campaign 198 Stage 17 Tests
+add_executable(stage198_17_guest_workload_tests tests/unit/stage198_17_guest_workload_tests.cpp)
+target_link_libraries(stage198_17_guest_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage198_17_guest_workload_tests)
+add_test(NAME stage198_17_guest_workload_tests COMMAND stage198_17_guest_workload_tests)
+
+# Campaign 198 Stage 18 Tests
+add_executable(stage198_18_differential_validation_tests tests/unit/stage198_18_differential_validation_tests.cpp)
+target_link_libraries(stage198_18_differential_validation_tests PRIVATE winios_core)
+winios_set_warnings(stage198_18_differential_validation_tests)
+add_test(NAME stage198_18_differential_validation_tests COMMAND stage198_18_differential_validation_tests)
+
+
+
+
+
+
+
+
+
