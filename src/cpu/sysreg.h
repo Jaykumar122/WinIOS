@@ -143,7 +143,19 @@ enum class SysRegId : std::uint16_t {
     DBGBCR0_EL1, DBGBCR1_EL1, DBGBCR2_EL1, DBGBCR3_EL1,
     DBGWVR0_EL1, DBGWVR1_EL1, DBGWVR2_EL1, DBGWVR3_EL1,
     DBGWCR0_EL1, DBGWCR1_EL1, DBGWCR2_EL1, DBGWCR3_EL1,
-    ID_AA64DFR0_EL1
+    ID_AA64DFR0_EL1,
+
+    // Pointer Authentication Key Registers (ARM64e / ARMv8.3-A)
+    APIAKeyLo_EL1,
+    APIAKeyHi_EL1,
+    APIBKeyLo_EL1,
+    APIBKeyHi_EL1,
+    APDAKeyLo_EL1,
+    APDAKeyHi_EL1,
+    APDBKeyLo_EL1,
+    APDBKeyHi_EL1,
+    APGAKeyLo_EL1,
+    APGAKeyHi_EL1
 };
 
 // -----------------------------------------------------------------------------

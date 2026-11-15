@@ -129,6 +129,10 @@ public:
     [[nodiscard]] const PacSyndrome& last_syndrome() const noexcept { return last_syndrome_; }
     void clear_fault() noexcept { last_syndrome_ = PacSyndrome{}; }
 
+    // Snapshot serialization & restoration
+    [[nodiscard]] std::vector<std::uint8_t> serialize() const;
+    bool deserialize(const void* data, std::size_t size);
+
     // Core Instruction Execution Emulation
     [[nodiscard]] bool execute_pacia(std::uint64_t& xd, std::uint64_t xn) noexcept;
     [[nodiscard]] bool execute_pacib(std::uint64_t& xd, std::uint64_t xn) noexcept;

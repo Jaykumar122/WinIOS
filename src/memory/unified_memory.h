@@ -36,7 +36,7 @@ namespace winios::memory {
 class UnifiedMemoryView {
 public:
     UnifiedMemoryView(Memory& memory,
-                      mmu::MMU* mmu = nullptr,
+                      ::mmu::MMU* mmu = nullptr,
                       unsigned current_el = 0,
                       bool architectural = true,
                       std::uint64_t instruction_address = 0,
@@ -62,8 +62,8 @@ public:
         is_atomic_ = is_atomic;
     }
 
-    void set_mmu(mmu::MMU* mmu) noexcept { mmu_ = mmu; }
-    [[nodiscard]] mmu::MMU* get_mmu() const noexcept { return mmu_; }
+    void set_mmu(::mmu::MMU* mmu) noexcept { mmu_ = mmu; }
+    [[nodiscard]] ::mmu::MMU* get_mmu() const noexcept { return mmu_; }
 
     void set_exclusive_monitor(SmpExclusiveMonitorManager* mon) noexcept { monitor_ = mon; }
     [[nodiscard]] SmpExclusiveMonitorManager* exclusive_monitor() const noexcept { return monitor_; }
@@ -132,7 +132,7 @@ private:
                                       AccessType access) const;
 
     Memory& memory_;
-    mmu::MMU* mmu_{nullptr};
+    ::mmu::MMU* mmu_{nullptr};
     SmpExclusiveMonitorManager* monitor_{nullptr};
     std::recursive_mutex* store_mutex_{nullptr};
     std::size_t core_id_{0};

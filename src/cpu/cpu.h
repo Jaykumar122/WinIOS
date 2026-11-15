@@ -13,6 +13,7 @@
 #include "cpu/synchronous_exception.h"
 #include "cpu/mmu.h"
 #include "cpu/pmu.h"
+#include "cpu/pointer_auth.h"
 #include "cpu/virtual_time.h"
 
 class Memory;
@@ -221,6 +222,12 @@ public:
     // Phase 51: Debug Architecture accessors
     winios::DebugArchitecture& get_debug_arch() noexcept { return debug_arch_; }
     const winios::DebugArchitecture& get_debug_arch() const noexcept { return debug_arch_; }
+
+    // ARM64e Pointer Authentication accessors
+    winios::cpu::Arm64ePointerAuth& get_pac() noexcept { return pac_; }
+    const winios::cpu::Arm64ePointerAuth& get_pac() const noexcept { return pac_; }
+    void set_pac_keyring(const winios::cpu::PacKeyRing& keyring) noexcept { pac_.set_keyring(keyring); }
+    const winios::cpu::PacKeyRing& get_pac_keyring() const noexcept { return pac_.get_keyring(); }
 
     // Phase 39/50: Timer register accessors.
     std::uint64_t get_cntfrq_el0() const noexcept;
@@ -668,6 +675,9 @@ private:
 
     // Phase 51: Debug Architecture state
     winios::DebugArchitecture debug_arch_{};
+
+    // ARM64e Pointer Authentication state
+    winios::cpu::Arm64ePointerAuth pac_{};
 
     // Phase 50: Authoritative Virtual-Time Architecture
     winios::VirtualTime local_virtual_time_{};

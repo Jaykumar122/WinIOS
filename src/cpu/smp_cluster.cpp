@@ -146,6 +146,30 @@ void SMPCluster::broadcast_tlbi_asid(std::size_t sender_core, std::uint16_t asid
     }
 }
 
+void SMPCluster::broadcast_tlbi_vmid(std::size_t sender_core, std::uint16_t vmid) {
+    for (std::size_t i = 0; i < cores_.size(); ++i) {
+        if (i != sender_core) {
+            cores_[i]->get_mmu().invalidate_tlb_vmid(vmid);
+        }
+    }
+}
+
+void SMPCluster::broadcast_tlbi_ipas2(std::size_t sender_core, std::uint64_t ipa, std::uint16_t vmid) {
+    for (std::size_t i = 0; i < cores_.size(); ++i) {
+        if (i != sender_core) {
+            cores_[i]->get_mmu().invalidate_tlb_ipas2(ipa, vmid);
+        }
+    }
+}
+
+void SMPCluster::broadcast_tlbi_alle2(std::size_t sender_core) {
+    for (std::size_t i = 0; i < cores_.size(); ++i) {
+        if (i != sender_core) {
+            cores_[i]->get_mmu().invalidate_tlb_alle2();
+        }
+    }
+}
+
 void SMPCluster::register_exclusive_reservation(std::size_t core_id,
                                                 std::uint64_t address,
                                                 std::size_t size) {

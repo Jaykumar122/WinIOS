@@ -71,6 +71,9 @@ public:
     void broadcast_tlbi_va(std::size_t sender_core, std::uint64_t va, std::uint16_t asid, bool last_level);
     void broadcast_tlbi_vaa(std::size_t sender_core, std::uint64_t va, bool last_level);
     void broadcast_tlbi_asid(std::size_t sender_core, std::uint16_t asid);
+    void broadcast_tlbi_vmid(std::size_t sender_core, std::uint16_t vmid);
+    void broadcast_tlbi_ipas2(std::size_t sender_core, std::uint64_t ipa, std::uint16_t vmid);
+    void broadcast_tlbi_alle2(std::size_t sender_core);
 
     // Global Exclusive Monitor
     void register_exclusive_reservation(std::size_t core_id, std::uint64_t address, std::size_t size);

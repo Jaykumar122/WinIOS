@@ -225,6 +225,7 @@ public:
     void invalidate_tlb_vaa(std::uint64_t va, bool last_level_only = false) noexcept;
     void invalidate_tlb_vmid(std::uint16_t vmid) noexcept;
     void invalidate_tlb_ipas2(std::uint64_t ipa, std::uint16_t vmid) noexcept;
+    void invalidate_tlb_alle2() noexcept;
 
     bool is_tlb_enabled() const noexcept { return tlb_enabled_; }
     void set_tlb_enabled(bool enabled) noexcept { tlb_enabled_ = enabled; }

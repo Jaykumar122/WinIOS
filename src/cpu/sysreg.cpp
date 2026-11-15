@@ -153,7 +153,19 @@ constexpr SysRegDescriptor kDescriptors[] = {
     { SysRegId::DBGWCR1_EL1,      "DBGWCR1_EL1",      make_sysreg_key(2, 0, 0, 1, 7), 2, 0, 0, 1, 7, 1, true, true,  64, 0, 0, 0 },
     { SysRegId::DBGWCR2_EL1,      "DBGWCR2_EL1",      make_sysreg_key(2, 0, 0, 2, 7), 2, 0, 0, 2, 7, 1, true, true,  64, 0, 0, 0 },
     { SysRegId::DBGWCR3_EL1,      "DBGWCR3_EL1",      make_sysreg_key(2, 0, 0, 3, 7), 2, 0, 0, 3, 7, 1, true, true,  64, 0, 0, 0 },
-    { SysRegId::ID_AA64DFR0_EL1,  "ID_AA64DFR0_EL1",  make_sysreg_key(3, 0, 0, 5, 0), 3, 0, 0, 5, 0, 1, true, false, 64, 0x0000000000303006ULL, 0, 0 }
+    { SysRegId::ID_AA64DFR0_EL1,  "ID_AA64DFR0_EL1",  make_sysreg_key(3, 0, 0, 5, 0), 3, 0, 0, 5, 0, 1, true, false, 64, 0x0000000000303006ULL, 0, 0 },
+
+    // --- Pointer Authentication Key Registers (ARM64e / ARMv8.3-A) ---
+    { SysRegId::APIAKeyLo_EL1, "APIAKeyLo_EL1", make_sysreg_key(3, 0, 2, 1, 0), 3, 0, 2, 1, 0, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APIAKeyHi_EL1, "APIAKeyHi_EL1", make_sysreg_key(3, 0, 2, 1, 1), 3, 0, 2, 1, 1, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APIBKeyLo_EL1, "APIBKeyLo_EL1", make_sysreg_key(3, 0, 2, 1, 2), 3, 0, 2, 1, 2, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APIBKeyHi_EL1, "APIBKeyHi_EL1", make_sysreg_key(3, 0, 2, 1, 3), 3, 0, 2, 1, 3, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APDAKeyLo_EL1, "APDAKeyLo_EL1", make_sysreg_key(3, 0, 2, 2, 0), 3, 0, 2, 2, 0, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APDAKeyHi_EL1, "APDAKeyHi_EL1", make_sysreg_key(3, 0, 2, 2, 1), 3, 0, 2, 2, 1, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APDBKeyLo_EL1, "APDBKeyLo_EL1", make_sysreg_key(3, 0, 2, 2, 2), 3, 0, 2, 2, 2, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APDBKeyHi_EL1, "APDBKeyHi_EL1", make_sysreg_key(3, 0, 2, 2, 3), 3, 0, 2, 2, 3, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APGAKeyLo_EL1, "APGAKeyLo_EL1", make_sysreg_key(3, 0, 2, 3, 0), 3, 0, 2, 3, 0, 1, true, true, 64, 0, 0, 0 },
+    { SysRegId::APGAKeyHi_EL1, "APGAKeyHi_EL1", make_sysreg_key(3, 0, 2, 3, 1), 3, 0, 2, 3, 1, 1, true, true, 64, 0, 0, 0 }
 };
 
 } // namespace

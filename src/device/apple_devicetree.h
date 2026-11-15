@@ -111,6 +111,15 @@ public:
         std::uint64_t framebuffer_base = 0x50000000ULL,
         std::uint64_t ramdisk_base = 0,
         std::uint64_t ramdisk_size = 0);
+
+    // Profile generator for iPhone 15 Virtual Platform (with Stage-2, DART IOMMU, Virtual DMA & 8-core SMP)
+    [[nodiscard]] static std::vector<std::uint8_t> create_iphone15_virtual_platform_devicetree(
+        std::uint64_t ram_base = 0x40000000ULL,
+        std::uint64_t ram_size = 6ULL * 1024 * 1024 * 1024,
+        const std::string& boot_args = "-v debug=0x144 serial=3",
+        std::size_t num_cores = 8,
+        bool enable_iommu = true,
+        bool enable_stage2 = true);
 };
 
 } // namespace winios::device

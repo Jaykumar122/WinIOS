@@ -76,14 +76,18 @@ VirtualDmaDescriptorStatus VirtualDmaEngine::validate_descriptor(const VirtualDm
         return VirtualDmaDescriptorStatus::ErrorAddressOverflow;
     }
 
-    // 4. Memory bounds
-    if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
-        if (desc.src_paddr > memory_size || desc.length_bytes > memory_size - desc.src_paddr) {
+    // 4. Memory bounds (for physical mode only; IOVA bounds are checked via IOMMU)
+    const bool is_iommu = (addressing_mode_ == DmaAddressingMode::IommuTranslated) ||
+                          ((desc.flags & kDmaFlagIommuTranslate) != 0);
+    if (!is_iommu) {
+        if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
+            if (desc.src_paddr > memory_size || desc.length_bytes > memory_size - desc.src_paddr) {
+                return VirtualDmaDescriptorStatus::ErrorOutOfBounds;
+            }
+        }
+        if (desc.dst_paddr > memory_size || desc.length_bytes > memory_size - desc.dst_paddr) {
             return VirtualDmaDescriptorStatus::ErrorOutOfBounds;
         }
-    }
-    if (desc.dst_paddr > memory_size || desc.length_bytes > memory_size - desc.dst_paddr) {
-        return VirtualDmaDescriptorStatus::ErrorOutOfBounds;
     }
 
     return VirtualDmaDescriptorStatus::Success;
@@ -155,11 +159,63 @@ VirtualDmaEngineResult VirtualDmaEngine::execute_descriptor_chain(std::uint64_t 
             return {val_status, total_processed, total_bytes, "Descriptor validation failed"};
         }
 
+        std::uint64_t effective_src_pa = desc.src_paddr;
+        std::uint64_t effective_dst_pa = desc.dst_paddr;
+
+        const bool is_iommu = (addressing_mode_ == DmaAddressingMode::IommuTranslated) ||
+                              ((desc.flags & kDmaFlagIommuTranslate) != 0);
+
+        if (is_iommu) {
+            if (!iommu_) {
+                total_rejected_submissions_++;
+                write_descriptor_status(current_desc_addr, VirtualDmaDescriptorStatus::ErrorIommuNotAttached, core_id);
+                return {VirtualDmaDescriptorStatus::ErrorIommuNotAttached, total_processed, total_bytes, "IOMMU not attached"};
+            }
+
+            const DeviceId dev_id = (desc.reserved != 0) ? static_cast<DeviceId>(desc.reserved) : default_device_id_;
+
+            auto map_fault = [](const IommuFault& f) {
+                switch (f.type) {
+                case IommuFaultType::DeviceNotAttached: return VirtualDmaDescriptorStatus::ErrorIommuNotAttached;
+                case IommuFaultType::DomainNotFound:    return VirtualDmaDescriptorStatus::ErrorIommuNotAttached;
+                case IommuFaultType::UnmappedIova:      return VirtualDmaDescriptorStatus::ErrorIommuUnmapped;
+                case IommuFaultType::PermissionDenied:  return VirtualDmaDescriptorStatus::ErrorIommuPermission;
+                case IommuFaultType::AddressOverflow:   return VirtualDmaDescriptorStatus::ErrorAddressOverflow;
+                case IommuFaultType::OutOfBounds:       return VirtualDmaDescriptorStatus::ErrorOutOfBounds;
+                default:                                return VirtualDmaDescriptorStatus::ErrorInvalidAddress;
+                }
+            };
+
+            if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
+                IommuFault src_fault{};
+                auto src_opt = iommu_->translate(dev_id, desc.src_paddr, static_cast<std::size_t>(desc.length_bytes),
+                                                 IommuAccess::Read, mem_sz, &src_fault);
+                if (!src_opt.has_value()) {
+                    total_rejected_submissions_++;
+                    const auto err = map_fault(src_fault);
+                    write_descriptor_status(current_desc_addr, err, core_id);
+                    return {err, total_processed, total_bytes, "Source IOVA translation failed: " + src_fault.message};
+                }
+                effective_src_pa = src_opt.value();
+            }
+
+            IommuFault dst_fault{};
+            auto dst_opt = iommu_->translate(dev_id, desc.dst_paddr, static_cast<std::size_t>(desc.length_bytes),
+                                             IommuAccess::Write, mem_sz, &dst_fault);
+            if (!dst_opt.has_value()) {
+                total_rejected_submissions_++;
+                const auto err = map_fault(dst_fault);
+                write_descriptor_status(current_desc_addr, err, core_id);
+                return {err, total_processed, total_bytes, "Destination IOVA translation failed: " + dst_fault.message};
+            }
+            effective_dst_pa = dst_opt.value();
+        }
+
         // Execute transfer
         if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
             bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
-            shared_memory_->read_bytes(core_id, desc.src_paddr, bounce_buffer.data(), bounce_buffer.size());
-            shared_memory_->write_bytes(core_id, desc.dst_paddr, bounce_buffer.data(), bounce_buffer.size());
+            shared_memory_->read_bytes(core_id, effective_src_pa, bounce_buffer.data(), bounce_buffer.size());
+            shared_memory_->write_bytes(core_id, effective_dst_pa, bounce_buffer.data(), bounce_buffer.size());
         } else if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Fill)) {
             bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
             const std::uint32_t pat = desc.fill_pattern;
@@ -172,20 +228,24 @@ VirtualDmaEngineResult VirtualDmaEngine::execute_descriptor_chain(std::uint64_t 
             for (std::size_t i = 0; i < bounce_buffer.size(); ++i) {
                 bounce_buffer[i] = pat_bytes[i % 4];
             }
-            shared_memory_->write_bytes(core_id, desc.dst_paddr, bounce_buffer.data(), bounce_buffer.size());
+            shared_memory_->write_bytes(core_id, effective_dst_pa, bounce_buffer.data(), bounce_buffer.size());
         }
 
         // Invalidate exclusive reservations across all cores for DMA destination buffer
         if (shared_memory_->exclusive_monitor()) {
             shared_memory_->exclusive_monitor()->invalidate_reservations(
                 shared_memory_->exclusive_monitor()->max_cores(),
-                desc.dst_paddr,
+                effective_dst_pa,
                 static_cast<std::size_t>(desc.length_bytes)
             );
         }
 
         // Commit success status to descriptor in memory
         write_descriptor_status(current_desc_addr, VirtualDmaDescriptorStatus::Success, core_id);
+
+        if ((desc.flags & kDmaFlagInterruptOnComplete) != 0) {
+            trigger_completion_irq();
+        }
 
         total_processed++;
         total_bytes += desc.length_bytes;

@@ -38,6 +38,7 @@ add_library(winios_core STATIC
     src/device/virtual_device_bus.cpp
     src/device/virtual_dma_engine.cpp
     src/device/virtual_dma_device.cpp
+    src/device/virtual_iommu.cpp
     src/device/virtual_uart_device.cpp
     src/device/virtual_platform.cpp
     src/device/fdt_builder.cpp
@@ -83,6 +84,7 @@ add_library(winios_core STATIC
     src/memory/memory.cpp
     src/memory/unified_memory.cpp
     src/memory/memory_attributes.cpp
+    src/memory/stage2_mmu.cpp
     src/memory/apple_physical_memory_map.cpp
     src/memory/kernel_memory_layout.cpp
     src/memory/physical_page_manager.cpp
@@ -2737,6 +2739,99 @@ add_executable(stage198_18_differential_validation_tests tests/unit/stage198_18_
 target_link_libraries(stage198_18_differential_validation_tests PRIVATE winios_core)
 winios_set_warnings(stage198_18_differential_validation_tests)
 add_test(NAME stage198_18_differential_validation_tests COMMAND stage198_18_differential_validation_tests)
+
+# Campaign 199: Advanced ARM64e Virtual Platform, Stage-2 Translation, IOMMU, DMA Isolation, Pointer Authentication & Device Architecture
+add_executable(stage199_1_stage2_translation_tests tests/unit/stage199_1_stage2_translation_tests.cpp)
+target_link_libraries(stage199_1_stage2_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage199_1_stage2_translation_tests)
+add_test(NAME stage199_1_stage2_translation_tests COMMAND stage199_1_stage2_translation_tests)
+
+add_executable(stage199_2_combined_translation_tests tests/unit/stage199_2_combined_translation_tests.cpp)
+target_link_libraries(stage199_2_combined_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage199_2_combined_translation_tests)
+add_test(NAME stage199_2_combined_translation_tests COMMAND stage199_2_combined_translation_tests)
+
+add_executable(stage199_3_stage2_tlb_invalidation_tests tests/unit/stage199_3_stage2_tlb_invalidation_tests.cpp)
+target_link_libraries(stage199_3_stage2_tlb_invalidation_tests PRIVATE winios_core)
+winios_set_warnings(stage199_3_stage2_tlb_invalidation_tests)
+add_test(NAME stage199_3_stage2_tlb_invalidation_tests COMMAND stage199_3_stage2_tlb_invalidation_tests)
+
+add_executable(stage199_4_iommu_architecture_tests tests/unit/stage199_4_iommu_architecture_tests.cpp)
+target_link_libraries(stage199_4_iommu_architecture_tests PRIVATE winios_core)
+winios_set_warnings(stage199_4_iommu_architecture_tests)
+add_test(NAME stage199_4_iommu_architecture_tests COMMAND stage199_4_iommu_architecture_tests)
+
+add_executable(stage199_5_dma_translation_tests tests/unit/stage199_5_dma_translation_tests.cpp)
+target_link_libraries(stage199_5_dma_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage199_5_dma_translation_tests)
+add_test(NAME stage199_5_dma_translation_tests COMMAND stage199_5_dma_translation_tests)
+
+add_executable(stage199_6_device_isolation_tests tests/unit/stage199_6_device_isolation_tests.cpp)
+target_link_libraries(stage199_6_device_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage199_6_device_isolation_tests)
+add_test(NAME stage199_6_device_isolation_tests COMMAND stage199_6_device_isolation_tests)
+
+add_executable(stage199_7_iommu_smp_integration_tests tests/unit/stage199_7_iommu_smp_integration_tests.cpp)
+target_link_libraries(stage199_7_iommu_smp_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage199_7_iommu_smp_integration_tests)
+add_test(NAME stage199_7_iommu_smp_integration_tests COMMAND stage199_7_iommu_smp_integration_tests)
+
+add_executable(stage199_9_pac_key_register_tests tests/unit/stage199_9_pac_key_register_tests.cpp)
+target_link_libraries(stage199_9_pac_key_register_tests PRIVATE winios_core)
+winios_set_warnings(stage199_9_pac_key_register_tests)
+add_test(NAME stage199_9_pac_key_register_tests COMMAND stage199_9_pac_key_register_tests)
+
+add_executable(stage199_10_pac_instruction_tests tests/unit/stage199_10_pac_instruction_tests.cpp)
+target_link_libraries(stage199_10_pac_instruction_tests PRIVATE winios_core)
+winios_set_warnings(stage199_10_pac_instruction_tests)
+add_test(NAME stage199_10_pac_instruction_tests COMMAND stage199_10_pac_instruction_tests)
+
+add_executable(stage199_11_pac_fault_tests tests/unit/stage199_11_pac_fault_tests.cpp)
+target_link_libraries(stage199_11_pac_fault_tests PRIVATE winios_core)
+winios_set_warnings(stage199_11_pac_fault_tests)
+add_test(NAME stage199_11_pac_fault_tests COMMAND stage199_11_pac_fault_tests)
+
+add_executable(stage199_12_exception_level_tests tests/unit/stage199_12_exception_level_tests.cpp)
+target_link_libraries(stage199_12_exception_level_tests PRIVATE winios_core)
+winios_set_warnings(stage199_12_exception_level_tests)
+add_test(NAME stage199_12_exception_level_tests COMMAND stage199_12_exception_level_tests)
+
+add_executable(stage199_13_virtual_gic_tests tests/unit/stage199_13_virtual_gic_tests.cpp)
+target_link_libraries(stage199_13_virtual_gic_tests PRIVATE winios_core)
+winios_set_warnings(stage199_13_virtual_gic_tests)
+add_test(NAME stage199_13_virtual_gic_tests COMMAND stage199_13_virtual_gic_tests)
+
+add_executable(stage199_14_multicore_interrupt_tests tests/unit/stage199_14_multicore_interrupt_tests.cpp)
+target_link_libraries(stage199_14_multicore_interrupt_tests PRIVATE winios_core)
+winios_set_warnings(stage199_14_multicore_interrupt_tests)
+add_test(NAME stage199_14_multicore_interrupt_tests COMMAND stage199_14_multicore_interrupt_tests)
+
+add_executable(stage199_15_devicetree_tests tests/unit/stage199_15_devicetree_tests.cpp)
+target_link_libraries(stage199_15_devicetree_tests PRIVATE winios_core)
+winios_set_warnings(stage199_15_devicetree_tests)
+add_test(NAME stage199_15_devicetree_tests COMMAND stage199_15_devicetree_tests)
+
+add_executable(stage199_16_platform_boot_handoff_tests tests/unit/stage199_16_platform_boot_handoff_tests.cpp)
+target_link_libraries(stage199_16_platform_boot_handoff_tests PRIVATE winios_core)
+winios_set_warnings(stage199_16_platform_boot_handoff_tests)
+add_test(NAME stage199_16_platform_boot_handoff_tests COMMAND stage199_16_platform_boot_handoff_tests)
+
+add_executable(stage199_17_snapshot_iommu_pac_tests tests/unit/stage199_17_snapshot_iommu_pac_tests.cpp)
+target_link_libraries(stage199_17_snapshot_iommu_pac_tests PRIVATE winios_core)
+winios_set_warnings(stage199_17_snapshot_iommu_pac_tests)
+add_test(NAME stage199_17_snapshot_iommu_pac_tests COMMAND stage199_17_snapshot_iommu_pac_tests)
+
+add_executable(stage199_18_guest_workload_tests tests/unit/stage199_18_guest_workload_tests.cpp)
+target_link_libraries(stage199_18_guest_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage199_18_guest_workload_tests)
+add_test(NAME stage199_18_guest_workload_tests COMMAND stage199_18_guest_workload_tests)
+
+
+
+
+
+
+
 
 
 

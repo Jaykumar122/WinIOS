@@ -38,7 +38,10 @@ enum class VirtualDmaDescriptorStatus : std::uint32_t {
     ErrorUnsupportedOp     = 8,
     ErrorAddressOverflow   = 9,
     ErrorQueueFull         = 10,
-    ErrorDeviceDisabled    = 11
+    ErrorDeviceDisabled    = 11,
+    ErrorIommuUnmapped     = 12,
+    ErrorIommuPermission   = 13,
+    ErrorIommuNotAttached  = 14
 };
 
 [[nodiscard]] constexpr std::string_view virtual_dma_descriptor_status_name(VirtualDmaDescriptorStatus s) noexcept {
@@ -55,6 +58,9 @@ enum class VirtualDmaDescriptorStatus : std::uint32_t {
     case VirtualDmaDescriptorStatus::ErrorAddressOverflow: return "ErrorAddressOverflow";
     case VirtualDmaDescriptorStatus::ErrorQueueFull:       return "ErrorQueueFull";
     case VirtualDmaDescriptorStatus::ErrorDeviceDisabled:  return "ErrorDeviceDisabled";
+    case VirtualDmaDescriptorStatus::ErrorIommuUnmapped:    return "ErrorIommuUnmapped";
+    case VirtualDmaDescriptorStatus::ErrorIommuPermission:  return "ErrorIommuPermission";
+    case VirtualDmaDescriptorStatus::ErrorIommuNotAttached: return "ErrorIommuNotAttached";
     default:                                               return "Unknown";
     }
 }
@@ -62,6 +68,15 @@ enum class VirtualDmaDescriptorStatus : std::uint32_t {
 // Flags for VirtualDmaDescriptor::flags
 inline constexpr std::uint32_t kDmaFlagInterruptOnComplete = 1u << 0;
 inline constexpr std::uint32_t kDmaFlagChainNext           = 1u << 1;
+inline constexpr std::uint32_t kDmaFlagIommuTranslate      = 1u << 2;
+
+// -----------------------------------------------------------------------------
+// DmaAddressingMode: Explicit distinction between Physical and IOMMU Translated
+// -----------------------------------------------------------------------------
+enum class DmaAddressingMode : std::uint8_t {
+    Physical         = 0, // Legacy direct guest physical address mode
+    IommuTranslated  = 1  // Virtual IOMMU translated IOVA mode
+};
 
 // -----------------------------------------------------------------------------
 // VirtualDmaDescriptor: 64-byte bounded descriptor layout

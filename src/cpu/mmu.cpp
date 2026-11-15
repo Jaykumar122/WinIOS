@@ -1,5 +1,6 @@
 #include "cpu/mmu.h"
 #include "memory/memory.h"
+#include "memory/stage2_mmu.h"
 #include <algorithm>
 
 namespace mmu {
@@ -344,6 +345,18 @@ void MMU::invalidate_tlb_ipas2(std::uint64_t ipa, std::uint16_t vmid) noexcept {
     const std::uint64_t vpn = ipa >> 12u;
     for (auto it = tlb_.begin(); it != tlb_.end();) {
         if (it->valid && it->is_stage2 && it->vmid == vmid && (it->virtual_page == (vpn & (it->page_mask >> 12u)))) {
+            it = tlb_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    ++tlb_invalidations_;
+}
+
+void MMU::invalidate_tlb_alle2() noexcept {
+    std::lock_guard<std::recursive_mutex> lock(tlb_mutex_);
+    for (auto it = tlb_.begin(); it != tlb_.end();) {
+        if (it->valid && it->is_stage2) {
             it = tlb_.erase(it);
         } else {
             ++it;
@@ -1168,10 +1181,21 @@ std::optional<std::uint64_t> MMU::walk_stage2(
     AccessKind access,
     TranslationFault* out_fault) {
 
-    auto make_fault = [&](MmuFaultType type, unsigned level) {
+    winios::mmu::Stage2TranslationEngine s2;
+    s2.set_hcr(hcr_el2_);
+    s2.set_vttbr(vttbr_el2_);
+    s2.set_vtcr(vtcr_el2_);
+
+    winios::mmu::Stage2AccessType s2_acc = winios::mmu::Stage2AccessType::Read;
+    if (access == AccessKind::Write) s2_acc = winios::mmu::Stage2AccessType::Write;
+    else if (access == AccessKind::Execute) s2_acc = winios::mmu::Stage2AccessType::Execute;
+
+    winios::mmu::Stage2Fault s2_fault{};
+    auto res = s2.translate(memory, ipa, s2_acc, &s2_fault);
+    if (!res.has_value()) {
         if (out_fault) {
-            out_fault->type = type;
-            out_fault->level = level;
+            out_fault->type = s2_fault.type;
+            out_fault->level = s2_fault.level;
             out_fault->fault_ipa = ipa;
             out_fault->access = access;
             out_fault->is_write = (access == AccessKind::Write);
@@ -1179,172 +1203,27 @@ std::optional<std::uint64_t> MMU::walk_stage2(
             out_fault->is_stage2 = true;
         }
         return std::nullopt;
-    };
-
-    // VTCR_EL2.T0SZ input IPA size check
-    unsigned s2_t0sz = static_cast<unsigned>(vtcr_el2_ & 0x3Fu);
-    if (s2_t0sz == 0) s2_t0sz = 16u; // Default 48-bit IPA space
-    const unsigned ipa_bits = (s2_t0sz >= 16u && s2_t0sz <= 39u) ? (64u - s2_t0sz) : 48u;
-    if ((ipa >> ipa_bits) != 0ULL) {
-        return make_fault(MmuFaultType::AddressSize, 0);
     }
 
-    const std::uint64_t mem_size = static_cast<std::uint64_t>(memory.size());
-    std::uint64_t table_pa = vttbr_el2_ & 0x0000FFFFFFFFF000ULL;
-    const std::uint16_t vmid = static_cast<std::uint16_t>((vttbr_el2_ >> 48u) & 0xFFFFu);
-
-    // --- LEVEL 1 ---
-    const std::uint64_t l1_idx = (ipa >> 30u) & 0x1FFu;
-    const std::uint64_t l1_entry_addr = table_pa + l1_idx * 8u;
-    if (l1_entry_addr + 8u > mem_size || l1_entry_addr < table_pa) {
-        return make_fault(MmuFaultType::ExternalWalk, 1);
-    }
-    const std::uint64_t l1_desc = memory.read_u64(static_cast<std::size_t>(l1_entry_addr));
-
-    DescriptorKind l1_kind = DescriptorKind::Invalid;
-    MmuFaultType l1_fault = MmuFaultType::Translation;
-    if (!validate_descriptor(1, l1_desc, true, &l1_kind, &l1_fault)) {
-        return make_fault(l1_fault, 1);
-    }
-
-    // Level 1 Block (1GB)
-    if (l1_kind == DescriptorKind::Block) {
-        const unsigned level = 1;
-        if (((l1_desc >> 10u) & 0x1u) == 0) {
-            return make_fault(MmuFaultType::AccessFlag, level);
-        }
-        const std::uint8_t s2ap = static_cast<std::uint8_t>((l1_desc >> 6u) & 0x3u);
-        if (access == AccessKind::Write && ((s2ap & 0x2u) == 0)) {
-            return make_fault(MmuFaultType::Permission, level);
-        }
-        if (access == AccessKind::Read && ((s2ap & 0x1u) == 0)) {
-            return make_fault(MmuFaultType::Permission, level);
-        }
-        const bool xn = ((l1_desc >> 54u) & 0x1u) != 0;
-        if (access == AccessKind::Execute && xn) {
-            return make_fault(MmuFaultType::Permission, level);
-        }
-        const std::uint64_t block_pa = (l1_desc & 0x0000FFFFC0000000ULL) | (ipa & 0x3FFFFFFFULL);
-        if (tlb_enabled_) {
-            TlbEntry entry;
-            entry.valid = true;
-            entry.is_stage2 = true;
-            entry.virtual_page = (ipa & 0xFFFFFFFFC0000000ULL) >> 12u;
-            entry.physical_page = (block_pa & 0xFFFFFFFFC0000000ULL) >> 12u;
-            entry.page_mask = 0xFFFFFFFFC0000000ULL;
-            entry.vmid = vmid;
-            entry.writable = (s2ap & 0x2u) != 0;
-            entry.el0_accessible = true;
-            entry.executable_el0 = !xn;
-            entry.executable_el1 = !xn;
-            if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
-            tlb_.push_back(entry);
-        }
-        return block_pa;
-    }
-
-    table_pa = l1_desc & 0x0000FFFFFFFFF000ULL;
-
-    // --- LEVEL 2 ---
-    const std::uint64_t l2_idx = (ipa >> 21u) & 0x1FFu;
-    const std::uint64_t l2_entry_addr = table_pa + l2_idx * 8u;
-    if (l2_entry_addr + 8u > mem_size || l2_entry_addr < table_pa) {
-        return make_fault(MmuFaultType::ExternalWalk, 2);
-    }
-    const std::uint64_t l2_desc = memory.read_u64(static_cast<std::size_t>(l2_entry_addr));
-
-    DescriptorKind l2_kind = DescriptorKind::Invalid;
-    MmuFaultType l2_fault = MmuFaultType::Translation;
-    if (!validate_descriptor(2, l2_desc, true, &l2_kind, &l2_fault)) {
-        return make_fault(l2_fault, 2);
-    }
-
-    // Level 2 Block (2MB)
-    if (l2_kind == DescriptorKind::Block) {
-        const unsigned level = 2;
-        if (((l2_desc >> 10u) & 0x1u) == 0) {
-            return make_fault(MmuFaultType::AccessFlag, level);
-        }
-        const std::uint8_t s2ap = static_cast<std::uint8_t>((l2_desc >> 6u) & 0x3u);
-        if (access == AccessKind::Write && ((s2ap & 0x2u) == 0)) {
-            return make_fault(MmuFaultType::Permission, level);
-        }
-        if (access == AccessKind::Read && ((s2ap & 0x1u) == 0)) {
-            return make_fault(MmuFaultType::Permission, level);
-        }
-        const bool xn = ((l2_desc >> 54u) & 0x1u) != 0;
-        if (access == AccessKind::Execute && xn) {
-            return make_fault(MmuFaultType::Permission, level);
-        }
-        const std::uint64_t block_pa = (l2_desc & 0x0000FFFFFFE00000ULL) | (ipa & 0x1FFFFFULL);
-        if (tlb_enabled_) {
-            TlbEntry entry;
-            entry.valid = true;
-            entry.is_stage2 = true;
-            entry.virtual_page = (ipa & 0xFFFFFFFFFFE00000ULL) >> 12u;
-            entry.physical_page = (block_pa & 0xFFFFFFFFFFE00000ULL) >> 12u;
-            entry.page_mask = 0xFFFFFFFFFFE00000ULL;
-            entry.vmid = vmid;
-            entry.writable = (s2ap & 0x2u) != 0;
-            entry.el0_accessible = true;
-            entry.executable_el0 = !xn;
-            entry.executable_el1 = !xn;
-            if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
-            tlb_.push_back(entry);
-        }
-        return block_pa;
-    }
-
-    table_pa = l2_desc & 0x0000FFFFFFFFF000ULL;
-
-    // --- LEVEL 3 ---
-    const std::uint64_t l3_idx = (ipa >> 12u) & 0x1FFu;
-    const std::uint64_t l3_entry_addr = table_pa + l3_idx * 8u;
-    if (l3_entry_addr + 8u > mem_size || l3_entry_addr < table_pa) {
-        return make_fault(MmuFaultType::ExternalWalk, 3);
-    }
-    const std::uint64_t l3_desc = memory.read_u64(static_cast<std::size_t>(l3_entry_addr));
-
-    DescriptorKind l3_kind = DescriptorKind::Invalid;
-    MmuFaultType l3_fault = MmuFaultType::Translation;
-    if (!validate_descriptor(3, l3_desc, true, &l3_kind, &l3_fault)) {
-        return make_fault(l3_fault, 3);
-    }
-
-    // Level 3 Page (4KB)
-    const unsigned level = 3;
-    if (((l3_desc >> 10u) & 0x1u) == 0) {
-        return make_fault(MmuFaultType::AccessFlag, level);
-    }
-    const std::uint8_t s2ap = static_cast<std::uint8_t>((l3_desc >> 6u) & 0x3u);
-    if (access == AccessKind::Write && ((s2ap & 0x2u) == 0)) {
-        return make_fault(MmuFaultType::Permission, level);
-    }
-    if (access == AccessKind::Read && ((s2ap & 0x1u) == 0)) {
-        return make_fault(MmuFaultType::Permission, level);
-    }
-    const bool xn = ((l3_desc >> 54u) & 0x1u) != 0;
-    if (access == AccessKind::Execute && xn) {
-        return make_fault(MmuFaultType::Permission, level);
-    }
-
-    const std::uint64_t page_pa = (l3_desc & 0x0000FFFFFFFFF000ULL) | (ipa & 0xFFFULL);
     if (tlb_enabled_) {
         TlbEntry entry;
         entry.valid = true;
         entry.is_stage2 = true;
-        entry.virtual_page = (ipa & 0xFFFFFFFFFFFFF000ULL) >> 12u;
-        entry.physical_page = (page_pa & 0xFFFFFFFFFFFFF000ULL) >> 12u;
-        entry.page_mask = 0xFFFFFFFFFFFFF000ULL;
-        entry.vmid = vmid;
-        entry.writable = (s2ap & 0x2u) != 0;
+        const std::uint64_t page_mask = ~(res->page_size - 1ULL);
+        entry.page_mask = page_mask;
+        entry.virtual_page = (ipa & page_mask) >> 12u;
+        entry.physical_page = (res->physical_address & page_mask) >> 12u;
+        entry.vmid = s2.current_vmid();
+        entry.writable = res->writable;
         entry.el0_accessible = true;
-        entry.executable_el0 = !xn;
-        entry.executable_el1 = !xn;
+        entry.executable_el0 = res->executable;
+        entry.executable_el1 = res->executable;
+        entry.is_device = res->is_device;
         if (tlb_.size() >= kTlbSize) tlb_.erase(tlb_.begin());
         tlb_.push_back(entry);
     }
-    return page_pa;
+
+    return res->physical_address;
 }
 
 } // namespace mmu

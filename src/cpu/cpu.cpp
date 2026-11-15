@@ -2149,6 +2149,23 @@ constexpr std::uint16_t kSysregDBGWCR3_EL1   = (0u<<14)|(0u<<11)|(0u<<7)|(3u<<3)
 // ID_AA64DFR0_EL1: op0=3, op1=0, CRn=0, CRm=5, op2=0 -> key = (1<<14)|(0<<11)|(0<<7)|(5<<3)|0
 constexpr std::uint16_t kSysregID_AA64DFR0_EL1 = (1u<<14)|(0u<<11)|(0u<<7)|(5u<<3)|0u;  // 0x4028
 
+// ARM64e Pointer Authentication Key system registers
+// APIAKey: CRn=2, CRm=1, op2=0..1
+constexpr std::uint16_t kSysregAPIAKeyLo_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(1u<<3)|0u; // 0x4108
+constexpr std::uint16_t kSysregAPIAKeyHi_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(1u<<3)|1u; // 0x4109
+// APIBKey: CRn=2, CRm=1, op2=2..3
+constexpr std::uint16_t kSysregAPIBKeyLo_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(1u<<3)|2u; // 0x410A
+constexpr std::uint16_t kSysregAPIBKeyHi_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(1u<<3)|3u; // 0x410B
+// APDAKey: CRn=2, CRm=2, op2=0..1
+constexpr std::uint16_t kSysregAPDAKeyLo_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(2u<<3)|0u; // 0x4110
+constexpr std::uint16_t kSysregAPDAKeyHi_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(2u<<3)|1u; // 0x4111
+// APDBKey: CRn=2, CRm=2, op2=2..3
+constexpr std::uint16_t kSysregAPDBKeyLo_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(2u<<3)|2u; // 0x4112
+constexpr std::uint16_t kSysregAPDBKeyHi_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(2u<<3)|3u; // 0x4113
+// APGAKey: CRn=2, CRm=3, op2=0..1
+constexpr std::uint16_t kSysregAPGAKeyLo_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(3u<<3)|0u; // 0x4118
+constexpr std::uint16_t kSysregAPGAKeyHi_EL1 = (1u<<14)|(0u<<11)|(2u<<7)|(3u<<3)|1u; // 0x4119
+
 inline bool is_pmu_reg(std::uint16_t key) noexcept {
     switch (key) {
     case kSysregPMCR_EL0:
@@ -2326,6 +2343,16 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     case kSysregDBGWCR2_EL1:    return "DBGWCR2_EL1";
     case kSysregDBGWCR3_EL1:    return "DBGWCR3_EL1";
     case kSysregID_AA64DFR0_EL1:return "ID_AA64DFR0_EL1";
+    case kSysregAPIAKeyLo_EL1:  return "APIAKeyLo_EL1";
+    case kSysregAPIAKeyHi_EL1:  return "APIAKeyHi_EL1";
+    case kSysregAPIBKeyLo_EL1:  return "APIBKeyLo_EL1";
+    case kSysregAPIBKeyHi_EL1:  return "APIBKeyHi_EL1";
+    case kSysregAPDAKeyLo_EL1:  return "APDAKeyLo_EL1";
+    case kSysregAPDAKeyHi_EL1:  return "APDAKeyHi_EL1";
+    case kSysregAPDBKeyLo_EL1:  return "APDBKeyLo_EL1";
+    case kSysregAPDBKeyHi_EL1:  return "APDBKeyHi_EL1";
+    case kSysregAPGAKeyLo_EL1:  return "APGAKeyLo_EL1";
+    case kSysregAPGAKeyHi_EL1:  return "APGAKeyHi_EL1";
     default:              return nullptr;
     }
 }
@@ -3845,6 +3872,48 @@ std::string decode_disassembly(std::uint32_t instruction) {
         }
         return stream.str();
     }
+    if ((instruction & 0xFFFFFBFFu) == 0xD65F0BFFu) {
+        return ((instruction & (1u << 10)) == 0) ? "RETAA" : "RETAB";
+    }
+    if ((instruction & 0xFF9FF800u) == 0xD71F0800u) {
+        const bool link = (instruction & (1u << 21)) != 0;
+        const bool key_b = (instruction & (1u << 10)) != 0;
+        const auto rn = (instruction >> 5u) & 0x1Fu;
+        const auto rm = instruction & 0x1Fu;
+        std::ostringstream stream;
+        stream << (link ? (key_b ? "BLRAB X" : "BLRAA X") : (key_b ? "BRAB X" : "BRAA X")) << rn << ", ";
+        if (rm == 31u) stream << "SP"; else stream << "X" << rm;
+        return stream.str();
+    }
+    if ((instruction & 0xFFE0FC00u) == 0x9AC03000u) {
+        const auto rd = instruction & 0x1Fu;
+        const auto rn = (instruction >> 5u) & 0x1Fu;
+        const auto rm = (instruction >> 16u) & 0x1Fu;
+        std::ostringstream stream;
+        stream << "PACGA X" << rd << ", X" << rn << ", X" << rm;
+        return stream.str();
+    }
+    if ((instruction & 0xFFFF0000u) == 0xDAC10000u) {
+        const auto rd = instruction & 0x1Fu;
+        const auto rn = (instruction >> 5u) & 0x1Fu;
+        const auto subop = (instruction >> 10u) & 0x3Fu;
+        static const char* kPacNames[] = {
+            "PACIA", "PACIB", "PACDA", "PACDB",
+            "AUTIA", "AUTIB", "AUTDA", "AUTDB",
+            "PACIZA", "PACIZB", "PACDZA", "PACDZB",
+            "AUTIZA", "AUTIZB", "AUTDZA", "AUTDZB",
+            "XPACI", "XPACD"
+        };
+        if (subop < 18) {
+            std::ostringstream stream;
+            stream << kPacNames[subop] << " X" << rd;
+            if (subop < 8) {
+                stream << ", ";
+                if (rn == 31u) stream << "SP"; else stream << "X" << rn;
+            }
+            return stream.str();
+        }
+    }
     static constexpr const char* kConditionNames[] = {
         "EQ", "NE", "CS", "CC", "MI", "PL", "VS", "VC",
         "HI", "LS", "GE", "LT", "GT", "LE", "AL", "NV"
@@ -4053,6 +4122,7 @@ std::string decode_disassembly(std::uint32_t instruction) {
         case 0x09u: mnemonic = "LSRV"; break;
         case 0x0Au: mnemonic = "ASRV"; break;
         case 0x0Bu: mnemonic = "RORV"; break;
+        case 0x0Cu: mnemonic = is64 ? "PACGA" : nullptr; break;
         default: break;
         }
         if (mnemonic != nullptr) {
@@ -5504,7 +5574,9 @@ void CPU::step(Memory& guest_memory) {
         ((instruction & kBranchRegisterMask) == kReturnRegister) ||
         ((instruction & kConditionalBranchMask) == kConditionalBranch) ||
         ((instruction & kConditionalBranchMask) == kCompareBranch) ||
-        ((instruction & kConditionalBranchMask) == kTestBranch);
+        ((instruction & kConditionalBranchMask) == kTestBranch) ||
+        ((instruction & 0xFFFFFBFFu) == 0xD65F0BFFu) || // RETAA / RETAB
+        ((instruction & 0xFF9FF800u) == 0xD71F0800u);   // BRAA / BRAB / BLRAA / BLRAB
     // Phase 36: PSTATE.IL (set by an architecturally illegal ERET) turns the
     // next fetch into an Illegal Execution State exception. Instruction abort
     // and PC-alignment faults have priority, exactly as in the reference.
@@ -5924,6 +5996,11 @@ void CPU::step(Memory& guest_memory) {
             const std::uint64_t rm_val = read_width_operand(*this, rm, is64, false);
             const std::uint32_t amount = static_cast<std::uint32_t>(rm_val & (is64 ? 0x3Fu : 0x1Fu));
             result = shift_register_value(rn_val, is64, shift_type, amount);
+        } else if (opcode == 0x0Cu && is64) {
+            // PACGA: Pointer Authentication Code, Generic key
+            const std::uint64_t val1 = (rn == 31u) ? get_stack_pointer() : read_register(rn);
+            const std::uint64_t val2 = (rm == 31u) ? get_stack_pointer() : read_register(rm);
+            result = pac_.compute_generic_tag(val1, val2);
         } else {
             throw std::runtime_error("Unsupported AArch64 instruction encoding");
         }
@@ -7386,6 +7463,116 @@ void CPU::step(Memory& guest_memory) {
         emit_trace(true, true, target);
         return;
     }
+    // ARM64e Pointer Authentication Returns: RETAA / RETAB
+    if ((instruction & 0xFFFFFBFFu) == 0xD65F0BFFu) {
+        const bool is_key_b = (instruction & (1u << 10)) != 0;
+        const std::uint64_t lr = read_register(30);
+        const std::uint64_t sp = get_stack_pointer();
+        std::uint64_t target = 0;
+        const bool ok = is_key_b ? pac_.execute_retab(lr, sp, target, instruction_address)
+                                 : pac_.execute_retaa(lr, sp, target, instruction_address);
+        if (!ok) {
+            if (architectural_exceptions_) {
+                const auto& syn = pac_.last_syndrome();
+                raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
+                return;
+            }
+            throw std::runtime_error("PAC failure on RET: " + pac_.last_syndrome().description);
+        }
+        if (!architectural_exceptions_ && (target & 0x3u) != 0) {
+            throw std::runtime_error("Misaligned branch target address: " + hex_word64(target));
+        }
+        program_counter_ = target;
+        emit_trace(true, true, target);
+        return;
+    }
+    // ARM64e Pointer Authentication Branches: BRAA / BRAB / BLRAA / BLRAB
+    if ((instruction & 0xFF9FF800u) == 0xD71F0800u) {
+        const bool is_link = (instruction & (1u << 21)) != 0;
+        const bool is_key_b = (instruction & (1u << 10)) != 0;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t rm = instruction & 0x1Fu;
+        const std::uint64_t ptr = (rn == 31u) ? 0ULL : read_register(rn);
+        const std::uint64_t mod = (rm == 31u) ? get_stack_pointer() : read_register(rm);
+        std::uint64_t target = 0;
+        bool ok = false;
+        if (is_link) {
+            std::uint64_t lr_val = 0;
+            ok = is_key_b ? pac_.execute_blrab(ptr, mod, lr_val, target, instruction_address)
+                          : pac_.execute_blraa(ptr, mod, lr_val, target, instruction_address);
+            if (ok) {
+                write_register(30, lr_val);
+            }
+        } else {
+            ok = is_key_b ? pac_.execute_brab(ptr, mod, target, instruction_address)
+                          : pac_.execute_braa(ptr, mod, target, instruction_address);
+        }
+        if (!ok) {
+            if (architectural_exceptions_) {
+                const auto& syn = pac_.last_syndrome();
+                raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
+                return;
+            }
+            throw std::runtime_error("PAC failure on BR/BLR: " + pac_.last_syndrome().description);
+        }
+        if (!architectural_exceptions_ && (target & 0x3u) != 0) {
+            throw std::runtime_error("Misaligned branch target address: " + hex_word64(target));
+        }
+        program_counter_ = target;
+        emit_trace(true, true, target);
+        return;
+    }
+    // ARM64e Pointer Authentication: Data processing 1 source
+    // PACIA, PACIB, PACDA, PACDB, AUTIA, AUTIB, AUTDA, AUTDB,
+    // PACIZA, PACIZB, PACDZA, PACDZB, AUTIZA, AUTIZB, AUTDZA, AUTDZB, XPACI, XPACD
+    if ((instruction & 0xFFFF0000u) == 0xDAC10000u) {
+        const std::uint32_t rd = instruction & 0x1Fu;
+        const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
+        const std::uint32_t subop = (instruction >> 10u) & 0x3Fu;
+        std::uint64_t ptr = (rd == 31u) ? 0ULL : read_register(rd);
+        const std::uint64_t mod = (rn == 31u) ? get_stack_pointer() : read_register(rn);
+        bool ok = true;
+        switch (subop) {
+            case 0:  ok = pac_.execute_pacia(ptr, mod); break;
+            case 1:  ok = pac_.execute_pacib(ptr, mod); break;
+            case 2:  ok = pac_.execute_pacda(ptr, mod); break;
+            case 3:  ok = pac_.execute_pacdb(ptr, mod); break;
+            case 4:  ok = pac_.execute_autia(ptr, mod, instruction_address); break;
+            case 5:  ok = pac_.execute_autib(ptr, mod, instruction_address); break;
+            case 6:  ok = pac_.execute_autda(ptr, mod, instruction_address); break;
+            case 7:  ok = pac_.execute_autdb(ptr, mod, instruction_address); break;
+            case 8:  ok = pac_.execute_paciza(ptr); break;
+            case 9:  ok = pac_.execute_pacizb(ptr); break;
+            case 10: ok = pac_.execute_pacdza(ptr); break;
+            case 11: ok = pac_.execute_pacdzb(ptr); break;
+            case 12: ok = pac_.execute_autiza(ptr, instruction_address); break;
+            case 13: ok = pac_.execute_autizb(ptr, instruction_address); break;
+            case 14: ok = pac_.execute_autdza(ptr, instruction_address); break;
+            case 15: ok = pac_.execute_autdzb(ptr, instruction_address); break;
+            case 16: ok = pac_.execute_xpaci(ptr); break;
+            case 17: ok = pac_.execute_xpacd(ptr); break;
+            default:
+                if (architectural_exceptions_) {
+                    raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                    return;
+                }
+                throw std::runtime_error("Unallocated PAC data processing sub-opcode: " + std::to_string(subop));
+        }
+        if (!ok) {
+            if (architectural_exceptions_) {
+                const auto& syn = pac_.last_syndrome();
+                raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
+                return;
+            }
+            throw std::runtime_error("PAC authentication failure: " + pac_.last_syndrome().description);
+        }
+        if (rd != 31u) {
+            write_register(rd, ptr);
+        }
+        program_counter_ = checked_add_address(instruction_address, 4u, "Instruction PC increment");
+        emit_trace();
+        return;
+    }
     if ((instruction & kBranchImmediateMask) == kBranch) {
         const bool link = (instruction & 0x80000000u) != 0;
         const std::uint32_t encoded_offset = instruction & 0x03FFFFFFu;
@@ -8681,6 +8868,36 @@ void CPU::step(Memory& guest_memory) {
                       | (winios::DebugArchitecture::watchpoint_count_minus_one() << 20u)
                       | 0x6u; // DebugVer
                 break;
+            case kSysregAPIAKeyLo_EL1:
+                value = pac_.get_keyring().apia.lo;
+                break;
+            case kSysregAPIAKeyHi_EL1:
+                value = pac_.get_keyring().apia.hi;
+                break;
+            case kSysregAPIBKeyLo_EL1:
+                value = pac_.get_keyring().apib.lo;
+                break;
+            case kSysregAPIBKeyHi_EL1:
+                value = pac_.get_keyring().apib.hi;
+                break;
+            case kSysregAPDAKeyLo_EL1:
+                value = pac_.get_keyring().apda.lo;
+                break;
+            case kSysregAPDAKeyHi_EL1:
+                value = pac_.get_keyring().apda.hi;
+                break;
+            case kSysregAPDBKeyLo_EL1:
+                value = pac_.get_keyring().apdb.lo;
+                break;
+            case kSysregAPDBKeyHi_EL1:
+                value = pac_.get_keyring().apdb.hi;
+                break;
+            case kSysregAPGAKeyLo_EL1:
+                value = pac_.get_keyring().apga.lo;
+                break;
+            case kSysregAPGAKeyHi_EL1:
+                value = pac_.get_keyring().apga.hi;
+                break;
             case kSysregPAR_EL1:
                 value = mmu_.get_par_el1();
                 break;
@@ -9510,6 +9727,66 @@ void CPU::step(Memory& guest_memory) {
                     return;
                 }
                 throw std::runtime_error("ID_AA64DFR0_EL1 is read-only");
+            case kSysregAPIAKeyLo_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apia.lo = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPIAKeyHi_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apia.hi = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPIBKeyLo_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apib.lo = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPIBKeyHi_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apib.hi = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPDAKeyLo_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apda.lo = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPDAKeyHi_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apda.hi = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPDBKeyLo_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apdb.lo = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPDBKeyHi_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apdb.hi = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPGAKeyLo_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apga.lo = val;
+                pac_.set_keyring(kr);
+                break;
+            }
+            case kSysregAPGAKeyHi_EL1: {
+                auto kr = pac_.get_keyring();
+                kr.apga.hi = val;
+                pac_.set_keyring(kr);
+                break;
+            }
             default:
                 if (key >= 0x5F40 && key <= 0x5F5F) {
                     pmu_.write_pmevcntr(key - 0x5F40, static_cast<std::uint32_t>(val));

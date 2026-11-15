@@ -20,6 +20,7 @@ enum class ExceptionClass : std::uint32_t {
     HvcAArch64            = 0x16, // EC 0b010110
     SmcAArch64            = 0x17, // EC 0b010111
     TrappedMsrMrs         = 0x18, // EC 0b011000
+    PacTrap               = 0x1C, // EC 0b011100, Synchronous PAC Failure Trap (FPAC)
     InstructionAbortLower = 0x20, // instruction abort from a lower EL
     InstructionAbortSame  = 0x21, // instruction abort from the same EL
     PcAlignment           = 0x22, // PC alignment fault
@@ -109,6 +110,19 @@ inline SynchronousException make_fp_simd_access_trap(std::uint64_t address) {
     e.iss = 0u;
     e.instruction_length_4 = true;
     e.preferred_return = address;
+    e.target_el = 1;
+    return e;
+}
+
+// EC 0x1C: Synchronous PAC Failure Trap (ARMv8.3 / ARMv8.6 FPAC)
+inline SynchronousException make_pac_trap(std::uint64_t address, std::uint32_t iss = 0, std::uint64_t bad_ptr = 0) {
+    SynchronousException e;
+    e.ec = ExceptionClass::PacTrap;
+    e.iss = iss & 0x01FFFFFFu;
+    e.instruction_length_4 = true;
+    e.preferred_return = address;
+    e.has_fault_address = true;
+    e.fault_address = bad_ptr;
     e.target_el = 1;
     return e;
 }

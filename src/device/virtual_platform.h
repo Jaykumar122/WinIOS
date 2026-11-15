@@ -30,10 +30,16 @@ struct VirtualPlatformConfig {
     std::uint64_t gicr_base{0x080A0000ULL};
     std::uint64_t uart_base{0x09000000ULL};
     std::uint64_t dma_base{0x10000000ULL};
+    std::uint64_t iommu_base{0x0A000000ULL};
 
     // Peripheral IRQs
     std::uint32_t uart_irq{33u};
     std::uint32_t dma_irq{34u};
+    std::uint32_t iommu_irq{44u};
+
+    // Platform features
+    bool has_iommu{true};
+    bool has_stage2{true};
 };
 
 // -----------------------------------------------------------------------------

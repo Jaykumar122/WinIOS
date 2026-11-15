@@ -1,0 +1,146 @@
+{
+  "campaign": 199,
+  "campaign_name": "Advanced ARM64e Virtual Platform, Stage-2 Translation, IOMMU, DMA Isolation, Pointer Authentication & Device Architecture",
+  "baseline_commit": "da4ddbfc8e432693a6e807e8e60a92c68adb7675",
+  "target_device": {
+    "identity": "iPhone 15",
+    "model": "iPhone15,4",
+    "board_id": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "architecture": "ARMv8.5-A / ARM64e",
+    "page_granule_bytes": 16384,
+    "cache_line_bytes": 64,
+    "reservation_granule_bytes": 64
+  },
+  "host": {
+    "os": "Windows 11 x64",
+    "compiler": "MSVC C++20 (Visual Studio 2026)",
+    "compiler_flags": "/W4 /WX /permissive-",
+    "cross_compiler": "Zig 0.17.0 (aarch64-macos, -mcpu=apple_a16)"
+  },
+  "stages": {
+    "199.0": {
+      "name": "Baseline Verification & Audit",
+      "status": "COMPLETED"
+    },
+    "199.1": {
+      "name": "Stage-2 Translation Subsystem",
+      "status": "COMPLETED"
+    },
+    "199.2": {
+      "name": "Combined Stage-1/Stage-2 Translation Pipeline",
+      "status": "COMPLETED"
+    },
+    "199.3": {
+      "name": "Stage-2 TLB & Invalidation",
+      "status": "COMPLETED"
+    },
+    "199.4": {
+      "name": "Virtual IOMMU Architecture",
+      "status": "COMPLETED"
+    },
+    "199.5": {
+      "name": "DMA Address Translation & Fault Handling",
+      "status": "COMPLETED"
+    },
+    "199.6": {
+      "name": "Device Isolation & Domain Protection",
+      "status": "COMPLETED"
+    },
+    "199.7": {
+      "name": "IOMMU & SMP Integration",
+      "status": "COMPLETED"
+    },
+    "199.8": {
+      "name": "PAC Architecture Audit",
+      "status": "COMPLETED"
+    },
+    "199.9": {
+      "name": "PAC Key & Register Architecture",
+      "status": "COMPLETED"
+    },
+    "199.10": {
+      "name": "PAC Instruction Semantics",
+      "status": "COMPLETED"
+    },
+    "199.11": {
+      "name": "PAC Faults & Exception Integration",
+      "status": "COMPLETED"
+    },
+    "199.12": {
+      "name": "Exception-Level Integration (EL0/EL1/EL2)",
+      "status": "COMPLETED"
+    },
+    "199.13": {
+      "name": "Virtual Interrupt Controller Architecture",
+      "status": "COMPLETED"
+    },
+    "199.14": {
+      "name": "Multicore Interrupt & Device Integration",
+      "status": "COMPLETED"
+    },
+    "199.15": {
+      "name": "Device Tree Architecture",
+      "status": "COMPLETED"
+    },
+    "199.16": {
+      "name": "Platform Boot & Handoff Integration",
+      "status": "COMPLETED"
+    },
+    "199.17": {
+      "name": "Secure Snapshot & Replay Integration",
+      "status": "COMPLETED"
+    },
+    "199.18": {
+      "name": "Genuine Guest Workloads & Differential Validation",
+      "status": "COMPLETED"
+    },
+    "199.19": {
+      "name": "Complete Integration, Regression & Campaign Closeout",
+      "status": "COMPLETED"
+    }
+  },
+  "test_metrics": {
+    "total_tests": 449,
+    "release": {
+      "passed": 0,
+      "skipped": 0,
+      "failed": 0,
+      "duration_seconds": 0.0
+    },
+    "debug": {
+      "passed": 0,
+      "skipped": 0,
+      "failed": 0,
+      "duration_seconds": 0.0
+    }
+  },
+  "artifacts": [
+    {
+      "name": "guest_stage2_iommu_pac_workload",
+      "path": "tests/artifacts/bin/guest_stage2_iommu_pac_workload",
+      "sha256": "34e1f100f4c2369b7be19c0d0506adc5a5f13b90707184636f4ef52213776f1a",
+      "format": "Mach-O 64-bit arm64e executable",
+      "source": "tests/artifacts/src/guest_stage2_iommu_pac_workload.S"
+    }
+  ],
+  "documentation_hashes": {
+    "architecture_audit.md": "0C4302CA7F3C00003EED183A3F61D1959C73EEA0A17C40136C4135333B5F0CE6",
+    "architecture_decisions.md": "B9FB4316154867AF8E80993DBA68CCC448F5CF945D16A30EF1764BA2B29562F2",
+    "campaign199_final_report.md": "13F97360BE764D603F5C1C2EBCABF6127FA9389BE02AAC7FF9AC0BD2B909BFD0",
+    "device_tree_validation_report.md": "1BA043881AD68E1078D8CFA349FF58EE84674E2C33F0767C58DBD77DC024811D",
+    "dma_isolation_report.md": "CBEEF7063FC95C9166C3CE77601F6C56F97DD076F0478F17EBF29AF7D36BEB6E",
+    "evidence_matrix.md": "918E908527B0E5DC39D4849E56D73572EFD99AD6C3132C00AE2D221C7E703596",
+    "exception_interrupt_report.md": "2FE1F8DEFA0E11114C07A99060188D645C0219DE32630BAE3C8F84697105070D",
+    "guest_workload_execution_report.md": "773593C6780D55E3F7FFC06AEC4ACE1CC55C890CA7EF0D678ED9A8065A70A068",
+    "iommu_validation_report.md": "D3E9C53B10D78AE80953963B10A4FFA37D1C5EE5C42257B0EDF5BD7D92CFF561",
+    "known_limitations.md": "058A8DB12E49E6EE6A082AC041BF180490D8F9C20A58876B54CB88AB961DC041",
+    "pac_validation_report.md": "05C7256B976577163E291183131DA207D6471BD4AC048BCA8B76D68A69AB00A0",
+    "snapshot_replay_report.md": "6B470FFA1A40C9CAF82188F1DEBE3032112503ACADB686EFF4C5516AAA6CF822",
+    "stage199_0_baseline_audit.md": "47D11FFDC8F59F8DD06598459788E53FDB6D51C31DF5DFEA8977231594E26165",
+    "stage199_8_pac_architecture_audit.md": "C6DE1FBF8EB825C2C53AA3C7879A6F19985EB55FA0FEC7609B37483F417F0940",
+    "stage2_translation_report.md": "F126EC4E303E45E508FBF199EBA1428E9EE63282034216E60DA1EB4AA54AD407",
+    "test_results_debug.txt": "44D2088DF23B5D36D48ED6C0D0F2B7DEEE5AA4C097D450804C70CD6CF5A94598",
+    "test_results_release.txt": "3A449119A6BCDE31165CF7854270637201DA1BE7244474CCCA3DED55C2485F5B"
+  }
+}

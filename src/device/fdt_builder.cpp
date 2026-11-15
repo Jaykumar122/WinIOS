@@ -383,6 +383,40 @@ std::vector<std::uint8_t> FdtBuilder::build_platform_dtb(
     builder.add_property_u32_array("interrupts", {0, spi_num, 4});
     builder.end_node();
 
+    // SMMUv3 / Virtual IOMMU node
+    if (config.has_iommu) {
+        std::ostringstream smmu_name;
+        smmu_name << "smmu@" << std::hex << config.iommu_base;
+        builder.begin_node(smmu_name.str());
+        builder.add_property_string("compatible", "arm,smmu-v3");
+        builder.add_property_u64_array("reg", {config.iommu_base, 0x20000ULL});
+        std::uint32_t iommu_spi = (config.iommu_irq >= 32) ? (config.iommu_irq - 32) : 12;
+        builder.add_property_u32_array("interrupts", {0, iommu_spi, 4});
+        builder.add_property_u32("#iommu-cells", 1);
+        builder.add_property_u32("phandle", 1);
+        builder.end_node();
+
+        // Virtual DMA Engine node referencing SMMU
+        std::ostringstream dma_name;
+        dma_name << "dma@" << std::hex << config.dma_base;
+        builder.begin_node(dma_name.str());
+        builder.add_property_string_list("compatible", {"arm,pl330", "arm,primecell"});
+        builder.add_property_u64_array("reg", {config.dma_base, 0x1000ULL});
+        std::uint32_t dma_spi = (config.dma_irq >= 32) ? (config.dma_irq - 32) : 2;
+        builder.add_property_u32_array("interrupts", {0, dma_spi, 4});
+        builder.add_property_u32_array("iommus", {1, 0}); // phandle 1, stream id 0
+        builder.end_node();
+    }
+
+    // Hypervisor / Stage-2 MMU node
+    if (config.has_stage2) {
+        builder.begin_node("hypervisor");
+        builder.add_property_string("compatible", "arm,hypervisor");
+        builder.add_property_u64_array("reg", {0ULL, 0x100000000ULL});
+        builder.add_property_u32("arm,stage2-page-size", 16384);
+        builder.end_node();
+    }
+
     return builder.build();
 }
 
