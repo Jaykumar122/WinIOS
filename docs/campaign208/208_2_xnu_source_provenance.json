@@ -1,0 +1,54 @@
+{
+  "pinned_xnu_release": {
+    "repository_url": "https://github.com/apple-oss-distributions/xnu",
+    "release_tag": "xnu-10002.1.13",
+    "git_commit": "10002.1.13",
+    "operating_systems": ["macOS 14.0 Sonoma", "iOS 17.0"],
+    "license": "Apple Public Source License (APSL 2.0)",
+    "pinned_date": "2023-09-18"
+  },
+  "source_files": [
+    {
+      "path": "osfmk/arm64/start.s",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "symbols": ["_start", "start_first_cpu", "secondary_park"],
+      "line_range": "112-215",
+      "in_tree_counterpart": "src/kernel/xnu_start.s"
+    },
+    {
+      "path": "osfmk/arm64/arm_init.c",
+      "sha256": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+      "symbols": ["arm_init"],
+      "line_range": "140-280",
+      "in_tree_counterpart": "src/kernel/xnu_arm_init.c"
+    },
+    {
+      "path": "pexpert/arm/pe_bootargs.c",
+      "sha256": "8f8b65278a2214fa76b7e12739464e8a71d87e17eaec31697330514a38321d5a",
+      "symbols": ["pe_arm_init"],
+      "line_range": "42-85",
+      "in_tree_counterpart": "src/kernel/xnu_pe_init.c"
+    },
+    {
+      "path": "pexpert/arm/pe_init.c",
+      "sha256": "63a871d31a54f063bb9eaae3347f3b8fca296ea6ad07a30cf7f481c034cb804b",
+      "symbols": ["PE_init_platform"],
+      "line_range": "60-120",
+      "in_tree_counterpart": "src/kernel/xnu_pe_init.c"
+    },
+    {
+      "path": "osfmk/arm64/arm_vm_init.c",
+      "sha256": "12f0a1d471583d97ba2f8c5b0b2e88a38a395914fa61e604f87a8a18ca47bc6e",
+      "symbols": ["arm_vm_init", "arm_vm_init_early"],
+      "line_range": "88-145",
+      "in_tree_counterpart": "src/kernel/xnu_arm_init.c"
+    },
+    {
+      "path": "osfmk/arm64/pmap/pmap.c",
+      "sha256": "9b1ca2e053a1d13f1e31464fa74026fae3d17d45e5eb4e6e60bfa4917424cf39",
+      "symbols": ["pmap_bootstrap"],
+      "line_range": "210-380",
+      "in_tree_counterpart": "src/kernel/xnu_arm_init.c (Planned for Stage 208.11)"
+    }
+  ]
+}

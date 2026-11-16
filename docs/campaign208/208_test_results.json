@@ -1,0 +1,126 @@
+{
+  "campaign": 208,
+  "date": "2026-11-16",
+  "toolchain": "Visual Studio 2026 MSVC C++20 Release",
+  "total_registered_tests": 600,
+  "tests_passed": 599,
+  "tests_failed": 0,
+  "tests_skipped": 1,
+  "skipped_test_name": "inferno_integration_tests",
+  "campaign_208_tests": [
+    {
+      "test_name": "stage208_5_instruction_provenance_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 7,
+      "description": "Instruction provenance tracker records PC, opcode, symbol, and category"
+    },
+    {
+      "test_name": "stage208_8_page_table_conformance_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 7,
+      "description": "16KB granule descriptor bitfield conformance (0x701, 0x705, 0x781)"
+    },
+    {
+      "test_name": "stage208_9_real_page_table_walk_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 4,
+      "description": "MMU Stage-1 hardware table walk decodes guest-written page tables"
+    },
+    {
+      "test_name": "stage208_10_physical_page_allocator_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.03,
+      "assertions_passed": 12,
+      "description": "16KB frame allocator, bounds checks, reserved regions, snapshot restore"
+    },
+    {
+      "test_name": "stage208_11_bootstrap_vm_execution_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 5,
+      "description": "Execution of guest arm_vm_init_early populates root table and descriptors"
+    },
+    {
+      "test_name": "stage208_12_kernel_mapping_wx_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 5,
+      "description": "W^X permission enforcement via Stage-1 AP and UXN/PXN bits"
+    },
+    {
+      "test_name": "stage208_13_translation_reg_tlb_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6,
+      "description": "TCR_EL1, TTBR0_EL1, TTBR1_EL1 programming and TLBI invalidation"
+    },
+    {
+      "test_name": "stage208_14_exception_mmu_fault_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.03,
+      "assertions_passed": 6,
+      "description": "Translation and Permission faults generate valid ESR_EL1 and FAR_EL1 syndromes"
+    },
+    {
+      "test_name": "stage208_15_aic2_conformance_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6,
+      "description": "Apple AIC2 registers (AIC_INFO, AIC_WHOAMI, AIC_CONFIG) and IRQ assertions"
+    },
+    {
+      "test_name": "stage208_16_timer_interrupt_delivery_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 2,
+      "description": "Architectural virtual timer fires and wakes core cleanly from WFI"
+    },
+    {
+      "test_name": "stage208_17_secondary_core_truth_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 5,
+      "description": "Secondary core MPIDR affinity branch directs core to secondary_park WFE loop"
+    },
+    {
+      "test_name": "stage208_18_genuine_xnu_expansion_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 7,
+      "retired_instructions": 586,
+      "description": "Expanded guest execution reaches 586 instructions through pmap_bootstrap"
+    },
+    {
+      "test_name": "stage208_19_kernel_init_state_machine_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6,
+      "description": "Validates discrete progression across 6 boot states to VMInitialized"
+    },
+    {
+      "test_name": "stage208_20_snapshot_replay_expansion_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6,
+      "description": "Bit-exact determinism across snapshot save, reload, and replay"
+    },
+    {
+      "test_name": "stage208_21_adversarial_security_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "attacks_tested": 15,
+      "attacks_defeated": 15,
+      "description": "15 hostile boundary attack vectors defeated without crashes or memory corruption"
+    },
+    {
+      "test_name": "stage208_22_performance_instrumentation_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.03,
+      "assertions_passed": 4,
+      "description": "Guest retirement throughput and micro-benchmark metrics recorded"
+    }
+  ]
+}

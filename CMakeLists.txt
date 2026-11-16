@@ -94,6 +94,8 @@ add_library(winios_core STATIC
     src/loader/independent_kernel_fixture.cpp
     src/loader/xnu_bootstrap_continuation.cpp
     src/loader/xnu_genuine_init_builder.cpp
+    src/loader/xnu_instruction_provenance_tracker.cpp
+    src/memory/xnu_page_allocator.cpp
     src/loader/macho_dependency_graph.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
@@ -3735,6 +3737,119 @@ add_executable(stage206_23_adversarial_boot_tests
 target_link_libraries(stage206_23_adversarial_boot_tests PRIVATE winios_core)
 winios_set_warnings(stage206_23_adversarial_boot_tests)
 add_test(NAME stage206_23_adversarial_boot_tests COMMAND stage206_23_adversarial_boot_tests)
+
+# --- Campaign 208 Tests ---
+add_executable(stage208_5_instruction_provenance_tests
+    tests/unit/stage208_5_instruction_provenance_tests.cpp
+)
+target_link_libraries(stage208_5_instruction_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage208_5_instruction_provenance_tests)
+add_test(NAME stage208_5_instruction_provenance_tests COMMAND stage208_5_instruction_provenance_tests)
+
+add_executable(stage208_8_page_table_conformance_tests
+    tests/unit/stage208_8_page_table_conformance_tests.cpp
+)
+target_link_libraries(stage208_8_page_table_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage208_8_page_table_conformance_tests)
+add_test(NAME stage208_8_page_table_conformance_tests COMMAND stage208_8_page_table_conformance_tests)
+
+add_executable(stage208_9_real_page_table_walk_tests
+    tests/unit/stage208_9_real_page_table_walk_tests.cpp
+)
+target_link_libraries(stage208_9_real_page_table_walk_tests PRIVATE winios_core)
+winios_set_warnings(stage208_9_real_page_table_walk_tests)
+add_test(NAME stage208_9_real_page_table_walk_tests COMMAND stage208_9_real_page_table_walk_tests)
+
+add_executable(stage208_10_physical_page_allocator_tests
+    tests/unit/stage208_10_physical_page_allocator_tests.cpp
+)
+target_link_libraries(stage208_10_physical_page_allocator_tests PRIVATE winios_core)
+winios_set_warnings(stage208_10_physical_page_allocator_tests)
+add_test(NAME stage208_10_physical_page_allocator_tests COMMAND stage208_10_physical_page_allocator_tests)
+
+add_executable(stage208_11_bootstrap_vm_execution_tests
+    tests/unit/stage208_11_bootstrap_vm_execution_tests.cpp
+)
+target_link_libraries(stage208_11_bootstrap_vm_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage208_11_bootstrap_vm_execution_tests)
+add_test(NAME stage208_11_bootstrap_vm_execution_tests COMMAND stage208_11_bootstrap_vm_execution_tests)
+
+add_executable(stage208_12_kernel_mapping_wx_tests
+    tests/unit/stage208_12_kernel_mapping_wx_tests.cpp
+)
+target_link_libraries(stage208_12_kernel_mapping_wx_tests PRIVATE winios_core)
+winios_set_warnings(stage208_12_kernel_mapping_wx_tests)
+add_test(NAME stage208_12_kernel_mapping_wx_tests COMMAND stage208_12_kernel_mapping_wx_tests)
+
+add_executable(stage208_13_translation_reg_tlb_tests
+    tests/unit/stage208_13_translation_reg_tlb_tests.cpp
+)
+target_link_libraries(stage208_13_translation_reg_tlb_tests PRIVATE winios_core)
+winios_set_warnings(stage208_13_translation_reg_tlb_tests)
+add_test(NAME stage208_13_translation_reg_tlb_tests COMMAND stage208_13_translation_reg_tlb_tests)
+
+add_executable(stage208_14_exception_mmu_fault_tests
+    tests/unit/stage208_14_exception_mmu_fault_tests.cpp
+)
+target_link_libraries(stage208_14_exception_mmu_fault_tests PRIVATE winios_core)
+winios_set_warnings(stage208_14_exception_mmu_fault_tests)
+add_test(NAME stage208_14_exception_mmu_fault_tests COMMAND stage208_14_exception_mmu_fault_tests)
+
+add_executable(stage208_15_aic2_conformance_tests
+    tests/unit/stage208_15_aic2_conformance_tests.cpp
+)
+target_link_libraries(stage208_15_aic2_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage208_15_aic2_conformance_tests)
+add_test(NAME stage208_15_aic2_conformance_tests COMMAND stage208_15_aic2_conformance_tests)
+
+add_executable(stage208_16_timer_interrupt_delivery_tests
+    tests/unit/stage208_16_timer_interrupt_delivery_tests.cpp
+)
+target_link_libraries(stage208_16_timer_interrupt_delivery_tests PRIVATE winios_core)
+winios_set_warnings(stage208_16_timer_interrupt_delivery_tests)
+add_test(NAME stage208_16_timer_interrupt_delivery_tests COMMAND stage208_16_timer_interrupt_delivery_tests)
+
+add_executable(stage208_17_secondary_core_truth_tests
+    tests/unit/stage208_17_secondary_core_truth_tests.cpp
+)
+target_link_libraries(stage208_17_secondary_core_truth_tests PRIVATE winios_core)
+winios_set_warnings(stage208_17_secondary_core_truth_tests)
+add_test(NAME stage208_17_secondary_core_truth_tests COMMAND stage208_17_secondary_core_truth_tests)
+
+add_executable(stage208_18_genuine_xnu_expansion_tests
+    tests/unit/stage208_18_genuine_xnu_expansion_tests.cpp
+)
+target_link_libraries(stage208_18_genuine_xnu_expansion_tests PRIVATE winios_core)
+winios_set_warnings(stage208_18_genuine_xnu_expansion_tests)
+add_test(NAME stage208_18_genuine_xnu_expansion_tests COMMAND stage208_18_genuine_xnu_expansion_tests)
+
+add_executable(stage208_19_kernel_init_state_machine_tests
+    tests/unit/stage208_19_kernel_init_state_machine_tests.cpp
+)
+target_link_libraries(stage208_19_kernel_init_state_machine_tests PRIVATE winios_core)
+winios_set_warnings(stage208_19_kernel_init_state_machine_tests)
+add_test(NAME stage208_19_kernel_init_state_machine_tests COMMAND stage208_19_kernel_init_state_machine_tests)
+
+add_executable(stage208_20_snapshot_replay_expansion_tests
+    tests/unit/stage208_20_snapshot_replay_expansion_tests.cpp
+)
+target_link_libraries(stage208_20_snapshot_replay_expansion_tests PRIVATE winios_core)
+winios_set_warnings(stage208_20_snapshot_replay_expansion_tests)
+add_test(NAME stage208_20_snapshot_replay_expansion_tests COMMAND stage208_20_snapshot_replay_expansion_tests)
+
+add_executable(stage208_21_adversarial_security_tests
+    tests/unit/stage208_21_adversarial_security_tests.cpp
+)
+target_link_libraries(stage208_21_adversarial_security_tests PRIVATE winios_core)
+winios_set_warnings(stage208_21_adversarial_security_tests)
+add_test(NAME stage208_21_adversarial_security_tests COMMAND stage208_21_adversarial_security_tests)
+
+add_executable(stage208_22_performance_instrumentation_tests
+    tests/unit/stage208_22_performance_instrumentation_tests.cpp
+)
+target_link_libraries(stage208_22_performance_instrumentation_tests PRIVATE winios_core)
+winios_set_warnings(stage208_22_performance_instrumentation_tests)
+add_test(NAME stage208_22_performance_instrumentation_tests COMMAND stage208_22_performance_instrumentation_tests)
 
 
 

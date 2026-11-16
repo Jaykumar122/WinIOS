@@ -1,0 +1,125 @@
+{
+  "campaign": 208,
+  "milestone": "XNU Source Fidelity, Genuine VM Bootstrap & Kernel Initialization",
+  "target_hardware_profile": "iPhone 15 / iPhone15,4 / D37AP / Apple A16 Bionic T8120",
+  "baseline_commit": "4a5572d67dcf2351bbebb517062c796632429e1b",
+  "host_toolchain": "Visual Studio 2026 MSVC C++20 / Zig 0.17.0 (Freestanding aarch64-macos)",
+  "subsystem_capabilities": {
+    "bootstrap_entry": {
+      "status": "OPERATIONAL",
+      "entry_symbol": "__start / _start",
+      "entry_vaddr": "0x1DA0",
+      "granule": "16KB",
+      "irq_masking": "DAIFSet 0xF masked",
+      "core_affinity_query": "MPIDR_EL1 checked, primary core proceeds, secondary cores park in WFE"
+    },
+    "c_runtime_abi": {
+      "status": "OPERATIONAL",
+      "calling_convention": "AAPCS64",
+      "stack_pointer": "SP_EL1 initialized at 0x10000 (16KB aligned)",
+      "fp_simd": "CPACR_EL1.FPEN = 0b11 enabled prior to C entry",
+      "frame_pointer": "FP (X29) / LR (X30) stack frame linked"
+    },
+    "instruction_provenance_engine": {
+      "status": "OPERATIONAL",
+      "class": "winios::loader::XnuInstructionProvenanceTracker",
+      "granularity": "Instruction-level (PC, opcode, mnemonic, symbol, source file, category)",
+      "categories": {
+        "Category_A": "Unmodified public XNU source logic",
+        "Category_B": "Adapted public XNU source compiled to guest machine code",
+        "Category_C": "Compatibility & trampoline code",
+        "Category_D": "Synthetic platform hardware emulation"
+      },
+      "export_format": "JSON stream with SHA-256 verification"
+    },
+    "virtual_memory_bootstrap": {
+      "status": "OPERATIONAL",
+      "page_size": "16KB (0x4000)",
+      "block_size": "32MB (0x2000000)",
+      "root_table_vaddr": "0x20000",
+      "level1_descriptor": "0x24003 (points to Level-2 table at 0x24000)",
+      "level2_descriptors": [
+        {"vaddr": "0x00000000", "descriptor": "0x00000701", "type": "Normal Cacheable RW Inner Shareable (AF=1, SH=3)"},
+        {"vaddr": "0x02000000", "descriptor": "0x02000701", "type": "Normal Cacheable RW Inner Shareable (AF=1, SH=3)"},
+        {"vaddr": "0x23B100000", "descriptor": "0x0220000705", "type": "Device-nGnRE RW Inner Shareable (AF=1, SH=3, AttrIndx=1)"}
+      ],
+      "real_mmu_translation": "Stage-1 table walk in MMU translates guest VA using guest-constructed page table descriptors",
+      "wx_enforcement": "Stage-1 descriptor AP[2]=1 (read-only) and UXN/PXN bits enforce W^X separation"
+    },
+    "physical_page_allocator": {
+      "status": "OPERATIONAL",
+      "class": "winios::memory::XnuPhysicalPageAllocator",
+      "granule": "16KB alignment",
+      "physical_range": "0x40000 - 0x800000",
+      "free_frames": 496,
+      "features": [
+        "First-fit and next-fit allocation",
+        "Reserved bootstrap range protection",
+        "Double-free detection",
+        "Deterministic snapshot serialization and restoration"
+      ]
+    },
+    "kernel_c_functions": {
+      "arm_init": {
+        "status": "OPERATIONAL",
+        "symbol": "_arm_init",
+        "entry_vaddr": "0x1648",
+        "parameters": "boot_args* (X0 preserved from bootstrap)",
+        "retired_instructions_expanded": 586
+      },
+      "pe_arm_init": {
+        "status": "OPERATIONAL",
+        "symbol": "_pe_arm_init",
+        "entry_vaddr": "0x1D84",
+        "role": "Platform expert bootstrap dispatcher"
+      },
+      "PE_init_platform": {
+        "status": "OPERATIONAL",
+        "symbol": "_PE_init_platform",
+        "entry_vaddr": "0x1BAC",
+        "role": "Populate g_pe_state at 0x10040, validate DeviceTree & AIC presence"
+      },
+      "arm_vm_init_early": {
+        "status": "OPERATIONAL",
+        "symbol": "_arm_vm_init_early",
+        "role": "Multi-level 16KB page table synthesis (Level 1 + Level 2 blocks), AIC MMIO identity map",
+        "mailbox": "0x50008 holds 0xCAFEBABE208"
+      },
+      "pmap_bootstrap": {
+        "status": "OPERATIONAL",
+        "symbol": "_pmap_bootstrap",
+        "entry_vaddr": "0x14A0",
+        "role": "Physical bounds registration (avail_start=0x40000, avail_end=RAM end), pmap_initialized=1"
+      }
+    },
+    "interrupt_controller": {
+      "status": "OPERATIONAL",
+      "model": "Apple AIC2 (Apple Interrupt Controller v2)",
+      "base_address": "0x23B100000",
+      "registers_probed": [
+        {"offset": "0x4", "name": "AIC_INFO", "value": "0x06010200", "meaning": "6 cores, 1 die, 512 IRQs"},
+        {"offset": "0x2000", "name": "AIC_WHOAMI", "value": "0x00000000", "meaning": "Core 0 (Everest P-Core 0)"},
+        {"offset": "0x10", "name": "AIC_CONFIG", "value": "0x00000001", "meaning": "Interrupt controller global enable"}
+      ]
+    },
+    "secondary_core_management": {
+      "status": "OPERATIONAL",
+      "model": "Sawtooth E-cores (Cores 1-5)",
+      "park_vaddr": "0x1DDC",
+      "state": "Parked in low-power WFE spin loop until IPI wakeup"
+    },
+    "determinism_and_snapshot": {
+      "status": "OPERATIONAL",
+      "replay_fidelity": "Bit-exact across CPU registers, MMIO transaction log, and DRAM regions",
+      "checkpoint_mailbox_207": "0x50000 holds 0xCAFEBABE207",
+      "checkpoint_mailbox_208": "0x50008 holds 0xCAFEBABE208"
+    }
+  },
+  "provenance_classification": {
+    "xnu_source": "Apple xnu-10002.1.13 (macOS 14.0 Sonoma / iOS 17 Open Source)",
+    "toolchain": "Zig 0.17.0 clang-compatible freestanding compiler",
+    "binary_format": "Mach-O 64-bit MH_EXECUTE (arm64)",
+    "binary_sha256": "3498988245f371b8e35082d3b76ac3c111b21c5755a561aed3cd53c63b006bd4",
+    "binary_size_bytes": 67848
+  }
+}

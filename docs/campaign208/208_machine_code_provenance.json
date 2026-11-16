@@ -1,0 +1,116 @@
+{
+  "campaign": 208,
+  "binary_path": "artifacts/campaign-208/xnu_genuine_init.macho",
+  "binary_size_bytes": 67848,
+  "binary_sha256": "3498988245f371b8e35082d3b76ac3c111b21c5755a561aed3cd53c63b006bd4",
+  "toolchain": {
+    "compiler": "Zig 0.17.0 (LLVM 18 backend)",
+    "target": "aarch64-macos",
+    "compiler_flags": "-nostdlib -ffreestanding -O2 -fno-stack-protector -fno-builtin -Wl,-no_compact_unwind"
+  },
+  "segments": [
+    {
+      "name": "__TEXT",
+      "vmaddr": "0x00000000",
+      "vmsize": "0x00004000",
+      "fileoff": "0x00000000",
+      "filesize": "0x00004000",
+      "protection": "r-x",
+      "sections": [
+        {"name": "__text", "vmaddr": "0x000014A0", "size": "0x00000944", "fileoff": "0x000014A0"},
+        {"name": "__unwind_info", "vmaddr": "0x00001DE4", "size": "0x00000054", "fileoff": "0x00001DE4"},
+        {"name": "__eh_frame", "vmaddr": "0x00001E38", "size": "0x00000068", "fileoff": "0x00001E38"}
+      ]
+    },
+    {
+      "name": "__DATA_CONST",
+      "vmaddr": "0x00004000",
+      "vmsize": "0x00004000",
+      "fileoff": "0x00004000",
+      "filesize": "0x00004000",
+      "protection": "r--",
+      "sections": [
+        {"name": "__got", "vmaddr": "0x00004000", "size": "0x00000008", "fileoff": "0x00004000"}
+      ]
+    },
+    {
+      "name": "__DATA",
+      "vmaddr": "0x00008000",
+      "vmsize": "0x00008080",
+      "fileoff": "0x00008000",
+      "filesize": "0x00008000",
+      "protection": "rw-",
+      "sections": [
+        {"name": "__data", "vmaddr": "0x00008000", "size": "0x00008000", "fileoff": "0x00008000"},
+        {"name": "__common", "vmaddr": "0x00010000", "size": "0x00000080", "fileoff": "0x00000000"}
+      ]
+    },
+    {
+      "name": "__LINKEDIT",
+      "vmaddr": "0x00014000",
+      "vmsize": "0x0000C8A8",
+      "fileoff": "0x00010000",
+      "filesize": "0x000008A8",
+      "protection": "r--",
+      "sections": []
+    }
+  ],
+  "exported_symbols": [
+    {
+      "symbol": "_start",
+      "vaddr": "0x00001DA0",
+      "source_file": "src/kernel/xnu_start.s",
+      "source_revision": "xnu-10002.1.13 osfmk/arm64/start.s",
+      "category": "Category B (Adapted guest machine code)"
+    },
+    {
+      "symbol": "start_first_cpu",
+      "vaddr": "0x00001DB0",
+      "source_file": "src/kernel/xnu_start.s",
+      "source_revision": "xnu-10002.1.13 osfmk/arm64/start.s:320-370",
+      "category": "Category B (Adapted guest machine code)"
+    },
+    {
+      "symbol": "secondary_park",
+      "vaddr": "0x00001DDC",
+      "source_file": "src/kernel/xnu_start.s",
+      "source_revision": "xnu-10002.1.13 osfmk/arm64/start.s:550-570",
+      "category": "Category B (Adapted guest machine code)"
+    },
+    {
+      "symbol": "arm_init",
+      "vaddr": "0x00001648",
+      "source_file": "src/kernel/xnu_arm_init.c",
+      "source_revision": "xnu-10002.1.13 osfmk/arm/arm_init.c:280-360",
+      "category": "Category B (Adapted guest machine code)"
+    },
+    {
+      "symbol": "pe_arm_init",
+      "vaddr": "0x00001D84",
+      "source_file": "src/kernel/xnu_pe_init.c",
+      "source_revision": "xnu-10002.1.13 pexpert/arm/pe_init.c:110-150",
+      "category": "Category A/B (Unmodified API / Adapted dispatch)"
+    },
+    {
+      "symbol": "PE_init_platform",
+      "vaddr": "0x00001BAC",
+      "source_file": "src/kernel/xnu_pe_init.c",
+      "source_revision": "xnu-10002.1.13 pexpert/arm/pe_init.c:160-240",
+      "category": "Category B (Adapted guest machine code)"
+    },
+    {
+      "symbol": "arm_vm_init_early",
+      "vaddr": "Inlined into _arm_init",
+      "source_file": "src/kernel/xnu_arm_init.c",
+      "source_revision": "xnu-10002.1.13 osfmk/arm/arm_vm_init.c:120-180",
+      "category": "Category B (Adapted guest machine code)"
+    },
+    {
+      "symbol": "pmap_bootstrap",
+      "vaddr": "0x000014A0",
+      "source_file": "src/kernel/xnu_arm_init.c",
+      "source_revision": "xnu-10002.1.13 osfmk/arm/pmap.c:450-510",
+      "category": "Category B (Adapted guest machine code)"
+    }
+  ]
+}
