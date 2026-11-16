@@ -2934,6 +2934,84 @@ target_link_libraries(stage200_23_guest_workload_tests PRIVATE winios_core)
 winios_set_warnings(stage200_23_guest_workload_tests)
 add_test(NAME stage200_23_guest_workload_tests COMMAND stage200_23_guest_workload_tests)
 
+# ==============================================================================
+# WinIOS Campaign 201 Independent Verification & Architecture Truth Test Suites
+# ==============================================================================
+add_executable(stage201_5_arm64_instruction_differential_tests tests/unit/stage201_5_arm64_instruction_differential_tests.cpp)
+target_link_libraries(stage201_5_arm64_instruction_differential_tests PRIVATE winios_core)
+winios_set_warnings(stage201_5_arm64_instruction_differential_tests)
+add_test(NAME stage201_5_arm64_instruction_differential_tests COMMAND stage201_5_arm64_instruction_differential_tests)
+
+add_executable(stage201_6_sysreg_exception_differential_tests tests/unit/stage201_6_sysreg_exception_differential_tests.cpp)
+target_link_libraries(stage201_6_sysreg_exception_differential_tests PRIVATE winios_core)
+winios_set_warnings(stage201_6_sysreg_exception_differential_tests)
+add_test(NAME stage201_6_sysreg_exception_differential_tests COMMAND stage201_6_sysreg_exception_differential_tests)
+
+add_executable(stage201_7_mmu_stage1_differential_tests tests/unit/stage201_7_mmu_stage1_differential_tests.cpp)
+target_link_libraries(stage201_7_mmu_stage1_differential_tests PRIVATE winios_core)
+winios_set_warnings(stage201_7_mmu_stage1_differential_tests)
+add_test(NAME stage201_7_mmu_stage1_differential_tests COMMAND stage201_7_mmu_stage1_differential_tests)
+
+add_executable(stage201_8_stage2_combined_differential_tests tests/unit/stage201_8_stage2_combined_differential_tests.cpp)
+target_link_libraries(stage201_8_stage2_combined_differential_tests PRIVATE winios_core)
+winios_set_warnings(stage201_8_stage2_combined_differential_tests)
+add_test(NAME stage201_8_stage2_combined_differential_tests COMMAND stage201_8_stage2_combined_differential_tests)
+
+add_executable(stage201_10_pac_independent_vector_tests tests/unit/stage201_10_pac_independent_vector_tests.cpp)
+target_link_libraries(stage201_10_pac_independent_vector_tests PRIVATE winios_core)
+winios_set_warnings(stage201_10_pac_independent_vector_tests)
+add_test(NAME stage201_10_pac_independent_vector_tests COMMAND stage201_10_pac_independent_vector_tests)
+
+add_executable(stage201_11_pac_instruction_conformance_tests tests/unit/stage201_11_pac_instruction_conformance_tests.cpp)
+target_link_libraries(stage201_11_pac_instruction_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage201_11_pac_instruction_conformance_tests)
+add_test(NAME stage201_11_pac_instruction_conformance_tests COMMAND stage201_11_pac_instruction_conformance_tests)
+
+add_executable(stage201_12_pac_context_isolation_tests tests/unit/stage201_12_pac_context_isolation_tests.cpp)
+target_link_libraries(stage201_12_pac_context_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage201_12_pac_context_isolation_tests)
+add_test(NAME stage201_12_pac_context_isolation_tests COMMAND stage201_12_pac_context_isolation_tests)
+
+add_executable(stage201_13_iommu_stress_tests tests/unit/stage201_13_iommu_stress_tests.cpp)
+target_link_libraries(stage201_13_iommu_stress_tests PRIVATE winios_core)
+winios_set_warnings(stage201_13_iommu_stress_tests)
+add_test(NAME stage201_13_iommu_stress_tests COMMAND stage201_13_iommu_stress_tests)
+
+add_executable(stage201_14_dma_safety_tests tests/unit/stage201_14_dma_safety_tests.cpp)
+target_link_libraries(stage201_14_dma_safety_tests PRIVATE winios_core)
+winios_set_warnings(stage201_14_dma_safety_tests)
+add_test(NAME stage201_14_dma_safety_tests COMMAND stage201_14_dma_safety_tests)
+
+add_executable(stage201_15_gicv3_behavior_tests tests/unit/stage201_15_gicv3_behavior_tests.cpp)
+target_link_libraries(stage201_15_gicv3_behavior_tests PRIVATE winios_core)
+winios_set_warnings(stage201_15_gicv3_behavior_tests)
+add_test(NAME stage201_15_gicv3_behavior_tests COMMAND stage201_15_gicv3_behavior_tests)
+
+add_executable(stage201_16_smp_stress_tests tests/unit/stage201_16_smp_stress_tests.cpp)
+target_link_libraries(stage201_16_smp_stress_tests PRIVATE winios_core)
+winios_set_warnings(stage201_16_smp_stress_tests)
+add_test(NAME stage201_16_smp_stress_tests COMMAND stage201_16_smp_stress_tests)
+
+add_executable(stage201_18_snapshot_restore_tests tests/unit/stage201_18_snapshot_restore_tests.cpp)
+target_link_libraries(stage201_18_snapshot_restore_tests PRIVATE winios_core)
+winios_set_warnings(stage201_18_snapshot_restore_tests)
+add_test(NAME stage201_18_snapshot_restore_tests COMMAND stage201_18_snapshot_restore_tests)
+
+add_executable(stage201_19_snapshot_corruption_tests tests/unit/stage201_19_snapshot_corruption_tests.cpp)
+target_link_libraries(stage201_19_snapshot_corruption_tests PRIVATE winios_core)
+winios_set_warnings(stage201_19_snapshot_corruption_tests)
+add_test(NAME stage201_19_snapshot_corruption_tests COMMAND stage201_19_snapshot_corruption_tests)
+
+add_executable(stage201_20_deterministic_replay_tests tests/unit/stage201_20_deterministic_replay_tests.cpp)
+target_link_libraries(stage201_20_deterministic_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage201_20_deterministic_replay_tests)
+add_test(NAME stage201_20_deterministic_replay_tests COMMAND stage201_20_deterministic_replay_tests)
+
+add_executable(stage201_22_independent_guest_workload_tests tests/unit/stage201_22_independent_guest_workload_tests.cpp)
+target_link_libraries(stage201_22_independent_guest_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage201_22_independent_guest_workload_tests)
+add_test(NAME stage201_22_independent_guest_workload_tests COMMAND stage201_22_independent_guest_workload_tests)
+
 
 
 
