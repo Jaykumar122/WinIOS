@@ -1,0 +1,51 @@
+{
+  "schema_version": "205.24",
+  "generated_at": "2026-11-16T20:15:00Z",
+  "campaign": 205,
+  "artifacts": [
+    {
+      "identifier": "Target_A_Independent_Fixture",
+      "category": "Synthetic Architecture Verification",
+      "format": "ARM64 Mach-O 64-bit",
+      "source": "src/loader/independent_kernel_fixture.cpp",
+      "role": "Level 1 and Level 2 execution verification",
+      "status": "VERIFIED_PASSED",
+      "features_verified": [
+        "EL1 entry at 0x1000",
+        "Stack validation",
+        "boot_args reading from X0 and X19",
+        "VBAR_EL1 programming to 0x2800",
+        "Privilege drop to EL0 via ERET",
+        "SVC #0 trapping to EL1 vector +0x400",
+        "ESR_EL1 verification (EC = 0x15)",
+        "Memory magic write 0xCAFEFEEDC001CAFEULL",
+        "WFI halt after 19 instructions"
+      ]
+    },
+    {
+      "identifier": "Target_B_Darwin_XNU_OpenSource_Candidate",
+      "category": "Public-source Darwin/XNU Execution",
+      "format": "ARM64 Mach-O 64-bit",
+      "source": "tests/unit/stage205_18_xnu_execution_attempt_tests.cpp",
+      "role": "Level 2 and early Level 3 bootstrap execution attempt",
+      "status": "VERIFIED_PASSED_UP_TO_SILICON_BOUNDARY",
+      "sha256": "3d2d8e2b0a107cd85b0a22186f13c75062569c14a1d129f95ac13cc71d0afd8e",
+      "instructions_retired_before_blocker": 19,
+      "blocker_type": "Proprietary Apple Interrupt Controller (AICv2) MMIO access (0x23B100000)"
+    },
+    {
+      "identifier": "Target_C_Production_iOS_Kernelcache",
+      "category": "Production Apple iOS 17/18 Firmware Artifact",
+      "format": "ARM64e Encrypted/Authenticated Kernel Collection",
+      "source": "Apple IPSW Firmware filesets",
+      "role": "Level 5 Full iOS Boot target",
+      "status": "BLOCKED_BY_PROPRIETARY_SILICON",
+      "blocker_details": [
+        "Proprietary SecureROM cryptographic chain of trust",
+        "Secure Enclave Processor (SEP) hardware key storage and mailbox protocol",
+        "Encrypted FairPlay kernel extensions and driver filesets",
+        "Closed Apple silicon peripherals (PMGR, DART, Apple Display Engine, SPRs)"
+      ]
+    }
+  ]
+}

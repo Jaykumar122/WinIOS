@@ -6,6 +6,10 @@
 #include <string_view>
 #include <vector>
 
+namespace winios::loader {
+struct KernelParsedImage;
+}
+
 namespace winios::memory {
 
 // -----------------------------------------------------------------------------
@@ -55,13 +59,20 @@ inline constexpr std::uint64_t kDefaultMmioConsoleSize  = 0x00001000ULL;
 // -----------------------------------------------------------------------------
 enum class MemoryRegionKind {
     KernelText,
-    KernelData,
+    ReadOnlyData,
+    WritableData,
+    ZeroInitData,
+    BootInfo,
+    DeviceTree,
+    PageTables,
     KernelHeap,
     KernelStack,
     GuardPage,
+    Reserved,
     MmioDevice,
     DirectPhysicalMap,
-    Userspace
+    Userspace,
+    KernelData // Backward compatibility alias for WritableData
 };
 
 [[nodiscard]] const char* memory_region_kind_string(MemoryRegionKind kind) noexcept;
@@ -136,8 +147,21 @@ public:
     }
 
     [[nodiscard]] const KernelMemoryRegion* find_region(std::uint64_t va) const noexcept;
+    [[nodiscard]] const KernelMemoryRegion* find_region_by_kind(MemoryRegionKind kind) const noexcept;
     [[nodiscard]] bool is_guard_page(std::uint64_t va) const noexcept;
 
+    bool add_region(const KernelMemoryRegion& region, std::string* out_error = nullptr);
+    void clear_regions() noexcept { regions_.clear(); }
+
+    bool build_from_parsed_image(
+        const loader::KernelParsedImage& image,
+        std::uint64_t ram_base,
+        std::uint64_t ram_size,
+        std::uint64_t boot_args_size,
+        std::uint64_t dt_size,
+        std::string* out_error = nullptr);
+
+    [[nodiscard]] bool check_wx_policy(std::string* out_error = nullptr) const;
     [[nodiscard]] bool validate_layout(std::string* out_error = nullptr) const;
 
 private:

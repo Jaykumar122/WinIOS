@@ -144,6 +144,20 @@ struct MappedImageRegion {
 };
 
 // -----------------------------------------------------------------------------
+// Kernel Boot Timeline Event (Stage 205.21)
+// -----------------------------------------------------------------------------
+struct KernelBootTimelineEvent {
+    std::string               phase_name;
+    std::uint64_t             timestamp_ns{0};
+    std::uint32_t             core_id{0};
+    std::uint64_t             pc{0};
+    std::uint64_t             sp{0};
+    std::uint64_t             instructions_retired{0};
+    std::string               details;
+    std::vector<RegisterDiff> register_diffs;
+};
+
+// -----------------------------------------------------------------------------
 // ExecutionDiagnostics: Complete Runtime Tracer & Conformance Inspector
 // -----------------------------------------------------------------------------
 class ExecutionDiagnostics {
@@ -275,6 +289,21 @@ public:
         std::uint64_t fault_address,
         std::string_view failure_reason) const;
 
+    // Kernel Boot Timeline Diagnostics (Stage 205.21)
+    void log_kernel_boot_event(const KernelBootTimelineEvent& event);
+    void log_kernel_boot_phase(
+        std::string_view phase,
+        std::uint32_t core_id,
+        std::uint64_t pc,
+        std::uint64_t sp,
+        std::uint64_t instructions_retired,
+        std::string_view details = "");
+
+    [[nodiscard]] std::size_t kernel_boot_event_count() const noexcept;
+    [[nodiscard]] const KernelBootTimelineEvent* get_kernel_boot_event(std::size_t index) const;
+    [[nodiscard]] std::vector<KernelBootTimelineEvent> get_kernel_boot_timeline() const;
+    [[nodiscard]] std::string export_kernel_boot_timeline_json() const;
+
 private:
     [[nodiscard]] std::string format_summary_unlocked() const;
 
@@ -287,6 +316,7 @@ private:
     std::vector<MemoryFaultRecord>      memory_faults_;
     std::vector<MachIpcTraceRecord>     mach_ipc_ops_;
     std::vector<ThreadTransitionRecord> thread_transitions_;
+    std::vector<KernelBootTimelineEvent> kernel_boot_events_;
     std::vector<MappedImageRegion>      image_regions_;
     ProcessLifecycleRecord              lifecycle_{};
 };

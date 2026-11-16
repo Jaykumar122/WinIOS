@@ -21,6 +21,9 @@ endfunction()
 # Emulator core, shared by the demo executable and the unit tests.
 add_library(winios_core STATIC
     src/cpu/cpu.cpp
+    src/cpu/arm64_cpu_boot_state.cpp
+    src/cpu/kernel_exception_vectors.cpp
+    src/cpu/kernel_boot_timer_interrupt.cpp
     src/cpu/sysreg.cpp
     src/cpu/darwin_sysreg_compat.cpp
     src/cpu/pointer_auth.cpp
@@ -43,6 +46,7 @@ add_library(winios_core STATIC
     src/device/virtual_platform.cpp
     src/device/fdt_builder.cpp
     src/device/apple_devicetree.cpp
+    src/device/kernel_boot_devicetree.cpp
     src/device/apple_devicetree_handoff.cpp
     src/device/apple_aic.cpp
     src/device/apple_pmgr.cpp
@@ -51,6 +55,7 @@ add_library(winios_core STATIC
     src/device/apple_hardware_profile.cpp
     src/firmware/virtual_firmware.cpp
     src/firmware/apple_boot_config_manager.cpp
+    src/firmware/kernel_boot_args_builder.cpp
     src/device/dma_payload_store.cpp
     src/device/recording_recovery.cpp
     src/reference/independent_reference_model.cpp
@@ -80,6 +85,12 @@ add_library(winios_core STATIC
     src/loader/real_artifact_harness.cpp
     src/loader/macho_corpus_builder.cpp
     src/loader/macho_fixture_corpus.cpp
+    src/loader/kernel_image_parser.cpp
+    src/loader/kernel_image_mapper.cpp
+    src/runtime/kernel_boot_coordinator.cpp
+    src/runtime/early_kernel_services.cpp
+    src/runtime/smp_kernel_boot_manager.cpp
+    src/loader/independent_kernel_fixture.cpp
     src/loader/macho_dependency_graph.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
@@ -89,6 +100,7 @@ add_library(winios_core STATIC
     src/memory/stage2_mmu.cpp
     src/memory/apple_physical_memory_map.cpp
     src/memory/kernel_memory_layout.cpp
+    src/memory/boot_memory_descriptor.cpp
     src/memory/physical_page_manager.cpp
     src/memory/virtual_page_table.cpp
     src/memory/demand_paging_manager.cpp
@@ -3381,6 +3393,147 @@ add_executable(stage204_23_e2e_workload_demos_tests
 target_link_libraries(stage204_23_e2e_workload_demos_tests PRIVATE winios_core)
 winios_set_warnings(stage204_23_e2e_workload_demos_tests)
 add_test(NAME stage204_23_e2e_workload_demos_tests COMMAND stage204_23_e2e_workload_demos_tests)
+
+add_executable(stage205_4_kernel_image_parser_tests
+    tests/unit/stage205_4_kernel_image_parser_tests.cpp
+)
+target_link_libraries(stage205_4_kernel_image_parser_tests PRIVATE winios_core)
+winios_set_warnings(stage205_4_kernel_image_parser_tests)
+add_test(NAME stage205_4_kernel_image_parser_tests COMMAND stage205_4_kernel_image_parser_tests)
+
+add_executable(stage205_5_kernel_memory_layout_tests
+    tests/unit/stage205_5_kernel_memory_layout_tests.cpp
+)
+target_link_libraries(stage205_5_kernel_memory_layout_tests PRIVATE winios_core)
+winios_set_warnings(stage205_5_kernel_memory_layout_tests)
+add_test(NAME stage205_5_kernel_memory_layout_tests COMMAND stage205_5_kernel_memory_layout_tests)
+
+add_executable(stage205_6_kernel_image_mapping_tests
+    tests/unit/stage205_6_kernel_image_mapping_tests.cpp
+)
+target_link_libraries(stage205_6_kernel_image_mapping_tests PRIVATE winios_core)
+winios_set_warnings(stage205_6_kernel_image_mapping_tests)
+add_test(NAME stage205_6_kernel_image_mapping_tests COMMAND stage205_6_kernel_image_mapping_tests)
+
+add_executable(stage205_7_boot_memory_descriptor_tests
+    tests/unit/stage205_7_boot_memory_descriptor_tests.cpp
+)
+target_link_libraries(stage205_7_boot_memory_descriptor_tests PRIVATE winios_core)
+winios_set_warnings(stage205_7_boot_memory_descriptor_tests)
+add_test(NAME stage205_7_boot_memory_descriptor_tests COMMAND stage205_7_boot_memory_descriptor_tests)
+
+add_executable(stage205_8_arm64_cpu_boot_state_tests
+    tests/unit/stage205_8_arm64_cpu_boot_state_tests.cpp
+)
+target_link_libraries(stage205_8_arm64_cpu_boot_state_tests PRIVATE winios_core)
+winios_set_warnings(stage205_8_arm64_cpu_boot_state_tests)
+add_test(NAME stage205_8_arm64_cpu_boot_state_tests COMMAND stage205_8_arm64_cpu_boot_state_tests)
+
+add_executable(stage205_9_device_tree_boot_tests
+    tests/unit/stage205_9_device_tree_boot_tests.cpp
+)
+target_link_libraries(stage205_9_device_tree_boot_tests PRIVATE winios_core)
+winios_set_warnings(stage205_9_device_tree_boot_tests)
+add_test(NAME stage205_9_device_tree_boot_tests COMMAND stage205_9_device_tree_boot_tests)
+
+add_executable(stage205_10_kernel_exception_vectors_tests
+    tests/unit/stage205_10_kernel_exception_vectors_tests.cpp
+)
+target_link_libraries(stage205_10_kernel_exception_vectors_tests PRIVATE winios_core)
+winios_set_warnings(stage205_10_kernel_exception_vectors_tests)
+add_test(NAME stage205_10_kernel_exception_vectors_tests COMMAND stage205_10_kernel_exception_vectors_tests)
+
+add_executable(stage205_11_timer_interrupt_boot_services_tests
+    tests/unit/stage205_11_timer_interrupt_boot_services_tests.cpp
+)
+target_link_libraries(stage205_11_timer_interrupt_boot_services_tests PRIVATE winios_core)
+winios_set_warnings(stage205_11_timer_interrupt_boot_services_tests)
+add_test(NAME stage205_11_timer_interrupt_boot_services_tests COMMAND stage205_11_timer_interrupt_boot_services_tests)
+
+add_executable(stage205_12_kernel_boot_args_tests
+    tests/unit/stage205_12_kernel_boot_args_tests.cpp
+)
+target_link_libraries(stage205_12_kernel_boot_args_tests PRIVATE winios_core)
+winios_set_warnings(stage205_12_kernel_boot_args_tests)
+add_test(NAME stage205_12_kernel_boot_args_tests COMMAND stage205_12_kernel_boot_args_tests)
+
+add_executable(stage205_13_kernel_entry_handoff_tests
+    tests/unit/stage205_13_kernel_entry_handoff_tests.cpp
+)
+target_link_libraries(stage205_13_kernel_entry_handoff_tests PRIVATE winios_core)
+winios_set_warnings(stage205_13_kernel_entry_handoff_tests)
+add_test(NAME stage205_13_kernel_entry_handoff_tests COMMAND stage205_13_kernel_entry_handoff_tests)
+
+add_executable(stage205_14_independent_kernel_fixture_tests
+    tests/unit/stage205_14_independent_kernel_fixture_tests.cpp
+)
+target_link_libraries(stage205_14_independent_kernel_fixture_tests PRIVATE winios_core)
+winios_set_warnings(stage205_14_independent_kernel_fixture_tests)
+add_test(NAME stage205_14_independent_kernel_fixture_tests COMMAND stage205_14_independent_kernel_fixture_tests)
+
+add_executable(stage205_15_kernel_instruction_coverage_tests
+    tests/unit/stage205_15_kernel_instruction_coverage_tests.cpp
+)
+target_link_libraries(stage205_15_kernel_instruction_coverage_tests PRIVATE winios_core)
+winios_set_warnings(stage205_15_kernel_instruction_coverage_tests)
+add_test(NAME stage205_15_kernel_instruction_coverage_tests COMMAND stage205_15_kernel_instruction_coverage_tests)
+
+add_executable(stage205_16_kernel_fault_recovery_tests
+    tests/unit/stage205_16_kernel_fault_recovery_tests.cpp
+)
+target_link_libraries(stage205_16_kernel_fault_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage205_16_kernel_fault_recovery_tests)
+add_test(NAME stage205_16_kernel_fault_recovery_tests COMMAND stage205_16_kernel_fault_recovery_tests)
+
+add_executable(stage205_17_early_kernel_services_tests
+    tests/unit/stage205_17_early_kernel_services_tests.cpp
+)
+target_link_libraries(stage205_17_early_kernel_services_tests PRIVATE winios_core)
+winios_set_warnings(stage205_17_early_kernel_services_tests)
+add_test(NAME stage205_17_early_kernel_services_tests COMMAND stage205_17_early_kernel_services_tests)
+
+add_executable(stage205_18_xnu_execution_attempt_tests
+    tests/unit/stage205_18_xnu_execution_attempt_tests.cpp
+)
+target_link_libraries(stage205_18_xnu_execution_attempt_tests PRIVATE winios_core)
+winios_set_warnings(stage205_18_xnu_execution_attempt_tests)
+add_test(NAME stage205_18_xnu_execution_attempt_tests COMMAND stage205_18_xnu_execution_attempt_tests)
+
+add_executable(stage205_19_xnu_early_init_compatibility_tests
+    tests/unit/stage205_19_xnu_early_init_compatibility_tests.cpp
+)
+target_link_libraries(stage205_19_xnu_early_init_compatibility_tests PRIVATE winios_core)
+winios_set_warnings(stage205_19_xnu_early_init_compatibility_tests)
+add_test(NAME stage205_19_xnu_early_init_compatibility_tests COMMAND stage205_19_xnu_early_init_compatibility_tests)
+
+add_executable(stage205_20_smp_kernel_boot_tests
+    tests/unit/stage205_20_smp_kernel_boot_tests.cpp
+)
+target_link_libraries(stage205_20_smp_kernel_boot_tests PRIVATE winios_core)
+winios_set_warnings(stage205_20_smp_kernel_boot_tests)
+add_test(NAME stage205_20_smp_kernel_boot_tests COMMAND stage205_20_smp_kernel_boot_tests)
+
+add_executable(stage205_21_kernel_boot_diagnostics_tests
+    tests/unit/stage205_21_kernel_boot_diagnostics_tests.cpp
+)
+target_link_libraries(stage205_21_kernel_boot_diagnostics_tests PRIVATE winios_core)
+winios_set_warnings(stage205_21_kernel_boot_diagnostics_tests)
+add_test(NAME stage205_21_kernel_boot_diagnostics_tests COMMAND stage205_21_kernel_boot_diagnostics_tests)
+
+add_executable(stage205_22_kernel_snapshot_replay_tests
+    tests/unit/stage205_22_kernel_snapshot_replay_tests.cpp
+)
+target_link_libraries(stage205_22_kernel_snapshot_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage205_22_kernel_snapshot_replay_tests)
+add_test(NAME stage205_22_kernel_snapshot_replay_tests COMMAND stage205_22_kernel_snapshot_replay_tests)
+
+add_executable(stage205_23_boot_security_adversarial_tests
+    tests/unit/stage205_23_boot_security_adversarial_tests.cpp
+)
+target_link_libraries(stage205_23_boot_security_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage205_23_boot_security_adversarial_tests)
+add_test(NAME stage205_23_boot_security_adversarial_tests COMMAND stage205_23_boot_security_adversarial_tests)
+
 
 
 

@@ -1,0 +1,41 @@
+{
+  "campaign": 205,
+  "test_framework": "CTest / Visual Studio 2026 MSVC C++20",
+  "build_configuration": "Release",
+  "compiler_flags": "/W4 /WX /permissive-",
+  "test_accounting": {
+    "total_registered_test_targets": 556,
+    "tests_passed": 555,
+    "tests_skipped": 1,
+    "tests_failed": 0,
+    "pass_rate_percent": 100.0,
+    "skipped_tests_detail": [
+      {
+        "test_name": "inferno_integration_tests",
+        "reason": "External third-party test directory skipped by design when optional dependencies are unconfigured"
+      }
+    ]
+  },
+  "campaign_205_specific_tests": [
+    {"target": "stage205_4_kernel_image_parser_tests", "status": "PASSED"},
+    {"target": "stage205_5_kernel_memory_layout_tests", "status": "PASSED"},
+    {"target": "stage205_6_kernel_image_mapping_tests", "status": "PASSED"},
+    {"target": "stage205_7_boot_memory_descriptor_tests", "status": "PASSED"},
+    {"target": "stage205_8_arm64_cpu_boot_state_tests", "status": "PASSED"},
+    {"target": "stage205_9_device_tree_boot_tests", "status": "PASSED"},
+    {"target": "stage205_10_kernel_exception_vectors_tests", "status": "PASSED"},
+    {"target": "stage205_11_timer_interrupt_boot_services_tests", "status": "PASSED"},
+    {"target": "stage205_12_kernel_boot_args_tests", "status": "PASSED"},
+    {"target": "stage205_13_kernel_entry_handoff_tests", "status": "PASSED"},
+    {"target": "stage205_14_independent_kernel_fixture_tests", "status": "PASSED"},
+    {"target": "stage205_15_kernel_instruction_coverage_tests", "status": "PASSED"},
+    {"target": "stage205_16_kernel_fault_recovery_tests", "status": "PASSED"},
+    {"target": "stage205_17_early_kernel_services_tests", "status": "PASSED"},
+    {"target": "stage205_18_xnu_execution_attempt_tests", "status": "PASSED"},
+    {"target": "stage205_19_xnu_early_init_compatibility_tests", "status": "PASSED"},
+    {"target": "stage205_20_smp_kernel_boot_tests", "status": "PASSED"},
+    {"target": "stage205_21_kernel_boot_diagnostics_tests", "status": "PASSED"},
+    {"target": "stage205_22_kernel_snapshot_replay_tests", "status": "PASSED"},
+    {"target": "stage205_23_boot_security_adversarial_tests", "status": "PASSED"}
+  ]
+}

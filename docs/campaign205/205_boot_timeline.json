@@ -1,0 +1,87 @@
+{
+  "schema_version": "205.21",
+  "target_device": "iPhone15,4",
+  "soc": "Apple A16 Bionic (T8120)",
+  "total_events": 7,
+  "events": [
+    {
+      "phase": "FirmwareHandoff",
+      "core_id": 0,
+      "pc": "0x1000",
+      "sp": "0x80004000",
+      "instructions_retired": 0,
+      "details": "Bootloader transitions CPU to EL1h; X0 and X19 point to boot_args",
+      "timestamp_ns": 0,
+      "register_diffs": [
+        {"reg": 0, "before": "0x0", "after": "0x804000000"},
+        {"reg": 19, "before": "0x0", "after": "0x804000000"}
+      ]
+    },
+    {
+      "phase": "InterruptsMasked",
+      "core_id": 0,
+      "pc": "0x1004",
+      "sp": "0x80004000",
+      "instructions_retired": 1,
+      "details": "MSR DAIFSet, #0xF executed; DAIF bits set to 0xF",
+      "timestamp_ns": 42
+    },
+    {
+      "phase": "CpuAffinityQueried",
+      "core_id": 0,
+      "pc": "0x1008",
+      "sp": "0x80004000",
+      "instructions_retired": 2,
+      "details": "MRS X20, MPIDR_EL1 read affinity (Cluster 0, Core 0)",
+      "timestamp_ns": 84,
+      "register_diffs": [
+        {"reg": 20, "before": "0x0", "after": "0x80000000"}
+      ]
+    },
+    {
+      "phase": "VbarConfigured",
+      "core_id": 0,
+      "pc": "0x1010",
+      "sp": "0x80004000",
+      "instructions_retired": 4,
+      "details": "VBAR_EL1 programmed to 0x4000 (2048-byte aligned)",
+      "timestamp_ns": 168
+    },
+    {
+      "phase": "BootArgsRead",
+      "core_id": 0,
+      "pc": "0x101c",
+      "sp": "0x80004000",
+      "instructions_retired": 7,
+      "details": "Read physBase (0x0), memSize (0x400000), deviceTreeP (0x80001000)",
+      "timestamp_ns": 294,
+      "register_diffs": [
+        {"reg": 21, "before": "0x0", "after": "0x0"},
+        {"reg": 22, "before": "0x0", "after": "0x400000"},
+        {"reg": 23, "before": "0x0", "after": "0x80001000"}
+      ]
+    },
+    {
+      "phase": "EarlyUartLogging",
+      "core_id": 0,
+      "pc": "0x1038",
+      "sp": "0x80004000",
+      "instructions_retired": 14,
+      "details": "Wrote diagnostic 'XNU' string to UART console MMIO at 0x90000",
+      "timestamp_ns": 588
+    },
+    {
+      "phase": "PeripheralBoundaryEncountered",
+      "core_id": 0,
+      "pc": "0x1048",
+      "sp": "0x80004000",
+      "instructions_retired": 19,
+      "details": "Attempted access to Apple Interrupt Controller (AICv2) MMIO at 0x23B100000; raised Data Abort (EC 0x25)",
+      "timestamp_ns": 798,
+      "register_diffs": [
+        {"reg": 28, "before": "0x0", "after": "0x96000045"},
+        {"reg": 29, "before": "0x0", "after": "0x23b100000"}
+      ]
+    }
+  ]
+}

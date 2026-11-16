@@ -42,9 +42,11 @@ secrets.json
 /artifacts/*
 !/artifacts/campaign-203/
 !/artifacts/campaign-204/
+!/artifacts/campaign-205/
 !tests/artifacts/*
 !/artifacts/campaign-203/
 !/artifacts/campaign-204/
+!/artifacts/campaign-205/
 stage21_benchmark/
 divergence_report.json
 
@@ -108,12 +110,21 @@ divergence_report.json
 !docs/campaign204/*.md
 !docs/campaign204/*.json
 !docs/campaign204/*.txt
+!docs/campaign205/
+!docs/campaign205/*.md
+!docs/campaign205/*.json
+!docs/campaign205/*.txt
 !artifacts/campaign-203/
 !artifacts/campaign-203/*.md
 !artifacts/campaign-203/*.sha256
 !artifacts/campaign-204/
 !artifacts/campaign-204/*.md
 !artifacts/campaign-204/*.sha256
+!artifacts/campaign-205/
+!artifacts/campaign-205/*.md
+!artifacts/campaign-205/*.json
+!artifacts/campaign-205/*.txt
+!artifacts/campaign-205/*.sha256
 Testing/
 reports/
 __pycache__/

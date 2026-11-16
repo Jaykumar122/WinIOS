@@ -1,0 +1,75 @@
+{
+  "schema_version": "205.24",
+  "campaign": "205",
+  "title": "Genuine Darwin/XNU Kernel Boot: From Mach-O Application Execution to Kernel Entry, Early Boot and Operating-System Initialization",
+  "target_research_profile": {
+    "device_identifier": "iPhone15,4",
+    "hardware_model": "D37AP",
+    "soc": "Apple A16 Bionic (T8120)",
+    "architecture": "ARM64 / ARM64e",
+    "physical_cores": 6,
+    "p_cores": 2,
+    "p_core_name": "Everest",
+    "e_cores": 4,
+    "e_core_name": "Sawtooth",
+    "page_granule_bytes": 16384,
+    "dram_capacity_bytes": 6442450944
+  },
+  "boot_level_classification": {
+    "level_1_arm64_boot_services": {
+      "status": "VERIFIED_COMPLETE",
+      "description": "ISA execution, EL1/EL2 privilege mode, timer interrupt injection, GICv3 distributor/redistributor, 16KB granule MMU, VBAR vector table"
+    },
+    "level_2_genuine_kernel_entry": {
+      "status": "VERIFIED_COMPLETE",
+      "description": "Mach-O kernel image parsing, physical segment mapping, Apple DeviceTree and BootArgs Rev 2 handoff, EL1h entry at kernel entry PC"
+    },
+    "level_3_early_xnu_init": {
+      "status": "PARTIALLY_VERIFIED_BOUNDED",
+      "description": "Executed early start.s prologue (DAIF masking, boot_args pointer preservation, MPIDR CPU identification, physical base/memSize/DeviceTree retrieval, early UART diagnostics) up to proprietary hardware boundary"
+    },
+    "level_4_darwin_kernel_services": {
+      "status": "BLOCKED_BY_SILICON",
+      "description": "Requires proprietary Apple Interrupt Controller (AICv2), PMGR power manager, and Apple system registers not in public ARM64 specifications"
+    },
+    "level_5_full_ios_boot": {
+      "status": "BLOCKED_BY_PROPRIETARY_SILICON",
+      "description": "Requires proprietary SecureROM, Secure Enclave Processor (SEP), FairPlay encryption keys, and closed Apple hardware co-processors"
+    }
+  },
+  "subsystem_capabilities": {
+    "kernel_image_parser": {
+      "status": "PRODUCTION",
+      "formats_supported": ["MachO64"],
+      "cpu_targets": ["ARM64", "ARM64e"],
+      "validation": "Full header, command bounds, and W^X segment verification"
+    },
+    "kernel_image_mapper": {
+      "status": "PRODUCTION",
+      "features": ["Transactional rollback", "BSS zero-fill", "Alignment enforcement", "Out-of-bounds rejection"]
+    },
+    "boot_args_builder": {
+      "status": "PRODUCTION",
+      "revision": 2,
+      "version": 2,
+      "exact_size_bytes": 736,
+      "boot_line_max_bytes": 608
+    },
+    "apple_devicetree": {
+      "status": "PRODUCTION",
+      "format": "Apple Flattened ADTS & FDT",
+      "nodes": ["/", "/chosen", "/memory", "/cpus", "/arm-io"]
+    },
+    "smp_boot_manager": {
+      "status": "PRODUCTION",
+      "max_cores": 8,
+      "active_cores": 6,
+      "rendezvous_synchronization": true
+    },
+    "snapshot_and_replay": {
+      "status": "PRODUCTION",
+      "bit_exact_replay": true,
+      "supported_states": ["PreHandoff", "EarlyBootstrap", "ExceptionBoundary"]
+    }
+  }
+}

@@ -14,6 +14,7 @@ void ExecutionDiagnostics::reset() {
     memory_faults_.clear();
     mach_ipc_ops_.clear();
     thread_transitions_.clear();
+    kernel_boot_events_.clear();
     image_regions_.clear();
     lifecycle_ = ProcessLifecycleRecord{};
 }
@@ -798,6 +799,95 @@ std::string ExecutionDiagnostics::disassemble_instruction(std::uint32_t raw_inst
     std::ostringstream ss;
     ss << "instr 0x" << std::hex << std::setw(8) << std::setfill('0') << raw_instr;
     return ss.str();
+}
+
+void ExecutionDiagnostics::log_kernel_boot_event(const KernelBootTimelineEvent& event) {
+    if (!enabled_) return;
+    std::lock_guard<std::mutex> guard(lock_);
+    if (kernel_boot_events_.size() >= max_capacity_) {
+        kernel_boot_events_.erase(kernel_boot_events_.begin());
+    }
+    kernel_boot_events_.push_back(event);
+}
+
+void ExecutionDiagnostics::log_kernel_boot_phase(
+    std::string_view phase,
+    std::uint32_t core_id,
+    std::uint64_t pc,
+    std::uint64_t sp,
+    std::uint64_t instructions_retired,
+    std::string_view details) {
+
+    KernelBootTimelineEvent ev{};
+    ev.phase_name = std::string(phase);
+    ev.timestamp_ns = 0;
+    ev.core_id = core_id;
+    ev.pc = pc;
+    ev.sp = sp;
+    ev.instructions_retired = instructions_retired;
+    ev.details = std::string(details);
+
+    log_kernel_boot_event(ev);
+}
+
+std::size_t ExecutionDiagnostics::kernel_boot_event_count() const noexcept {
+    std::lock_guard<std::mutex> guard(lock_);
+    return kernel_boot_events_.size();
+}
+
+const KernelBootTimelineEvent* ExecutionDiagnostics::get_kernel_boot_event(std::size_t index) const {
+    std::lock_guard<std::mutex> guard(lock_);
+    if (index >= kernel_boot_events_.size()) return nullptr;
+    return &kernel_boot_events_[index];
+}
+
+std::vector<KernelBootTimelineEvent> ExecutionDiagnostics::get_kernel_boot_timeline() const {
+    std::lock_guard<std::mutex> guard(lock_);
+    return kernel_boot_events_;
+}
+
+std::string ExecutionDiagnostics::export_kernel_boot_timeline_json() const {
+    std::lock_guard<std::mutex> guard(lock_);
+    std::ostringstream oss;
+    oss << "{\n"
+        << "  \"schema_version\": \"205.21\",\n"
+        << "  \"target_device\": \"iPhone15,4\",\n"
+        << "  \"soc\": \"Apple A16 Bionic (T8120)\",\n"
+        << "  \"total_events\": " << kernel_boot_events_.size() << ",\n"
+        << "  \"events\": [\n";
+
+    for (std::size_t i = 0; i < kernel_boot_events_.size(); ++i) {
+        const auto& ev = kernel_boot_events_[i];
+        oss << "    {\n"
+            << "      \"phase\": \"" << ev.phase_name << "\",\n"
+            << "      \"core_id\": " << ev.core_id << ",\n"
+            << "      \"pc\": \"0x" << std::hex << ev.pc << std::dec << "\",\n"
+            << "      \"sp\": \"0x" << std::hex << ev.sp << std::dec << "\",\n"
+            << "      \"instructions_retired\": " << ev.instructions_retired << ",\n"
+            << "      \"details\": \"" << ev.details << "\",\n"
+            << "      \"timestamp_ns\": " << ev.timestamp_ns;
+
+        if (!ev.register_diffs.empty()) {
+            oss << ",\n      \"register_diffs\": [\n";
+            for (std::size_t r = 0; r < ev.register_diffs.size(); ++r) {
+                const auto& diff = ev.register_diffs[r];
+                oss << "        {\"reg\": " << static_cast<unsigned>(diff.reg_index)
+                    << ", \"before\": \"0x" << std::hex << diff.old_value << std::dec
+                    << "\", \"after\": \"0x" << std::hex << diff.new_value << std::dec << "\"}";
+                if (r + 1 < ev.register_diffs.size()) oss << ",";
+                oss << "\n";
+            }
+            oss << "      ]\n";
+        } else {
+            oss << "\n";
+        }
+        oss << "    }";
+        if (i + 1 < kernel_boot_events_.size()) oss << ",";
+        oss << "\n";
+    }
+
+    oss << "  ]\n}\n";
+    return oss.str();
 }
 
 } // namespace winios::runtime
