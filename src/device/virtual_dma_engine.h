@@ -31,6 +31,16 @@ struct VirtualDmaEngineResult {
 };
 
 // -----------------------------------------------------------------------------
+// VirtualDmaRingConfig: Descriptor ring buffer configuration
+// -----------------------------------------------------------------------------
+struct VirtualDmaRingConfig {
+    std::uint64_t ring_base_paddr{0};
+    std::uint32_t ring_capacity{0}; // Total descriptor slots in the circular buffer
+    std::uint32_t start_index{0};   // Starting slot index for the batch
+    std::uint32_t batch_count{0};   // Number of descriptors to execute in this batch
+};
+
+// -----------------------------------------------------------------------------
 // VirtualDmaEngine: Deterministic, bounded memory-to-memory virtual DMA processor
 // -----------------------------------------------------------------------------
 class VirtualDmaEngine {
@@ -47,6 +57,10 @@ public:
 
     [[nodiscard]] bool is_enabled() const noexcept { return enabled_; }
     void set_enabled(bool enabled) noexcept { enabled_ = enabled; }
+
+    // Performance engineering: zero-copy contiguous memory transfers
+    [[nodiscard]] bool is_zero_copy_enabled() const noexcept { return zero_copy_enabled_; }
+    void set_zero_copy_enabled(bool enabled) noexcept { zero_copy_enabled_ = enabled; }
 
     void set_iommu(std::shared_ptr<VirtualIommu> iommu) noexcept { iommu_ = std::move(iommu); }
     [[nodiscard]] std::shared_ptr<VirtualIommu> iommu() const noexcept { return iommu_; }
@@ -85,6 +99,10 @@ public:
     VirtualDmaEngineResult execute_descriptor_chain(std::uint64_t descriptor_paddr,
                                                     std::size_t core_id = 0);
 
+    // Batched ring descriptor execution for high-throughput zero-copy DMA
+    VirtualDmaEngineResult execute_ring_batch(const VirtualDmaRingConfig& ring_config,
+                                             std::size_t core_id = 0);
+
     // Single descriptor validation without execution
     [[nodiscard]] VirtualDmaDescriptorStatus validate_descriptor(const VirtualDmaDescriptor& desc,
                                                                  std::size_t memory_size) const noexcept;
@@ -117,6 +135,7 @@ private:
     bool completion_irq_enabled_{false};
     VirtualDmaLimits limits_;
     bool enabled_{true};
+    bool zero_copy_enabled_{true};
 
     std::uint64_t total_submissions_{0};
     std::uint64_t total_descriptors_processed_{0};

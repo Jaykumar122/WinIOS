@@ -213,22 +213,44 @@ VirtualDmaEngineResult VirtualDmaEngine::execute_descriptor_chain(std::uint64_t 
 
         // Execute transfer
         if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
-            bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
-            shared_memory_->read_bytes(core_id, effective_src_pa, bounce_buffer.data(), bounce_buffer.size());
-            shared_memory_->write_bytes(core_id, effective_dst_pa, bounce_buffer.data(), bounce_buffer.size());
-        } else if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Fill)) {
-            bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
-            const std::uint32_t pat = desc.fill_pattern;
-            const std::uint8_t pat_bytes[4] = {
-                static_cast<std::uint8_t>(pat & 0xFFu),
-                static_cast<std::uint8_t>((pat >> 8u) & 0xFFu),
-                static_cast<std::uint8_t>((pat >> 16u) & 0xFFu),
-                static_cast<std::uint8_t>((pat >> 24u) & 0xFFu)
-            };
-            for (std::size_t i = 0; i < bounce_buffer.size(); ++i) {
-                bounce_buffer[i] = pat_bytes[i % 4];
+            if (zero_copy_enabled_) {
+                std::uint8_t* raw_mem = shared_memory_->raw_memory().raw_data();
+                std::memmove(raw_mem + effective_dst_pa, raw_mem + effective_src_pa, static_cast<std::size_t>(desc.length_bytes));
+            } else {
+                bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
+                shared_memory_->read_bytes(core_id, effective_src_pa, bounce_buffer.data(), bounce_buffer.size());
+                shared_memory_->write_bytes(core_id, effective_dst_pa, bounce_buffer.data(), bounce_buffer.size());
             }
-            shared_memory_->write_bytes(core_id, effective_dst_pa, bounce_buffer.data(), bounce_buffer.size());
+        } else if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Fill)) {
+            if (zero_copy_enabled_) {
+                std::uint8_t* raw_mem = shared_memory_->raw_memory().raw_data();
+                const std::uint32_t pat = desc.fill_pattern;
+                const std::uint8_t b0 = static_cast<std::uint8_t>(pat & 0xFFu);
+                const std::uint8_t b1 = static_cast<std::uint8_t>((pat >> 8u) & 0xFFu);
+                const std::uint8_t b2 = static_cast<std::uint8_t>((pat >> 16u) & 0xFFu);
+                const std::uint8_t b3 = static_cast<std::uint8_t>((pat >> 24u) & 0xFFu);
+                if (b0 == b1 && b1 == b2 && b2 == b3) {
+                    std::memset(raw_mem + effective_dst_pa, b0, static_cast<std::size_t>(desc.length_bytes));
+                } else {
+                    const std::uint8_t pat_bytes[4] = { b0, b1, b2, b3 };
+                    for (std::size_t i = 0; i < desc.length_bytes; ++i) {
+                        raw_mem[effective_dst_pa + i] = pat_bytes[i % 4];
+                    }
+                }
+            } else {
+                bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
+                const std::uint32_t pat = desc.fill_pattern;
+                const std::uint8_t pat_bytes[4] = {
+                    static_cast<std::uint8_t>(pat & 0xFFu),
+                    static_cast<std::uint8_t>((pat >> 8u) & 0xFFu),
+                    static_cast<std::uint8_t>((pat >> 16u) & 0xFFu),
+                    static_cast<std::uint8_t>((pat >> 24u) & 0xFFu)
+                };
+                for (std::size_t i = 0; i < bounce_buffer.size(); ++i) {
+                    bounce_buffer[i] = pat_bytes[i % 4];
+                }
+                shared_memory_->write_bytes(core_id, effective_dst_pa, bounce_buffer.data(), bounce_buffer.size());
+            }
         }
 
         // Invalidate exclusive reservations across all cores for DMA destination buffer
@@ -261,6 +283,162 @@ VirtualDmaEngineResult VirtualDmaEngine::execute_descriptor_chain(std::uint64_t 
     }
 
     return {VirtualDmaDescriptorStatus::Success, total_processed, total_bytes, "All descriptors processed successfully"};
+}
+
+VirtualDmaEngineResult VirtualDmaEngine::execute_ring_batch(
+    const VirtualDmaRingConfig& ring_config,
+    std::size_t core_id) {
+    total_submissions_++;
+
+    if (!enabled_) {
+        total_rejected_submissions_++;
+        return {VirtualDmaDescriptorStatus::ErrorDeviceDisabled, 0, 0, "Virtual DMA engine is disabled"};
+    }
+
+    if (!shared_memory_) {
+        total_rejected_submissions_++;
+        return {VirtualDmaDescriptorStatus::ErrorInvalidAddress, 0, 0, "No shared memory attached to DMA engine"};
+    }
+
+    if (ring_config.ring_capacity == 0 || ring_config.batch_count == 0) {
+        return {VirtualDmaDescriptorStatus::Success, 0, 0, "Empty ring batch"};
+    }
+
+    const std::size_t mem_sz = shared_memory_->size();
+    const std::uint64_t ring_bytes = static_cast<std::uint64_t>(ring_config.ring_capacity) * sizeof(VirtualDmaDescriptor);
+    if ((ring_config.ring_base_paddr & 7u) != 0 ||
+        ring_config.ring_base_paddr > mem_sz ||
+        ring_bytes > mem_sz - ring_config.ring_base_paddr) {
+        total_rejected_submissions_++;
+        return {VirtualDmaDescriptorStatus::ErrorOutOfBounds, 0, 0, "Ring buffer outside physical RAM bounds"};
+    }
+
+    std::uint64_t total_processed = 0;
+    std::uint64_t total_bytes = 0;
+    bool irq_requested = false;
+
+    for (std::uint32_t b = 0; b < ring_config.batch_count; ++b) {
+        const std::uint32_t slot = (ring_config.start_index + b) % ring_config.ring_capacity;
+        const std::uint64_t desc_addr = ring_config.ring_base_paddr + static_cast<std::uint64_t>(slot) * sizeof(VirtualDmaDescriptor);
+
+        VirtualDmaDescriptor desc{};
+        if (!read_descriptor(desc_addr, desc, core_id)) {
+            total_rejected_submissions_++;
+            return {VirtualDmaDescriptorStatus::ErrorInvalidAddress, total_processed, total_bytes, "Failed to read ring descriptor"};
+        }
+
+        const auto val_status = validate_descriptor(desc, mem_sz);
+        if (val_status != VirtualDmaDescriptorStatus::Success) {
+            total_rejected_submissions_++;
+            write_descriptor_status(desc_addr, val_status, core_id);
+            return {val_status, total_processed, total_bytes, "Ring descriptor validation failed"};
+        }
+
+        std::uint64_t effective_src_pa = desc.src_paddr;
+        std::uint64_t effective_dst_pa = desc.dst_paddr;
+
+        const bool is_iommu = (addressing_mode_ == DmaAddressingMode::IommuTranslated) ||
+                              ((desc.flags & kDmaFlagIommuTranslate) != 0);
+
+        if (is_iommu) {
+            if (!iommu_) {
+                total_rejected_submissions_++;
+                write_descriptor_status(desc_addr, VirtualDmaDescriptorStatus::ErrorIommuNotAttached, core_id);
+                return {VirtualDmaDescriptorStatus::ErrorIommuNotAttached, total_processed, total_bytes, "IOMMU not attached"};
+            }
+
+            const DeviceId dev_id = (desc.reserved != 0) ? static_cast<DeviceId>(desc.reserved) : default_device_id_;
+
+            auto map_fault = [](const IommuFault& f) {
+                switch (f.type) {
+                case IommuFaultType::DeviceNotAttached: return VirtualDmaDescriptorStatus::ErrorIommuNotAttached;
+                case IommuFaultType::DomainNotFound:    return VirtualDmaDescriptorStatus::ErrorIommuNotAttached;
+                case IommuFaultType::UnmappedIova:      return VirtualDmaDescriptorStatus::ErrorIommuUnmapped;
+                case IommuFaultType::PermissionDenied:  return VirtualDmaDescriptorStatus::ErrorIommuPermission;
+                case IommuFaultType::AddressOverflow:   return VirtualDmaDescriptorStatus::ErrorAddressOverflow;
+                case IommuFaultType::OutOfBounds:       return VirtualDmaDescriptorStatus::ErrorOutOfBounds;
+                default:                                return VirtualDmaDescriptorStatus::ErrorInvalidAddress;
+                }
+            };
+
+            if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
+                IommuFault src_fault{};
+                auto src_opt = iommu_->translate(dev_id, desc.src_paddr, static_cast<std::size_t>(desc.length_bytes),
+                                                 IommuAccess::Read, mem_sz, &src_fault);
+                if (!src_opt.has_value()) {
+                    total_rejected_submissions_++;
+                    const auto err = map_fault(src_fault);
+                    write_descriptor_status(desc_addr, err, core_id);
+                    return {err, total_processed, total_bytes, "Ring source IOVA translation failed"};
+                }
+                effective_src_pa = src_opt.value();
+            }
+
+            IommuFault dst_fault{};
+            auto dst_opt = iommu_->translate(dev_id, desc.dst_paddr, static_cast<std::size_t>(desc.length_bytes),
+                                             IommuAccess::Write, mem_sz, &dst_fault);
+            if (!dst_opt.has_value()) {
+                total_rejected_submissions_++;
+                const auto err = map_fault(dst_fault);
+                write_descriptor_status(desc_addr, err, core_id);
+                return {err, total_processed, total_bytes, "Ring destination IOVA translation failed"};
+            }
+            effective_dst_pa = dst_opt.value();
+        }
+
+        // Perform memory transfer
+        std::uint8_t* raw_mem = shared_memory_->raw_memory().raw_data();
+        if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Copy)) {
+            if (zero_copy_enabled_) {
+                std::memmove(raw_mem + effective_dst_pa, raw_mem + effective_src_pa, static_cast<std::size_t>(desc.length_bytes));
+            } else {
+                std::vector<std::uint8_t> bounce(static_cast<std::size_t>(desc.length_bytes));
+                shared_memory_->read_bytes(core_id, effective_src_pa, bounce.data(), bounce.size());
+                shared_memory_->write_bytes(core_id, effective_dst_pa, bounce.data(), bounce.size());
+            }
+        } else if (desc.operation_type == static_cast<std::uint32_t>(VirtualDmaOpType::Fill)) {
+            const std::uint32_t pat = desc.fill_pattern;
+            const std::uint8_t b0 = static_cast<std::uint8_t>(pat & 0xFFu);
+            const std::uint8_t b1 = static_cast<std::uint8_t>((pat >> 8u) & 0xFFu);
+            const std::uint8_t b2 = static_cast<std::uint8_t>((pat >> 16u) & 0xFFu);
+            const std::uint8_t b3 = static_cast<std::uint8_t>((pat >> 24u) & 0xFFu);
+
+            if (b0 == b1 && b1 == b2 && b2 == b3) {
+                std::memset(raw_mem + effective_dst_pa, b0, static_cast<std::size_t>(desc.length_bytes));
+            } else {
+                const std::uint8_t pat_bytes[4] = { b0, b1, b2, b3 };
+                for (std::size_t i = 0; i < desc.length_bytes; ++i) {
+                    raw_mem[effective_dst_pa + i] = pat_bytes[i % 4];
+                }
+            }
+        }
+
+        // Invalidate exclusive reservations across all cores
+        if (shared_memory_->exclusive_monitor()) {
+            shared_memory_->exclusive_monitor()->invalidate_reservations(
+                shared_memory_->exclusive_monitor()->max_cores(),
+                effective_dst_pa,
+                static_cast<std::size_t>(desc.length_bytes)
+            );
+        }
+
+        write_descriptor_status(desc_addr, VirtualDmaDescriptorStatus::Success, core_id);
+
+        if ((desc.flags & kDmaFlagInterruptOnComplete) != 0) {
+            irq_requested = true;
+        }
+
+        total_processed++;
+        total_bytes += desc.length_bytes;
+        total_descriptors_processed_++;
+        total_bytes_transferred_ += desc.length_bytes;
+    }
+
+    if (irq_requested) {
+        trigger_completion_irq();
+    }
+
+    return {VirtualDmaDescriptorStatus::Success, total_processed, total_bytes, "Ring batch processed successfully"};
 }
 
 } // namespace winios::device

@@ -3,6 +3,7 @@
 namespace winios::mmu {
 
 void Stage2TranslationEngine::reset() noexcept {
+    fault_injector_ = nullptr;
     hcr_el2_ = 0;
     vttbr_el2_ = 0;
     vtcr_el2_ = 0x80003550ULL; // Default 48-bit IPA, 4KB granule
@@ -40,6 +41,16 @@ std::optional<Stage2TranslationResult> Stage2TranslationEngine::translate(
     std::uint64_t ipa,
     Stage2AccessType access,
     Stage2Fault* out_fault) const {
+
+    if (fault_injector_) {
+        Stage2Fault injected_fault{};
+        if (fault_injector_->check_and_inject(ipa, access, injected_fault)) {
+            if (out_fault) {
+                *out_fault = injected_fault;
+            }
+            return std::nullopt;
+        }
+    }
 
     if (!is_enabled()) {
         // Flat identity translation when Stage-2 translation is disabled (HCR_EL2.VM == 0)

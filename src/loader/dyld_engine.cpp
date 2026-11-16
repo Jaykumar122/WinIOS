@@ -1,4 +1,5 @@
 #include "loader/dyld_engine.h"
+#include "cpu/pointer_auth.h"
 
 #include <algorithm>
 #include <cstring>
@@ -1093,13 +1094,12 @@ DyldLinkStatus DyldEngine::process_chained_fixups(
                         chain_loc += next_stride * 4;
                     } else {
                         // DYLD_CHAINED_PTR_ARM64E family
-                        bool auth = ((raw_val >> 63) & 1) != 0;
-                        bool is_bind = ((raw_val >> 62) & 1) != 0;
-                        next_stride = (raw_val >> 51) & 0x7FFULL;
+                        const DyldChainedPtrArm64eDecoded arm64e_dec = decode_dyld_chained_ptr_arm64e(raw_val);
+                        next_stride = arm64e_dec.next;
 
-                        if (auth) {
-                            if (is_bind) {
-                                std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFULL);
+                        if (arm64e_dec.auth) {
+                            if (arm64e_dec.is_bind) {
+                                std::uint32_t ordinal = arm64e_dec.ordinal;
                                 if (ordinal >= hdr->imports_count) {
                                     out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
                                     return DyldLinkStatus::InvalidChainedFixups;
@@ -1124,20 +1124,33 @@ DyldLinkStatus DyldEngine::process_chained_fixups(
                                         return DyldLinkStatus::UndefinedSymbol;
                                     }
                                 } else {
-                                    memory.write_u64(chain_loc, *resolved);
+                                    std::uint64_t final_addr = *resolved;
+                                    if (pac_) {
+                                        cpu::PacKeyType key_type = (arm64e_dec.key == 0) ? cpu::PacKeyType::InstructionA
+                                                                 : (arm64e_dec.key == 1) ? cpu::PacKeyType::InstructionB
+                                                                 : (arm64e_dec.key == 2) ? cpu::PacKeyType::DataA
+                                                                 : cpu::PacKeyType::DataB;
+                                        const std::uint64_t modifier = arm64e_dec.addr_div ? (chain_loc ^ arm64e_dec.diversity) : arm64e_dec.diversity;
+                                        final_addr = pac_->sign_pointer(final_addr, modifier, key_type);
+                                    }
+                                    memory.write_u64(chain_loc, final_addr);
                                 }
                             } else {
-                                std::uint64_t target = raw_val & 0xFFFFFFFFULL;
-                                std::uint64_t target_vaddr = base_vaddr + target + slide;
+                                std::uint64_t target_vaddr = base_vaddr + arm64e_dec.target + slide;
+                                if (pac_) {
+                                    cpu::PacKeyType key_type = (arm64e_dec.key == 0) ? cpu::PacKeyType::InstructionA
+                                                             : (arm64e_dec.key == 1) ? cpu::PacKeyType::InstructionB
+                                                             : (arm64e_dec.key == 2) ? cpu::PacKeyType::DataA
+                                                             : cpu::PacKeyType::DataB;
+                                    const std::uint64_t modifier = arm64e_dec.addr_div ? (chain_loc ^ arm64e_dec.diversity) : arm64e_dec.diversity;
+                                    target_vaddr = pac_->sign_pointer(target_vaddr, modifier, key_type);
+                                }
                                 memory.write_u64(chain_loc, target_vaddr);
                             }
                         } else {
-                            if (is_bind) {
-                                std::uint32_t ordinal = static_cast<std::uint32_t>(raw_val & 0xFFFFULL);
-                                std::int64_t addend = static_cast<std::int64_t>((raw_val >> 32) & 0x7FFFFULL);
-                                if ((addend & 0x40000LL) != 0) {
-                                    addend |= ~0x7FFFFLL;
-                                }
+                            if (arm64e_dec.is_bind) {
+                                std::uint32_t ordinal = arm64e_dec.ordinal;
+                                std::int64_t addend = arm64e_dec.addend;
 
                                 if (ordinal >= hdr->imports_count) {
                                     out_error = "Chained fixup import ordinal out of range: " + std::to_string(ordinal);
@@ -1163,13 +1176,11 @@ DyldLinkStatus DyldEngine::process_chained_fixups(
                                         return DyldLinkStatus::UndefinedSymbol;
                                     }
                                 } else {
-                                    std::uint64_t final_target = *resolved + static_cast<std::uint64_t>(addend);
+                                    std::uint64_t final_target = static_cast<std::uint64_t>(static_cast<std::int64_t>(*resolved) + addend);
                                     memory.write_u64(chain_loc, final_target);
                                 }
                             } else {
-                                std::uint64_t target = raw_val & 0x7FFFFFFFFFFULL;
-                                std::uint64_t high8 = (raw_val >> 43) & 0xFFULL;
-                                std::uint64_t target_vaddr = ((high8 << 56) | target) + slide;
+                                std::uint64_t target_vaddr = arm64e_dec.target + slide;
                                 memory.write_u64(chain_loc, target_vaddr);
                             }
                         }

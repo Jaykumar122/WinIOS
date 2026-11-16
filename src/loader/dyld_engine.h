@@ -11,6 +11,10 @@
 
 #include "memory/memory.h"
 
+namespace winios::cpu {
+class Arm64ePointerAuth;
+}
+
 namespace winios::loader {
 
 // -----------------------------------------------------------------------------
@@ -95,7 +99,124 @@ struct DyldChainedStartsInSegmentRaw {
     std::uint32_t max_valid_pointer{0};
     std::uint16_t page_count{0};
 };
+
+// -----------------------------------------------------------------------------
+// ARM64e Chained Pointer Raw Structs (mach-o/fixup-chains.h)
+// -----------------------------------------------------------------------------
+struct DyldChainedPtrArm64eAuthRebaseRaw {
+    std::uint64_t target : 32;
+    std::uint64_t diversity : 16;
+    std::uint64_t addr_div : 1;
+    std::uint64_t key : 2;
+    std::uint64_t next : 11;
+    std::uint64_t bind : 1; // 0
+    std::uint64_t auth : 1; // 1
+};
+
+struct DyldChainedPtrArm64eAuthBindRaw {
+    std::uint64_t ordinal : 16;
+    std::uint64_t zero : 16;
+    std::uint64_t diversity : 16;
+    std::uint64_t addr_div : 1;
+    std::uint64_t key : 2;
+    std::uint64_t next : 11;
+    std::uint64_t bind : 1; // 1
+    std::uint64_t auth : 1; // 1
+};
+
+struct DyldChainedPtrArm64eRebaseRaw {
+    std::uint64_t target : 43;
+    std::uint64_t high8 : 8;
+    std::uint64_t next : 11;
+    std::uint64_t bind : 1; // 0
+    std::uint64_t auth : 1; // 0
+};
+
+struct DyldChainedPtrArm64eBindRaw {
+    std::uint64_t ordinal : 16;
+    std::uint64_t zero : 16;
+    std::uint64_t addend : 19;
+    std::uint64_t next : 11;
+    std::uint64_t bind : 1; // 1
+    std::uint64_t auth : 1; // 0
+};
 #pragma pack(pop)
+
+// -----------------------------------------------------------------------------
+// Decoded ARM64e Chained Pointer Representation & Helpers
+// -----------------------------------------------------------------------------
+struct DyldChainedPtrArm64eDecoded {
+    bool          auth{false};
+    bool          is_bind{false};
+    std::uint32_t next{0};
+    std::uint64_t target{0};
+    std::uint32_t ordinal{0};
+    std::int64_t  addend{0};
+    std::uint16_t diversity{0};
+    bool          addr_div{false};
+    std::uint8_t  key{0}; // 0=IA, 1=IB, 2=DA, 3=DB
+};
+
+inline DyldChainedPtrArm64eDecoded decode_dyld_chained_ptr_arm64e(std::uint64_t raw) noexcept {
+    DyldChainedPtrArm64eDecoded dec{};
+    dec.auth = ((raw >> 63u) & 1u) != 0;
+    dec.is_bind = ((raw >> 62u) & 1u) != 0;
+    dec.next = static_cast<std::uint32_t>((raw >> 51u) & 0x7FFu);
+    if (dec.auth) {
+        dec.key = static_cast<std::uint8_t>((raw >> 49u) & 0x3u);
+        dec.addr_div = ((raw >> 48u) & 1u) != 0;
+        dec.diversity = static_cast<std::uint16_t>((raw >> 32u) & 0xFFFFu);
+        if (dec.is_bind) {
+            dec.ordinal = static_cast<std::uint32_t>(raw & 0xFFFFu);
+        } else {
+            dec.target = raw & 0xFFFFFFFFULL;
+        }
+    } else {
+        if (dec.is_bind) {
+            dec.ordinal = static_cast<std::uint32_t>(raw & 0xFFFFu);
+            std::int64_t addend19 = static_cast<std::int64_t>((raw >> 32u) & 0x7FFFFu);
+            if ((addend19 & 0x40000) != 0) {
+                addend19 |= ~0x7FFFFULL;
+            }
+            dec.addend = addend19;
+        } else {
+            const std::uint64_t high8 = (raw >> 43u) & 0xFFu;
+            dec.target = (raw & 0x7FFFFFFFFFFULL) | (high8 << 56u);
+        }
+    }
+    return dec;
+}
+
+inline std::uint64_t encode_dyld_chained_ptr_arm64e_rebase(std::uint64_t target, std::uint16_t next) noexcept {
+    const std::uint64_t t43 = target & 0x7FFFFFFFFFFULL;
+    const std::uint64_t high8 = (target >> 56u) & 0xFFu;
+    return t43 | (high8 << 43u) | ((static_cast<std::uint64_t>(next) & 0x7FFULL) << 51u);
+}
+
+inline std::uint64_t encode_dyld_chained_ptr_arm64e_bind(std::uint16_t ordinal, std::int32_t addend, std::uint16_t next) noexcept {
+    return (static_cast<std::uint64_t>(ordinal) & 0xFFFFULL) |
+           ((static_cast<std::uint64_t>(addend) & 0x7FFFFULL) << 32u) |
+           ((static_cast<std::uint64_t>(next) & 0x7FFULL) << 51u) |
+           (1ULL << 62u); // is_bind = 1, auth = 0
+}
+
+inline std::uint64_t encode_dyld_chained_ptr_arm64e_auth_rebase(std::uint32_t target, std::uint16_t diversity, bool addr_div, std::uint8_t key, std::uint16_t next) noexcept {
+    return (static_cast<std::uint64_t>(target) & 0xFFFFFFFFULL) |
+           ((static_cast<std::uint64_t>(diversity) & 0xFFFFULL) << 32u) |
+           ((addr_div ? 1ULL : 0ULL) << 48u) |
+           ((static_cast<std::uint64_t>(key) & 0x3ULL) << 49u) |
+           ((static_cast<std::uint64_t>(next) & 0x7FFULL) << 51u) |
+           (1ULL << 63u); // auth = 1, is_bind = 0
+}
+
+inline std::uint64_t encode_dyld_chained_ptr_arm64e_auth_bind(std::uint16_t ordinal, std::uint16_t diversity, bool addr_div, std::uint8_t key, std::uint16_t next) noexcept {
+    return (static_cast<std::uint64_t>(ordinal) & 0xFFFFULL) |
+           ((static_cast<std::uint64_t>(diversity) & 0xFFFFULL) << 32u) |
+           ((addr_div ? 1ULL : 0ULL) << 48u) |
+           ((static_cast<std::uint64_t>(key) & 0x3ULL) << 49u) |
+           ((static_cast<std::uint64_t>(next) & 0x7FFULL) << 51u) |
+           (1ULL << 62u) | (1ULL << 63u); // is_bind = 1, auth = 1
+}
 
 // -----------------------------------------------------------------------------
 // Higher-Level Dyld Structures
@@ -216,6 +337,10 @@ public:
         std::string_view name,
         std::uint32_t ordinal = 0) const noexcept;
 
+    // PAC Pointer Authentication Engine (optional for signing authenticated chained fixups)
+    void set_pointer_auth(cpu::Arm64ePointerAuth* pac) noexcept { pac_ = pac; }
+    [[nodiscard]] cpu::Arm64ePointerAuth* pointer_auth() const noexcept { return pac_; }
+
     // Apply rebases to guest memory (adds ASLR slide to internal pointers)
     [[nodiscard]] DyldLinkStatus apply_rebases(
         Memory& memory,
@@ -299,6 +424,7 @@ public:
 
 private:
     std::vector<DyldLoadedModule> modules_;
+    cpu::Arm64ePointerAuth*       pac_{nullptr};
 };
 
 // -----------------------------------------------------------------------------

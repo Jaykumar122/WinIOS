@@ -3012,6 +3012,43 @@ target_link_libraries(stage201_22_independent_guest_workload_tests PRIVATE winio
 winios_set_warnings(stage201_22_independent_guest_workload_tests)
 add_test(NAME stage201_22_independent_guest_workload_tests COMMAND stage201_22_independent_guest_workload_tests)
 
+# ==============================================================================
+# WinIOS Campaign 202 Darwin Runtime Modernization & IPC Test Suites
+# ==============================================================================
+add_executable(stage202_9_dyld_modernization_tests tests/unit/stage202_9_dyld_modernization_tests.cpp)
+target_link_libraries(stage202_9_dyld_modernization_tests PRIVATE winios_core)
+winios_set_warnings(stage202_9_dyld_modernization_tests)
+add_test(NAME stage202_9_dyld_modernization_tests COMMAND stage202_9_dyld_modernization_tests)
+
+add_executable(stage202_15_mach_ipc_tests
+    tests/unit/stage202_15_mach_ipc_tests.cpp
+)
+target_link_libraries(stage202_15_mach_ipc_tests PRIVATE winios_core)
+winios_set_warnings(stage202_15_mach_ipc_tests)
+add_test(NAME stage202_15_mach_ipc_tests COMMAND stage202_15_mach_ipc_tests)
+
+add_executable(stage202_19_el2_stage2_fault_tests
+    tests/unit/stage202_19_el2_stage2_fault_tests.cpp
+)
+target_link_libraries(stage202_19_el2_stage2_fault_tests PRIVATE winios_core)
+winios_set_warnings(stage202_19_el2_stage2_fault_tests)
+add_test(NAME stage202_19_el2_stage2_fault_tests COMMAND stage202_19_el2_stage2_fault_tests)
+
+add_executable(stage202_22_dma_performance_tests
+    tests/unit/stage202_22_dma_performance_tests.cpp
+)
+target_link_libraries(stage202_22_dma_performance_tests PRIVATE winios_core)
+winios_set_warnings(stage202_22_dma_performance_tests)
+add_test(NAME stage202_22_dma_performance_tests COMMAND stage202_22_dma_performance_tests)
+
+add_executable(stage202_23_end_to_end_darwin_workload_tests
+    tests/unit/stage202_23_end_to_end_darwin_workload_tests.cpp
+)
+target_link_libraries(stage202_23_end_to_end_darwin_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage202_23_end_to_end_darwin_workload_tests)
+add_test(NAME stage202_23_end_to_end_darwin_workload_tests COMMAND stage202_23_end_to_end_darwin_workload_tests)
+
+
 
 
 

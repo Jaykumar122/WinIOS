@@ -1,0 +1,153 @@
+﻿{
+    "campaign":  "202",
+    "title":  "WinIOS Darwin Runtime Modernization, Mach IPC, EL2 Stage-2 Fault Architecture \u0026 DMA Performance Engineering",
+    "generated_at":  "2026-11-16T13:42:46Z",
+    "artifact_count":  29,
+    "artifacts":  [
+                      {
+                          "relative_path":  "CMakeLists.txt",
+                          "sha256":  "62ef0713edea3f8952c3c8155bc625cd97228ca76628fd1ebf3ee224d6ebeb18",
+                          "size_bytes":  177052
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/campaign201_evidence_correction_addendum.md",
+                          "sha256":  "67561b36c8a17534c5b09141cc4f793ce0e825be5b9b4659723cccce14640f81",
+                          "size_bytes":  5485
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/campaign202_final_report.md",
+                          "sha256":  "e2b2fa372603054fad9a5a5571ea1a87a6e80f82f1f677e7bc20c7ebeea0f07f",
+                          "size_bytes":  15116
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/darwin_runtime_architecture.md",
+                          "sha256":  "7a71d3beae2a0a69bc026d38d5ccbdc65e28ef11538e576ad18a8e35166da320",
+                          "size_bytes":  5574
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/dma_performance_validation.md",
+                          "sha256":  "338be2c5e842b0f908bc7c8ab66cc0cfecb0ab5722760589b223b6e6cc8af426",
+                          "size_bytes":  2619
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/dyld_integration_validation.md",
+                          "sha256":  "22898f81e0e99882ee85c8d6e7c6500f4ccf12187cf6c86b5768071f9cc22756",
+                          "size_bytes":  3731
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/el2_stage2_fault_validation.md",
+                          "sha256":  "0413b3cdcbf4157e579df2fd7333730f9270c664ba4a761b2d9029945981175e",
+                          "size_bytes":  3728
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/end_to_end_darwin_workload.md",
+                          "sha256":  "fff790dc83cf1293d32109bce72571a4883358867f6663ae89c3b795d9e15ad2",
+                          "size_bytes":  4158
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/evidence_matrix.md",
+                          "sha256":  "6bb6824efdd218ed4699dc48754c5152ce1034d7b3b386944b05abfe26d8cb67",
+                          "size_bytes":  9242
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/known_limitations.md",
+                          "sha256":  "7f4b69799ce1a6aed92b2485ac96dd90c8358ec20863c98b53d60158083db173",
+                          "size_bytes":  8713
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/mach_ipc_validation.md",
+                          "sha256":  "26c741617dbc6e37a5a1dd027a8e31fb87fdc4ef6622403594a3c47c79f326da",
+                          "size_bytes":  5673
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/stage202_0_baseline_audit.md",
+                          "sha256":  "61bb12e94570105862b528eb3223eeef43feb2ae9944c22c0cb482fae393b90c",
+                          "size_bytes":  2220
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/test_results_debug.txt",
+                          "sha256":  "d7ef94df64a13387db6838d21f358fe4f998d38f2174f16399b895e52ac25ba9",
+                          "size_bytes":  141658
+                      },
+                      {
+                          "relative_path":  "docs/campaign202/test_results_release.txt",
+                          "sha256":  "decb1d2c327725234496b5b179f1039c10485e53982ee80a0e25423fd8ac00f0",
+                          "size_bytes":  141658
+                      },
+                      {
+                          "relative_path":  "scratch/generate_campaign202_manifest.ps1",
+                          "sha256":  "a354c538796fd6902b46cf6e5c823e8d1286a0c9eb91a8d46e79a1b9b88c3b14",
+                          "size_bytes":  3712
+                      },
+                      {
+                          "relative_path":  "scratch/verify_campaign202_manifest.ps1",
+                          "sha256":  "c0ac366f506c04973180e664bf275441f4ae82fbbbe1fdf7c6d101a263e7fb18",
+                          "size_bytes":  1536
+                      },
+                      {
+                          "relative_path":  "src/device/virtual_dma_engine.cpp",
+                          "sha256":  "08546b62bbf8827364e066544649b89ade247544d07af3f3f0f7cd1dbac614d8",
+                          "size_bytes":  22118
+                      },
+                      {
+                          "relative_path":  "src/device/virtual_dma_engine.h",
+                          "sha256":  "6dadd955e8be9185287db1e626626e81519afcb3facbd3a1427f5db571816d3f",
+                          "size_bytes":  6704
+                      },
+                      {
+                          "relative_path":  "src/loader/dyld_engine.cpp",
+                          "sha256":  "c1d3d5c0b07c364ed779a0383bb15013ba5be0333cf93c2e67188912d1a2b5ab",
+                          "size_bytes":  62849
+                      },
+                      {
+                          "relative_path":  "src/loader/dyld_engine.h",
+                          "sha256":  "d500d77ec4d37370d66edb2f77b2727d821ac0b9825ce17f5e0af65247eba63c",
+                          "size_bytes":  17298
+                      },
+                      {
+                          "relative_path":  "src/memory/stage2_mmu.cpp",
+                          "sha256":  "5443acb264ce63eb20140af3203930cb3763aad18e095e803a06fa3e28171769",
+                          "size_bytes":  19588
+                      },
+                      {
+                          "relative_path":  "src/memory/stage2_mmu.h",
+                          "sha256":  "be0cb0a2c9fea2d17a45cdd884711caa68a31f05d08aa2d970f16f847dc6e7ff",
+                          "size_bytes":  8766
+                      },
+                      {
+                          "relative_path":  "src/runtime/darwin_mach_ipc.cpp",
+                          "sha256":  "330fc83dd03d34ec11c5841f794cd71c0897ae792c5e38605150291836ecf4f7",
+                          "size_bytes":  22134
+                      },
+                      {
+                          "relative_path":  "src/runtime/darwin_mach_ipc.h",
+                          "sha256":  "e6e0d51b74f192fc1804c1d507367062b74f3ee17c453b82f447639f7956c5b7",
+                          "size_bytes":  10971
+                      },
+                      {
+                          "relative_path":  "tests/unit/stage202_15_mach_ipc_tests.cpp",
+                          "sha256":  "d45d6f63ff147c9657791930aad2323cfd2c0f918787be0439bd3c9a4b705e50",
+                          "size_bytes":  18380
+                      },
+                      {
+                          "relative_path":  "tests/unit/stage202_19_el2_stage2_fault_tests.cpp",
+                          "sha256":  "0a22870c0f1344b54590c6d4712b087e9f6a19e19ed1d4118ab633d13d84b7f9",
+                          "size_bytes":  14290
+                      },
+                      {
+                          "relative_path":  "tests/unit/stage202_22_dma_performance_tests.cpp",
+                          "sha256":  "f10b3b810773c77f02aaa692c312b75f7aa801322f0e497329a3a0447061a0fa",
+                          "size_bytes":  19130
+                      },
+                      {
+                          "relative_path":  "tests/unit/stage202_23_end_to_end_darwin_workload_tests.cpp",
+                          "sha256":  "1bdef9e96f6339c7ffc713e549d78e7c2d3e26cced1de89e0608b8b0e0614d21",
+                          "size_bytes":  13994
+                      },
+                      {
+                          "relative_path":  "tests/unit/stage202_9_dyld_modernization_tests.cpp",
+                          "sha256":  "57cc92f9ce02a036eaff0299bd1d4a52769a78a543c1dba996e9a2f1273814ce",
+                          "size_bytes":  13458
+                      }
+                  ]
+}

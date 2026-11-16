@@ -111,6 +111,8 @@ struct MachMessage {
 // -----------------------------------------------------------------------------
 class MachPortObject {
 public:
+    static constexpr std::size_t kMaxQueueLimit = 64;
+
     explicit MachPortObject(std::uint64_t id, std::uint32_t receiver_task = 0);
     ~MachPortObject() = default;
 
@@ -121,24 +123,31 @@ public:
     [[nodiscard]] const std::string& service_name() const noexcept { return service_name_; }
     void set_service_name(std::string name) { service_name_ = std::move(name); }
 
+    [[nodiscard]] bool is_dead() const noexcept { return is_dead_; }
+    void mark_dead() noexcept { is_dead_ = true; }
+
     // Enqueue & Dequeue operations
-    void enqueue_message(MachMessage msg);
+    [[nodiscard]] bool enqueue_message(MachMessage msg);
     [[nodiscard]] std::optional<MachMessage> dequeue_message();
     [[nodiscard]] bool has_messages() const noexcept;
     [[nodiscard]] std::size_t queue_size() const noexcept;
+    void clear_queue() noexcept;
 
 private:
     std::uint64_t            id_{0};
     std::uint32_t            receiver_task_{0};
     std::string              service_name_;
+    bool                     is_dead_{false};
     mutable std::mutex       lock_;
     std::deque<MachMessage>  queue_;
 };
 
-struct MachPortRightEntry {
+struct MachPortTableEntry {
     std::shared_ptr<MachPortObject> object;
     std::uint32_t                   right_type{kMachPortRightSend};
     std::uint32_t                   urefs{1};
+    std::uint16_t                   generation{1};
+    bool                            in_use{false};
 };
 
 class MachPortSpace {
@@ -148,13 +157,35 @@ public:
 
     [[nodiscard]] std::uint32_t task_id() const noexcept { return task_id_; }
 
-    // Port allocation
+    // Generation-safe handle allocator
+    static constexpr mach_port_t make_generation_handle(std::uint16_t index, std::uint16_t gen) noexcept {
+        return (static_cast<mach_port_t>(gen) << 16u) | static_cast<mach_port_t>(index);
+    }
+    static constexpr mach_port_t make_handle(std::uint16_t index, std::uint16_t gen) noexcept {
+        return make_generation_handle(index, gen);
+    }
+    static constexpr std::uint16_t handle_index(mach_port_t handle) noexcept {
+        return static_cast<std::uint16_t>(handle & 0xFFFFu);
+    }
+    static constexpr std::uint16_t handle_generation(mach_port_t handle) noexcept {
+        return static_cast<std::uint16_t>((handle >> 16u) & 0xFFFFu);
+    }
+
+    // Port allocation & right management
     mach_port_t allocate_port(std::shared_ptr<MachPortObject> object, std::uint32_t right);
     bool insert_right(mach_port_t name, std::shared_ptr<MachPortObject> object, std::uint32_t right);
     bool deallocate_port(mach_port_t name);
 
-    [[nodiscard]] std::shared_ptr<MachPortObject> lookup_port(mach_port_t name) const;
-    [[nodiscard]] bool has_right(mach_port_t name, std::uint32_t right) const;
+    // Reference counting
+    bool mod_refs(mach_port_t name, std::uint32_t right, std::int32_t delta);
+    [[nodiscard]] std::uint32_t get_refs(mach_port_t name, std::uint32_t right) const;
+
+    [[nodiscard]] std::shared_ptr<MachPortObject> lookup_port(mach_port_t name);
+    [[nodiscard]] bool has_right(mach_port_t name, std::uint32_t right);
+    [[nodiscard]] std::uint32_t get_right_type(mach_port_t name);
+
+    // Consume send-once right after message transmission
+    bool consume_send_once(mach_port_t name);
 
     // Standard task rights
     [[nodiscard]] mach_port_t task_self() const noexcept { return task_self_; }
@@ -163,13 +194,13 @@ public:
     void set_bootstrap_port(mach_port_t port) noexcept { bootstrap_port_ = port; }
 
 private:
-    std::uint32_t                                      task_id_{0};
-    mach_port_t                                        next_name_{0x103};
-    mach_port_t                                        task_self_{0x101};
-    mach_port_t                                        host_self_{0x102};
-    mach_port_t                                        bootstrap_port_{0x100};
-    mutable std::mutex                                 lock_;
-    std::unordered_map<mach_port_t, MachPortRightEntry> table_;
+    std::uint32_t                        task_id_{0};
+    mach_port_t                          task_self_{0};
+    mach_port_t                          host_self_{0};
+    mach_port_t                          bootstrap_port_{0};
+    mutable std::mutex                   lock_;
+    std::vector<MachPortTableEntry>      slots_;
+    std::vector<std::uint16_t>           free_list_;
 };
 
 // -----------------------------------------------------------------------------
@@ -189,7 +220,7 @@ public:
     bool bootstrap_register(std::uint32_t task_id, const std::string& name, mach_port_t port);
     [[nodiscard]] mach_port_t bootstrap_look_up(std::uint32_t task_id, const std::string& name);
 
-    // Primary Mach Trap: mach_msg
+    // Primary Mach Traps: mach_msg & mach_msg_overwrite
     [[nodiscard]] std::int32_t mach_msg(
         std::uint32_t task_id,
         std::uint64_t msg_vaddr,
@@ -199,6 +230,24 @@ public:
         mach_port_t rcv_name,
         std::uint32_t timeout_ms,
         Memory& memory);
+
+    [[nodiscard]] std::int32_t mach_msg_overwrite(
+        std::uint32_t task_id,
+        std::uint64_t msg_vaddr,
+        std::uint32_t option,
+        std::uint32_t send_size,
+        std::uint32_t rcv_size,
+        mach_port_t rcv_name,
+        std::uint32_t timeout_ms,
+        Memory& memory,
+        std::uint64_t rcv_msg_vaddr = 0,
+        std::uint32_t rcv_msg_size = 0);
+
+    // Port Rights & References
+    [[nodiscard]] mach_port_t mach_port_allocate(std::uint32_t task_id, std::uint32_t right);
+    bool mach_port_deallocate(std::uint32_t task_id, mach_port_t port);
+    bool mach_port_mod_refs(std::uint32_t task_id, mach_port_t port, std::uint32_t right, std::int32_t delta);
+    [[nodiscard]] std::uint32_t mach_port_get_refs(std::uint32_t task_id, mach_port_t port, std::uint32_t right);
 
     // Trap Dispatch Helpers
     [[nodiscard]] mach_port_t mach_reply_port(std::uint32_t task_id);
