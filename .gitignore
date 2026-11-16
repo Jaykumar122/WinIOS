@@ -39,8 +39,10 @@ secrets.json
 *.wsnap
 *.sndl
 *.wtr
-/artifacts/
-!tests/artifacts/
+/artifacts/*
+!/artifacts/campaign-203/
+!tests/artifacts/*
+!/artifacts/campaign-203/
 stage21_benchmark/
 divergence_report.json
 
@@ -88,6 +90,21 @@ divergence_report.json
 !docs/campaign200/*.md
 !docs/campaign200/*.json
 !docs/campaign200/*.txt
+!docs/campaign201/
+!docs/campaign201/*.md
+!docs/campaign201/*.json
+!docs/campaign201/*.txt
+!docs/campaign202/
+!docs/campaign202/*.md
+!docs/campaign202/*.json
+!docs/campaign202/*.txt
+!docs/campaign203/
+!docs/campaign203/*.md
+!docs/campaign203/*.json
+!docs/campaign203/*.txt
+!artifacts/campaign-203/
+!artifacts/campaign-203/*.md
+!artifacts/campaign-203/*.sha256
 Testing/
 reports/
 __pycache__/

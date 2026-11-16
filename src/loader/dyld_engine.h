@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "loader/macho_loader.h"
 #include "memory/memory.h"
 
 namespace winios::cpu {
@@ -304,6 +305,9 @@ struct DyldLoadedModule {
     std::uint64_t                  base_address{0};
     std::uint64_t                  slide{0};
     std::map<std::string, std::uint64_t> exports;
+    std::vector<std::string>       reexports; // Re-exported dynamic library dependencies
+    std::vector<std::uint64_t>     initializers; // Stage 203.9: __mod_init_func pointers
+    bool                           is_initialized{false};
     std::vector<DyldBindingRecord> binding_records;
     std::vector<DyldRebaseRecord>  rebase_records;
 };
@@ -421,6 +425,20 @@ public:
         const std::vector<std::string>& rpaths,
         std::string_view executable_dir,
         std::string_view loader_dir);
+
+    // Set module initializers
+    void set_module_initializers(std::string_view module_name, std::vector<std::uint64_t> initializers);
+
+    // Validate initializer pointers (must fall within an executable segment of the module)
+    [[nodiscard]] bool validate_initializers(
+        const DyldLoadedModule& mod,
+        const std::vector<MachOSegmentInfo>& segments,
+        std::string& out_error) const noexcept;
+
+    // Collect initializers in deterministic dependency order, preventing duplicate execution
+    [[nodiscard]] std::vector<std::uint64_t> get_initialization_order(
+        const std::vector<std::string>& load_order,
+        std::vector<std::string>& out_initialized_modules);
 
 private:
     std::vector<DyldLoadedModule> modules_;

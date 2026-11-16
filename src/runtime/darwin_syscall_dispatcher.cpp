@@ -4,11 +4,23 @@
 #include <cstring>
 #include <iostream>
 
+#include "memory/darwin_vm_object.h"
+#include "runtime/darwin_mach_ipc.h"
+
 namespace winios::runtime {
 
 DarwinSyscallDispatcher::DarwinSyscallDispatcher() {
     setup_default_bsd_handlers();
     setup_default_mach_handlers();
+}
+
+void DarwinSyscallDispatcher::bind_vm_space(std::shared_ptr<memory::DarwinVmSpace> vm_space) {
+    vm_space_ = std::move(vm_space);
+}
+
+void DarwinSyscallDispatcher::bind_mach_ipc(std::shared_ptr<MachIpcSubsystem> mach_ipc, std::uint32_t task_id) {
+    mach_ipc_ = std::move(mach_ipc);
+    task_id_ = task_id;
 }
 
 void DarwinSyscallDispatcher::register_bsd_handler(std::uint64_t syscall_nr, BsdHandler handler) {
@@ -30,25 +42,11 @@ bool DarwinSyscallDispatcher::has_mach_handler(std::int64_t trap_nr) const noexc
 std::int64_t DarwinSyscallDispatcher::dispatch(CPU& cpu, Memory& memory, std::uint16_t svc_imm) {
     total_syscalls_++;
 
-    if (svc_imm == 0x80) {
-        // BSD POSIX Syscall: syscall number in X16
-        const std::uint64_t nr = cpu.read_register(16);
-        auto it = bsd_handlers_.find(nr);
-        if (it != bsd_handlers_.end()) {
-            const std::int64_t result = it->second(cpu, memory);
-            cpu.write_register(0, static_cast<std::uint64_t>(result));
-            return result;
-        }
+    const auto raw_x16 = static_cast<std::int64_t>(cpu.read_register(16));
 
-        // Unimplemented BSD syscall: return ENOSYS (78)
-        cpu.write_register(0, 78u);
-        return -78;
-    }
-
-    if (svc_imm == 0x81) {
-        // Mach Trap: trap number in X16 as a negative number
-        const auto trap_nr = static_cast<std::int64_t>(cpu.read_register(16));
-        auto it = mach_handlers_.find(trap_nr);
+    // Negative X16 or SVC 0x81 signifies a Mach trap in Darwin ARM64 ABI
+    if (raw_x16 < 0 || svc_imm == 0x81) {
+        auto it = mach_handlers_.find(raw_x16);
         if (it != mach_handlers_.end()) {
             const std::int64_t result = it->second(cpu, memory);
             cpu.write_register(0, static_cast<std::uint64_t>(result));
@@ -60,7 +58,18 @@ std::int64_t DarwinSyscallDispatcher::dispatch(CPU& cpu, Memory& memory, std::ui
         return 5;
     }
 
-    return -1;
+    // Positive X16 with SVC 0x80 is a BSD POSIX Syscall
+    const std::uint64_t nr = cpu.read_register(16);
+    auto it = bsd_handlers_.find(nr);
+    if (it != bsd_handlers_.end()) {
+        const std::int64_t result = it->second(cpu, memory);
+        cpu.write_register(0, static_cast<std::uint64_t>(result));
+        return result;
+    }
+
+    // Unimplemented BSD syscall: return ENOSYS (78)
+    cpu.write_register(0, 78u);
+    return -78;
 }
 
 void DarwinSyscallDispatcher::setup_default_bsd_handlers() {
@@ -122,28 +131,70 @@ void DarwinSyscallDispatcher::setup_default_bsd_handlers() {
 
     // 8. SYS_mmap (197)
     register_bsd_handler(static_cast<std::uint64_t>(DarwinBsdSyscall::Mmap),
-        [](CPU& cpu, Memory&) -> std::int64_t {
+        [this](CPU& cpu, Memory&) -> std::int64_t {
             const auto target_addr = cpu.read_register(0);
+            const auto len         = cpu.read_register(1);
+            const auto prot        = static_cast<std::uint32_t>(cpu.read_register(2));
+            const auto flags       = static_cast<std::uint32_t>(cpu.read_register(3));
+            const auto fd          = static_cast<int>(cpu.read_register(4));
+            const auto offset      = cpu.read_register(5);
+
+            if (vm_space_) {
+                std::uint64_t res = vm_space_->mmap(target_addr, static_cast<std::size_t>(len), prot, flags, fd, offset);
+                return static_cast<std::int64_t>(res);
+            }
             return static_cast<std::int64_t>(target_addr != 0 ? target_addr : 0x70000000ULL);
+        });
+
+    // 9. SYS_munmap (73)
+    register_bsd_handler(static_cast<std::uint64_t>(DarwinBsdSyscall::Munmap),
+        [this](CPU& cpu, Memory&) -> std::int64_t {
+            const auto addr = cpu.read_register(0);
+            const auto len  = cpu.read_register(1);
+            if (vm_space_) {
+                return vm_space_->munmap(addr, static_cast<std::size_t>(len));
+            }
+            return 0;
+        });
+
+    // 10. SYS_mprotect (74)
+    register_bsd_handler(static_cast<std::uint64_t>(DarwinBsdSyscall::Mprotect),
+        [this](CPU& cpu, Memory&) -> std::int64_t {
+            const auto addr = cpu.read_register(0);
+            const auto len  = cpu.read_register(1);
+            const auto prot = static_cast<std::uint32_t>(cpu.read_register(2));
+            if (vm_space_) {
+                return vm_space_->mprotect(addr, static_cast<std::size_t>(len), prot);
+            }
+            return 0;
         });
 }
 
 void DarwinSyscallDispatcher::setup_default_mach_handlers() {
     // 1. MACH_task_self_trap (-28)
     register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::TaskSelf),
-        [](CPU&, Memory&) -> std::int64_t {
+        [this](CPU&, Memory&) -> std::int64_t {
+            if (mach_ipc_) {
+                return static_cast<std::int64_t>(mach_ipc_->mach_task_self(task_id_));
+            }
             return 0x103; // Mach task port name
         });
 
     // 2. MACH_host_self_trap (-29)
     register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::HostSelf),
-        [](CPU&, Memory&) -> std::int64_t {
+        [this](CPU&, Memory&) -> std::int64_t {
+            if (mach_ipc_) {
+                return static_cast<std::int64_t>(mach_ipc_->mach_host_self(task_id_));
+            }
             return 0x101; // Mach host port name
         });
 
     // 3. MACH_mach_reply_port (-26)
     register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::MachReplyPort),
-        [](CPU&, Memory&) -> std::int64_t {
+        [this](CPU&, Memory&) -> std::int64_t {
+            if (mach_ipc_) {
+                return static_cast<std::int64_t>(mach_ipc_->mach_reply_port(task_id_));
+            }
             return 0x203; // Mach reply port
         });
 
@@ -155,8 +206,35 @@ void DarwinSyscallDispatcher::setup_default_mach_handlers() {
 
     // 4. MACH_mach_msg_trap (-31)
     register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::MachMsg),
-        [](CPU&, Memory&) -> std::int64_t {
+        [this](CPU& cpu, Memory& mem) -> std::int64_t {
+            if (mach_ipc_) {
+                const auto msg_vaddr  = cpu.read_register(0);
+                const auto option     = static_cast<std::uint32_t>(cpu.read_register(1));
+                const auto send_size  = static_cast<std::uint32_t>(cpu.read_register(2));
+                const auto rcv_size   = static_cast<std::uint32_t>(cpu.read_register(3));
+                const auto rcv_name   = static_cast<mach_port_t>(cpu.read_register(4));
+                const auto timeout_ms = static_cast<std::uint32_t>(cpu.read_register(5));
+                return mach_ipc_->mach_msg(task_id_, msg_vaddr, option, send_size, rcv_size, rcv_name, timeout_ms, mem);
+            }
             return 0; // MACH_MSG_SUCCESS / KERN_SUCCESS
+        });
+
+    // 4b. MACH_mach_msg_overwrite_trap (-32)
+    register_mach_handler(static_cast<std::int64_t>(DarwinMachTrap::MachMsgOverwrite),
+        [this](CPU& cpu, Memory& mem) -> std::int64_t {
+            if (mach_ipc_) {
+                const auto msg_vaddr      = cpu.read_register(0);
+                const auto option         = static_cast<std::uint32_t>(cpu.read_register(1));
+                const auto send_size      = static_cast<std::uint32_t>(cpu.read_register(2));
+                const auto rcv_size       = static_cast<std::uint32_t>(cpu.read_register(3));
+                const auto rcv_name       = static_cast<mach_port_t>(cpu.read_register(4));
+                const auto timeout_ms     = static_cast<std::uint32_t>(cpu.read_register(5));
+                const auto rcv_msg_vaddr  = (cpu.read_register(6));
+                const auto rcv_msg_size   = static_cast<std::uint32_t>(cpu.read_register(7));
+                return mach_ipc_->mach_msg_overwrite(
+                    task_id_, msg_vaddr, option, send_size, rcv_size, rcv_name, timeout_ms, mem, rcv_msg_vaddr, rcv_msg_size);
+            }
+            return 0;
         });
 
     // 5. MACH_semaphore_signal_trap (-33)

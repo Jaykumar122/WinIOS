@@ -1,5 +1,6 @@
 #include "runtime/darwin_mach_ipc.h"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -72,6 +73,34 @@ std::size_t MachPortObject::queue_size() const noexcept {
 void MachPortObject::clear_queue() noexcept {
     std::lock_guard<std::mutex> guard(lock_);
     queue_.clear();
+}
+
+void MachPortObject::add_dead_name_notification(DeadNameNotification notif) {
+    std::lock_guard<std::mutex> guard(lock_);
+    dead_name_notifications_.push_back(std::move(notif));
+}
+
+void MachPortObject::mark_dead() noexcept {
+    std::vector<DeadNameNotification> notifs_to_fire;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        is_dead_ = true;
+        notifs_to_fire = std::move(dead_name_notifications_);
+    }
+    for (const auto& notif : notifs_to_fire) {
+        if (notif.notify_port_object) {
+            MachMessage msg;
+            msg.header.msgh_id = 72; // MACH_NOTIFY_DEAD_NAME
+            msg.header.msgh_bits = 0;
+            msg.header.msgh_size = static_cast<std::uint32_t>(sizeof(MachMsgHeaderRaw) + sizeof(mach_port_t));
+            msg.header.msgh_remote_port = notif.notify_port_name;
+            msg.header.msgh_local_port = kMachPortNull;
+            msg.header.msgh_voucher_port = kMachPortNull;
+            msg.payload.resize(sizeof(mach_port_t));
+            std::memcpy(msg.payload.data(), &notif.monitored_name, sizeof(mach_port_t));
+            (void)notif.notify_port_object->enqueue_message(std::move(msg));
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -158,8 +187,24 @@ bool MachPortSpace::deallocate_port(mach_port_t name) {
     if (!entry.in_use || entry.generation != gen) return false;
 
     if (--entry.urefs == 0) {
-        if (entry.right_type == kMachPortRightReceive && entry.object) {
-            entry.object->mark_dead();
+        if (entry.right_type == kMachPortRightPortSet) {
+            auto it = port_sets_.find(name);
+            if (it != port_sets_.end()) {
+                for (mach_port_t m : it->second) {
+                    member_to_set_.erase(m);
+                }
+                port_sets_.erase(it);
+            }
+        } else if (entry.right_type == kMachPortRightReceive) {
+            auto it = member_to_set_.find(name);
+            if (it != member_to_set_.end()) {
+                auto& members = port_sets_[it->second];
+                members.erase(std::remove(members.begin(), members.end(), name), members.end());
+                member_to_set_.erase(it);
+            }
+            if (entry.object) {
+                entry.object->mark_dead();
+            }
         }
         entry.in_use = false;
         entry.object.reset();
@@ -191,8 +236,24 @@ bool MachPortSpace::mod_refs(mach_port_t name, std::uint32_t right, std::int32_t
         const auto udelta = static_cast<std::uint32_t>(-delta);
         if (udelta >= entry.urefs) {
             entry.urefs = 0;
-            if (entry.right_type == kMachPortRightReceive && entry.object) {
-                entry.object->mark_dead();
+            if (entry.right_type == kMachPortRightPortSet) {
+                auto it = port_sets_.find(name);
+                if (it != port_sets_.end()) {
+                    for (mach_port_t m : it->second) {
+                        member_to_set_.erase(m);
+                    }
+                    port_sets_.erase(it);
+                }
+            } else if (entry.right_type == kMachPortRightReceive) {
+                auto it = member_to_set_.find(name);
+                if (it != member_to_set_.end()) {
+                    auto& members = port_sets_[it->second];
+                    members.erase(std::remove(members.begin(), members.end(), name), members.end());
+                    member_to_set_.erase(it);
+                }
+                if (entry.object) {
+                    entry.object->mark_dead();
+                }
             }
             entry.in_use = false;
             entry.object.reset();
@@ -293,6 +354,67 @@ bool MachPortSpace::consume_send_once(mach_port_t name) {
         return true;
     }
     return false;
+}
+
+bool MachPortSpace::is_port_set(mach_port_t name) const {
+    std::lock_guard<std::mutex> guard(lock_);
+    const std::uint16_t idx = handle_index(name);
+    const std::uint16_t gen = handle_generation(name);
+    if (idx == 0 || idx >= slots_.size()) return false;
+    const auto& entry = slots_[idx];
+    return entry.in_use && entry.generation == gen && entry.right_type == kMachPortRightPortSet;
+}
+
+std::vector<mach_port_t> MachPortSpace::get_set_members(mach_port_t set_name) const {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = port_sets_.find(set_name);
+    if (it != port_sets_.end()) {
+        return it->second;
+    }
+    return {};
+}
+
+bool MachPortSpace::insert_set_member(mach_port_t member, mach_port_t set) {
+    std::lock_guard<std::mutex> guard(lock_);
+    const std::uint16_t set_idx = handle_index(set);
+    const std::uint16_t set_gen = handle_generation(set);
+    if (set_idx == 0 || set_idx >= slots_.size()) return false;
+    if (!slots_[set_idx].in_use || slots_[set_idx].generation != set_gen || slots_[set_idx].right_type != kMachPortRightPortSet) {
+        return false;
+    }
+
+    const std::uint16_t mem_idx = handle_index(member);
+    const std::uint16_t mem_gen = handle_generation(member);
+    if (mem_idx == 0 || mem_idx >= slots_.size()) return false;
+    if (!slots_[mem_idx].in_use || slots_[mem_idx].generation != mem_gen || slots_[mem_idx].right_type != kMachPortRightReceive) {
+        return false;
+    }
+
+    // If member already in a set, remove it first
+    auto prev_it = member_to_set_.find(member);
+    if (prev_it != member_to_set_.end()) {
+        mach_port_t prev_set = prev_it->second;
+        auto& members = port_sets_[prev_set];
+        members.erase(std::remove(members.begin(), members.end(), member), members.end());
+        member_to_set_.erase(prev_it);
+    }
+
+    port_sets_[set].push_back(member);
+    member_to_set_[member] = set;
+    return true;
+}
+
+bool MachPortSpace::extract_set_member(mach_port_t member, mach_port_t set) {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = member_to_set_.find(member);
+    if (it == member_to_set_.end() || it->second != set) {
+        return false;
+    }
+
+    member_to_set_.erase(it);
+    auto& members = port_sets_[set];
+    members.erase(std::remove(members.begin(), members.end(), member), members.end());
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -416,6 +538,45 @@ std::uint32_t MachIpcSubsystem::mach_port_get_refs(std::uint32_t task_id, mach_p
     return space->get_refs(port, right);
 }
 
+bool MachIpcSubsystem::mach_port_insert_member(std::uint32_t task_id, mach_port_t member_port, mach_port_t set_port) {
+    auto space = get_task_port_space(task_id);
+    if (!space) return false;
+    return space->insert_set_member(member_port, set_port);
+}
+
+bool MachIpcSubsystem::mach_port_extract_member(std::uint32_t task_id, mach_port_t member_port, mach_port_t set_port) {
+    auto space = get_task_port_space(task_id);
+    if (!space) return false;
+    return space->extract_set_member(member_port, set_port);
+}
+
+bool MachIpcSubsystem::mach_port_request_notification(
+    std::uint32_t task_id,
+    mach_port_t name,
+    std::uint32_t id,
+    mach_port_t notify_port) {
+
+    auto space = get_task_port_space(task_id);
+    if (!space) return false;
+
+    auto target_obj = space->lookup_port(name);
+    if (!target_obj) return false;
+
+    auto notify_obj = space->lookup_port(notify_port);
+    if (!notify_obj) return false;
+
+    if (id == MACH_NOTIFY_DEAD_NAME) {
+        DeadNameNotification notif;
+        notif.task_id = task_id;
+        notif.notify_port_name = notify_port;
+        notif.notify_port_object = notify_obj;
+        notif.monitored_name = name;
+        target_obj->add_dead_name_notification(std::move(notif));
+        return true;
+    }
+    return false;
+}
+
 std::int32_t MachIpcSubsystem::mach_msg(
     std::uint32_t task_id,
     std::uint64_t msg_vaddr,
@@ -467,7 +628,7 @@ std::int32_t MachIpcSubsystem::mach_msg_overwrite(
         }
 
         auto right_type = space->get_right_type(hdr.msgh_remote_port);
-        if (right_type == kMachPortRightDeadName) {
+        if (dest_obj->is_dead() || right_type == kMachPortRightDeadName) {
             return kMachSendInvalidDest;
         }
         if (right_type == kMachPortRightSendOnce) {
@@ -480,10 +641,68 @@ std::int32_t MachIpcSubsystem::mach_msg_overwrite(
             msg.reply_port_object = space->lookup_port(hdr.msgh_local_port);
         }
 
-        const std::size_t payload_size = send_size - sizeof(MachMsgHeaderRaw);
-        if (payload_size > 0) {
-            msg.payload.resize(payload_size);
-            std::memcpy(msg.payload.data(), raw_ptr + sizeof(MachMsgHeaderRaw), payload_size);
+        if ((hdr.msgh_bits & MACH_MSGH_BITS_COMPLEX) != 0 && send_size >= sizeof(MachMsgHeaderRaw) + sizeof(MachMsgBodyRaw)) {
+            msg.is_complex = true;
+            MachMsgBodyRaw body{};
+            std::memcpy(&body, raw_ptr + sizeof(MachMsgHeaderRaw), sizeof(body));
+
+            std::size_t cur_off = sizeof(MachMsgHeaderRaw) + sizeof(MachMsgBodyRaw);
+            for (std::uint32_t i = 0; i < body.msgh_descriptor_count; ++i) {
+                if (cur_off >= send_size) break;
+                if (cur_off + sizeof(MachMsgOolDescriptorRaw) <= send_size &&
+                    raw_ptr[cur_off + 15] == MACH_MSG_OOL_DESCRIPTOR) {
+                    MachMsgOolDescriptorRaw odesc{};
+                    std::memcpy(&odesc, raw_ptr + cur_off, sizeof(odesc));
+                    InFlightOolDescriptor ifod;
+                    ifod.size = odesc.size;
+                    ifod.deallocate = odesc.deallocate;
+                    ifod.copy = odesc.copy;
+                    ifod.data.resize(odesc.size);
+
+                    std::size_t ool_off = 0;
+                    if (vaddr_to_offset(odesc.address, odesc.size, memory, ool_off)) {
+                        std::memcpy(ifod.data.data(), memory.raw_data() + ool_off, odesc.size);
+                        if (odesc.deallocate != 0) {
+                            std::memset(memory.raw_data() + ool_off, 0, odesc.size);
+                        }
+                    }
+                    msg.ool_descriptors.push_back(std::move(ifod));
+                    cur_off += sizeof(MachMsgOolDescriptorRaw);
+                } else if (cur_off + sizeof(MachMsgPortDescriptorRaw) <= send_size &&
+                           raw_ptr[cur_off + 11] == MACH_MSG_PORT_DESCRIPTOR) {
+                    MachMsgPortDescriptorRaw pdesc{};
+                    std::memcpy(&pdesc, raw_ptr + cur_off, sizeof(pdesc));
+                    auto p_obj = space->lookup_port(pdesc.name);
+                    if (p_obj) {
+                        InFlightPortDescriptor ifpd;
+                        ifpd.object = p_obj;
+                        ifpd.disposition = pdesc.disposition;
+                        if (pdesc.disposition == MACH_MSG_TYPE_MOVE_RECEIVE) {
+                            space->deallocate_port(pdesc.name);
+                        } else if (pdesc.disposition == MACH_MSG_TYPE_MOVE_SEND) {
+                            space->mod_refs(pdesc.name, kMachPortRightSend, -1);
+                        } else if (pdesc.disposition == MACH_MSG_TYPE_MOVE_SEND_ONCE) {
+                            space->consume_send_once(pdesc.name);
+                        }
+                        msg.port_descriptors.push_back(std::move(ifpd));
+                    }
+                    cur_off += sizeof(MachMsgPortDescriptorRaw);
+                } else {
+                    break;
+                }
+            }
+
+            if (cur_off < send_size) {
+                const std::size_t rem_size = send_size - cur_off;
+                msg.payload.resize(rem_size);
+                std::memcpy(msg.payload.data(), raw_ptr + cur_off, rem_size);
+            }
+        } else {
+            const std::size_t payload_size = send_size - sizeof(MachMsgHeaderRaw);
+            if (payload_size > 0) {
+                msg.payload.resize(payload_size);
+                std::memcpy(msg.payload.data(), raw_ptr + sizeof(MachMsgHeaderRaw), payload_size);
+            }
         }
 
         if (!dest_obj->enqueue_message(std::move(msg))) {
@@ -503,9 +722,27 @@ std::int32_t MachIpcSubsystem::mach_msg_overwrite(
             return kMachRcvHeaderError;
         }
 
-        auto rcv_obj = space->lookup_port(rcv_name);
-        if (!rcv_obj) {
-            return kMachRcvInvalidName;
+        std::shared_ptr<MachPortObject> rcv_obj;
+        mach_port_t actual_received_port = rcv_name;
+
+        if (space->is_port_set(rcv_name)) {
+            auto members = space->get_set_members(rcv_name);
+            for (mach_port_t m_name : members) {
+                auto m_obj = space->lookup_port(m_name);
+                if (m_obj && m_obj->has_messages()) {
+                    rcv_obj = m_obj;
+                    actual_received_port = m_name;
+                    break;
+                }
+            }
+            if (!rcv_obj) {
+                return kMachRcvTimedOut;
+            }
+        } else {
+            rcv_obj = space->lookup_port(rcv_name);
+            if (!rcv_obj) {
+                return kMachRcvInvalidName;
+            }
         }
 
         auto dequeued = rcv_obj->dequeue_message();
@@ -513,32 +750,91 @@ std::int32_t MachIpcSubsystem::mach_msg_overwrite(
             return kMachRcvTimedOut;
         }
 
-        const std::size_t total_msg_size = sizeof(MachMsgHeaderRaw) + dequeued->payload.size();
-        if (target_rcv_size < total_msg_size) {
-            return kMachRcvTooLarge;
-        }
-
         std::size_t rcv_off = 0;
-        if (!vaddr_to_offset(target_rcv_vaddr, total_msg_size, memory, rcv_off)) {
+        if (!vaddr_to_offset(target_rcv_vaddr, sizeof(MachMsgHeaderRaw), memory, rcv_off)) {
             return kMachRcvHeaderError;
         }
 
         auto hdr = dequeued->header;
-        hdr.msgh_size = static_cast<std::uint32_t>(total_msg_size);
+        hdr.msgh_local_port = actual_received_port;
 
         if (dequeued->reply_port_object) {
-            // Allocate a send right in the receiver's port space for the reply port
             mach_port_t receiver_remote_port = space->allocate_port(dequeued->reply_port_object, kMachPortRightSend);
             hdr.msgh_remote_port = receiver_remote_port;
-            hdr.msgh_local_port = kMachPortNull;
         }
 
-        std::memcpy(memory.raw_data() + rcv_off, &hdr, sizeof(hdr));
+        if (dequeued->is_complex) {
+            std::size_t cur_write = rcv_off + sizeof(MachMsgHeaderRaw);
+            MachMsgBodyRaw body{};
+            body.msgh_descriptor_count = static_cast<std::uint32_t>(
+                dequeued->port_descriptors.size() + dequeued->ool_descriptors.size());
 
-        if (!dequeued->payload.empty()) {
-            std::memcpy(memory.raw_data() + rcv_off + sizeof(hdr),
-                        dequeued->payload.data(),
-                        dequeued->payload.size());
+            std::memcpy(memory.raw_data() + cur_write, &body, sizeof(body));
+            cur_write += sizeof(body);
+
+            for (const auto& pdesc : dequeued->port_descriptors) {
+                mach_port_t new_name = kMachPortNull;
+                if (pdesc.disposition == MACH_MSG_TYPE_MOVE_RECEIVE) {
+                    pdesc.object->set_receiver_task(task_id);
+                    new_name = space->allocate_port(pdesc.object, kMachPortRightReceive);
+                } else if (pdesc.disposition == MACH_MSG_TYPE_MOVE_SEND_ONCE ||
+                           pdesc.disposition == MACH_MSG_TYPE_MAKE_SEND_ONCE) {
+                    new_name = space->allocate_port(pdesc.object, kMachPortRightSendOnce);
+                } else {
+                    new_name = space->allocate_port(pdesc.object, kMachPortRightSend);
+                }
+
+                MachMsgPortDescriptorRaw out_pdesc{};
+                out_pdesc.name = new_name;
+                out_pdesc.disposition = static_cast<std::uint8_t>(pdesc.disposition);
+                out_pdesc.type = MACH_MSG_PORT_DESCRIPTOR;
+                std::memcpy(memory.raw_data() + cur_write, &out_pdesc, sizeof(out_pdesc));
+                cur_write += sizeof(out_pdesc);
+            }
+
+            std::uint64_t ool_dest_va = 0x60000;
+            for (const auto& odesc : dequeued->ool_descriptors) {
+                ool_dest_va = (ool_dest_va + 0x3FFF) & ~0x3FFFULL;
+                std::size_t dest_off = 0;
+                if (vaddr_to_offset(ool_dest_va, odesc.size, memory, dest_off)) {
+                    std::memcpy(memory.raw_data() + dest_off, odesc.data.data(), odesc.size);
+                }
+
+                MachMsgOolDescriptorRaw out_odesc{};
+                out_odesc.address = ool_dest_va;
+                out_odesc.size = odesc.size;
+                out_odesc.deallocate = odesc.deallocate;
+                out_odesc.copy = odesc.copy;
+                out_odesc.type = MACH_MSG_OOL_DESCRIPTOR;
+
+                std::memcpy(memory.raw_data() + cur_write, &out_odesc, sizeof(out_odesc));
+                cur_write += sizeof(out_odesc);
+                ool_dest_va += odesc.size;
+            }
+
+            if (!dequeued->payload.empty()) {
+                std::memcpy(memory.raw_data() + cur_write, dequeued->payload.data(), dequeued->payload.size());
+                cur_write += dequeued->payload.size();
+            }
+
+            const std::size_t total_msg_size = cur_write - rcv_off;
+            if (target_rcv_size < total_msg_size) {
+                return kMachRcvTooLarge;
+            }
+            hdr.msgh_size = static_cast<std::uint32_t>(total_msg_size);
+            std::memcpy(memory.raw_data() + rcv_off, &hdr, sizeof(hdr));
+        } else {
+            const std::size_t total_msg_size = sizeof(MachMsgHeaderRaw) + dequeued->payload.size();
+            if (target_rcv_size < total_msg_size) {
+                return kMachRcvTooLarge;
+            }
+            hdr.msgh_size = static_cast<std::uint32_t>(total_msg_size);
+            std::memcpy(memory.raw_data() + rcv_off, &hdr, sizeof(hdr));
+            if (!dequeued->payload.empty()) {
+                std::memcpy(memory.raw_data() + rcv_off + sizeof(hdr),
+                            dequeued->payload.data(),
+                            dequeued->payload.size());
+            }
         }
     }
 

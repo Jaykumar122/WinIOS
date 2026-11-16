@@ -109,7 +109,8 @@ bool MachODependencyGraph::add_binary(
         switch (cmd_hdr.cmd) {
             case kCmdLoadDylib:
             case kCmdLoadWeakDylib:
-            case kCmdReexportDylibCustom: {
+            case kCmdReexportDylibCustom:
+            case kLoadCmdLoadUpwardDylib: {
                 if (cmd_hdr.cmdsize >= sizeof(DylibCommandRaw)) {
                     DylibCommandRaw dylib_cmd{};
                     std::memcpy(&dylib_cmd, cmd_data, sizeof(dylib_cmd));
@@ -119,6 +120,7 @@ bool MachODependencyGraph::add_binary(
                     edge.resolved_path = edge.raw_path;
                     edge.is_weak = (cmd_hdr.cmd == kCmdLoadWeakDylib);
                     edge.is_reexport = (cmd_hdr.cmd == kCmdReexportDylibCustom);
+                    edge.is_upward = (cmd_hdr.cmd == kLoadCmdLoadUpwardDylib);
                     edge.current_version = dylib_cmd.current_version;
                     edge.compatibility_version = dylib_cmd.compatibility_version;
 
@@ -185,6 +187,30 @@ bool MachODependencyGraph::add_binary(
         }
 
         offset += cmd_hdr.cmdsize;
+    }
+
+    nodes_[node.id] = std::move(node);
+    return true;
+}
+
+bool MachODependencyGraph::add_macho_load_result(const MachOLoadResult& result, std::string_view node_id) {
+    MachODependencyNode node;
+    node.id = std::string(node_id);
+    node.install_name = result.dylib_id;
+    node.rpaths = result.rpaths;
+    node.has_main = (result.entry_point != 0);
+    node.entry_offset = result.entry_point;
+
+    for (const auto& dep : result.dylib_dependencies) {
+        MachODependencyEdge edge;
+        edge.raw_path = dep.path;
+        edge.resolved_path = dep.path;
+        edge.is_weak = dep.is_weak;
+        edge.is_reexport = dep.is_reexport;
+        edge.is_upward = dep.is_upward;
+        edge.current_version = dep.current_version;
+        edge.compatibility_version = dep.compatibility_version;
+        node.dependencies.push_back(std::move(edge));
     }
 
     nodes_[node.id] = std::move(node);
@@ -281,7 +307,8 @@ std::vector<std::string> MachODependencyGraph::resolve_rpath_fallbacks(
 
 DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
     std::string_view root_node_id,
-    const std::set<std::string>& available_libraries) const {
+    const std::set<std::string>& available_libraries,
+    std::size_t max_depth) const {
 
     DependencyResolutionResult result;
 
@@ -294,8 +321,16 @@ DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
     // Colors: 0 = unvisited, 1 = visiting (grey), 2 = visited (black)
     std::map<std::string, int> visit_state;
     std::vector<std::string> post_order;
+    std::size_t current_depth = 0;
 
     auto dfs = [&](auto& self, const std::string& current_id) -> bool {
+        if (current_depth >= max_depth) {
+            result.depth_exceeded = true;
+            result.error_message = "Dependency graph traversal exceeded maximum depth limit (" + std::to_string(max_depth) + ")";
+            return false;
+        }
+
+        current_depth++;
         visit_state[current_id] = 1;
 
         auto node = get_node(current_id);
@@ -314,8 +349,11 @@ DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
                     continue;
                 }
 
-                // Check cycle
+                // Upward dependencies are allowed to point back to an ancestor without creating a cycle error
                 if (visit_state[target] == 1) {
+                    if (edge.is_upward) {
+                        continue;
+                    }
                     result.has_cycle = true;
                     result.cycle_nodes.push_back(current_id);
                     result.cycle_nodes.push_back(target);
@@ -332,12 +370,17 @@ DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
 
         visit_state[current_id] = 2;
         post_order.push_back(current_id);
+        current_depth--;
         return true;
     };
 
     if (!dfs(dfs, std::string(root_node_id))) {
         result.success = false;
-        result.error_message = "Dependency cycle detected in Mach-O dependency graph";
+        if (!result.depth_exceeded && !result.has_cycle) {
+            result.error_message = "Dependency resolution failed";
+        } else if (result.has_cycle && result.error_message.empty()) {
+            result.error_message = "Dependency cycle detected in Mach-O dependency graph";
+        }
         return result;
     }
 

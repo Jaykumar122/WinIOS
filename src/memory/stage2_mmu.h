@@ -143,8 +143,8 @@ inline Stage2SyndromeReport make_stage2_syndrome_report(
 {
     Stage2SyndromeReport report{};
     report.far_el2 = (faulting_va != 0) ? faulting_va : fault.ipa;
-    // HPFAR_EL2[39:4] holds IPA[47:12] -> (ipa >> 8) & 0x00000FFFFFFFF000ULL
-    report.hpfar_el2 = (fault.ipa >> 8u) & 0x00000FFFFFFFF000ULL;
+    // HPFAR_EL2[39:4] holds IPA[47:12] -> (ipa >> 8) & 0x000000FFFFFFFFF0ULL
+    report.hpfar_el2 = (fault.ipa >> 8u) & 0x000000FFFFFFFFF0ULL;
 
     const std::uint32_t ec = fault.is_execute ? 0x20u : 0x24u; // 0x20 = Instruction Abort, 0x24 = Data Abort
     const std::uint32_t il = 1u; // 32-bit instruction

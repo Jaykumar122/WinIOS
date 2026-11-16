@@ -10,7 +10,13 @@
 #include "cpu/cpu.h"
 #include "memory/memory.h"
 
+namespace winios::memory {
+class DarwinVmSpace;
+}
+
 namespace winios::runtime {
+
+class MachIpcSubsystem;
 
 // -----------------------------------------------------------------------------
 // Darwin BSD POSIX Syscall Numbers (passed in X16 with SVC 0x80)
@@ -105,6 +111,13 @@ public:
         std::uint64_t commpage_base = commpage::kDefaultCommpageBase,
         std::uint32_t num_cpus = 6);
 
+    // Subsystem Bindings
+    void bind_vm_space(std::shared_ptr<memory::DarwinVmSpace> vm_space);
+    void bind_mach_ipc(std::shared_ptr<MachIpcSubsystem> mach_ipc, std::uint32_t task_id);
+    [[nodiscard]] std::shared_ptr<memory::DarwinVmSpace> vm_space() const noexcept { return vm_space_; }
+    [[nodiscard]] std::shared_ptr<MachIpcSubsystem> mach_ipc() const noexcept { return mach_ipc_; }
+    [[nodiscard]] std::uint32_t task_id() const noexcept { return task_id_; }
+
     // Diagnostics & Inspection
     [[nodiscard]] const std::string& stdout_buffer() const noexcept { return stdout_buffer_; }
     void clear_stdout() noexcept { stdout_buffer_.clear(); }
@@ -118,6 +131,10 @@ private:
 
     std::unordered_map<std::uint64_t, BsdHandler> bsd_handlers_;
     std::unordered_map<std::int64_t, MachHandler> mach_handlers_;
+
+    std::shared_ptr<memory::DarwinVmSpace> vm_space_;
+    std::shared_ptr<MachIpcSubsystem> mach_ipc_;
+    std::uint32_t task_id_{1};
 
     std::string stdout_buffer_;
     bool has_exited_{false};

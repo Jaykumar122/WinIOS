@@ -41,6 +41,22 @@ inline std::string sanitize_segment_name(const char* name) {
     return std::string(buf);
 }
 
+inline std::string extract_command_string(
+    const std::uint8_t* cmd_start,
+    std::size_t cmdsize,
+    std::uint32_t offset_in_cmd) {
+    if (offset_in_cmd >= cmdsize) {
+        return "";
+    }
+    const char* str_ptr = reinterpret_cast<const char*>(cmd_start + offset_in_cmd);
+    const std::size_t max_len = cmdsize - offset_in_cmd;
+    std::size_t actual_len = 0;
+    while (actual_len < max_len && str_ptr[actual_len] != '\0') {
+        actual_len++;
+    }
+    return std::string(str_ptr, actual_len);
+}
+
 } // anonymous namespace
 
 bool MachOLoader::locate_arm64_slice(
@@ -212,6 +228,21 @@ bool MachOLoader::parse_metadata(
                 return false;
             }
 
+            const auto* sections = reinterpret_cast<const MachOSection64*>(slice_bytes + cmd_offset + sizeof(MachOSegmentCommand64));
+            for (std::uint32_t s_idx = 0; s_idx < seg_cmd->nsects; ++s_idx) {
+                const auto& sec = sections[s_idx];
+                const std::uint32_t sec_type = sec.flags & 0xFFu;
+                if (sec_type == 0x09u || std::strncmp(sec.sectname, "__mod_init_func", 15) == 0) {
+                    if (sec.offset <= slice_sz && sec.size <= (slice_sz - sec.offset)) {
+                        const std::size_t fn_count = static_cast<std::size_t>(sec.size / sizeof(std::uint64_t));
+                        const auto* fn_ptrs = reinterpret_cast<const std::uint64_t*>(slice_bytes + sec.offset);
+                        for (std::size_t f = 0; f < fn_count; ++f) {
+                            out_result.mod_init_funcs.push_back(fn_ptrs[f]);
+                        }
+                    }
+                }
+            }
+
             MachOSegmentInfo seg;
             seg.name = sanitize_segment_name(seg_cmd->segname);
             seg.vmaddr = seg_cmd->vmaddr;
@@ -307,6 +338,60 @@ bool MachOLoader::parse_metadata(
                     entry_info.entry_id = std::string(str, actual_len);
                 }
                 out_result.fileset_entries.push_back(std::move(entry_info));
+            }
+        } else if (cmd->cmd == kLoadCmdLoadDylib ||
+                   cmd->cmd == kLoadCmdLoadWeakDylib ||
+                   cmd->cmd == kLoadCmdReexportDylib ||
+                   cmd->cmd == kLoadCmdLoadUpwardDylib) {
+            if (cmd->cmdsize < sizeof(MachODylibCommand)) {
+                out_result.status = MachOLoadStatus::CorruptedLoadCommands;
+                out_result.error_message = "Dylib load command too small";
+                return false;
+            }
+            const auto* dylib_cmd = reinterpret_cast<const MachODylibCommand*>(slice_bytes + cmd_offset);
+            if (dylib_cmd->name_offset >= cmd->cmdsize) {
+                out_result.status = MachOLoadStatus::CorruptedLoadCommands;
+                out_result.error_message = "Dylib name offset out of command bounds";
+                return false;
+            }
+            MachODylibInfo info;
+            info.path = extract_command_string(slice_bytes + cmd_offset, cmd->cmdsize, dylib_cmd->name_offset);
+            info.current_version = dylib_cmd->current_version;
+            info.compatibility_version = dylib_cmd->compatibility_version;
+            info.timestamp = dylib_cmd->timestamp;
+            info.is_weak = (cmd->cmd == kLoadCmdLoadWeakDylib);
+            info.is_reexport = (cmd->cmd == kLoadCmdReexportDylib);
+            info.is_upward = (cmd->cmd == kLoadCmdLoadUpwardDylib);
+            info.is_id = false;
+            out_result.dylib_dependencies.push_back(std::move(info));
+        } else if (cmd->cmd == kLoadCmdIdDylib) {
+            if (cmd->cmdsize < sizeof(MachODylibCommand)) {
+                out_result.status = MachOLoadStatus::CorruptedLoadCommands;
+                out_result.error_message = "LC_ID_DYLIB command too small";
+                return false;
+            }
+            const auto* id_cmd = reinterpret_cast<const MachODylibCommand*>(slice_bytes + cmd_offset);
+            if (id_cmd->name_offset >= cmd->cmdsize) {
+                out_result.status = MachOLoadStatus::CorruptedLoadCommands;
+                out_result.error_message = "LC_ID_DYLIB name offset out of command bounds";
+                return false;
+            }
+            out_result.dylib_id = extract_command_string(slice_bytes + cmd_offset, cmd->cmdsize, id_cmd->name_offset);
+        } else if (cmd->cmd == kLoadCmdRpath) {
+            if (cmd->cmdsize < sizeof(MachORpathCommand)) {
+                out_result.status = MachOLoadStatus::CorruptedLoadCommands;
+                out_result.error_message = "LC_RPATH command too small";
+                return false;
+            }
+            const auto* rp_cmd = reinterpret_cast<const MachORpathCommand*>(slice_bytes + cmd_offset);
+            if (rp_cmd->path_offset >= cmd->cmdsize) {
+                out_result.status = MachOLoadStatus::CorruptedLoadCommands;
+                out_result.error_message = "LC_RPATH path offset out of command bounds";
+                return false;
+            }
+            std::string rpath = extract_command_string(slice_bytes + cmd_offset, cmd->cmdsize, rp_cmd->path_offset);
+            if (!rpath.empty()) {
+                out_result.rpaths.push_back(std::move(rpath));
             }
         }
 

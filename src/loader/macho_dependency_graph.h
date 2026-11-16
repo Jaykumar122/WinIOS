@@ -10,7 +10,12 @@
 #include <string_view>
 #include <vector>
 
+#include "loader/macho_loader.h"
+
 namespace winios::loader {
+
+// Maximum allowed dependency graph traversal depth to prevent stack overflow
+constexpr std::size_t kMaxDependencyDepth = 64;
 
 // -----------------------------------------------------------------------------
 // Mach-O Dependency Relationship
@@ -20,6 +25,7 @@ struct MachODependencyEdge {
     std::string   resolved_path;
     bool          is_weak{false};
     bool          is_reexport{false};
+    bool          is_upward{false};
     std::uint32_t current_version{0};
     std::uint32_t compatibility_version{0};
 };
@@ -42,7 +48,8 @@ struct MachODependencyNode {
 struct DependencyResolutionResult {
     bool                     success{false};
     bool                     has_cycle{false};
-    std::vector<std::string> load_order;        // Topologically sorted load order
+    bool                     depth_exceeded{false};
+    std::vector<std::string> load_order;        // Topologically sorted load order (dependencies first)
     std::vector<std::string> cycle_nodes;
     std::vector<std::string> missing_required;
     std::vector<std::string> missing_weak;
@@ -64,11 +71,20 @@ public:
         std::string_view node_id,
         std::string& out_error);
 
+    // Add node directly from parsed MachOLoadResult
+    bool add_macho_load_result(const MachOLoadResult& result, std::string_view node_id);
+
     // Register a pre-constructed node
     void add_node(MachODependencyNode node);
 
     // Query node
     [[nodiscard]] const MachODependencyNode* get_node(std::string_view node_id) const noexcept;
+
+    // Clear nodes
+    void clear() noexcept { nodes_.clear(); }
+
+    // Count of nodes
+    [[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
 
     // Resolve @rpath, @executable_path, @loader_path
     [[nodiscard]] std::string resolve_path(
@@ -84,10 +100,11 @@ public:
         const std::vector<std::string>& active_rpaths,
         std::string_view loader_path = "") const;
 
-    // Perform topological dependency sort and cycle detection
+    // Perform topological dependency sort, cycle detection, and depth limit checking
     [[nodiscard]] DependencyResolutionResult resolve_dependencies(
         std::string_view root_node_id,
-        const std::set<std::string>& available_libraries) const;
+        const std::set<std::string>& available_libraries,
+        std::size_t max_depth = kMaxDependencyDepth) const;
 
 private:
     std::map<std::string, MachODependencyNode> nodes_;

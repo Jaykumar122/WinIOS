@@ -68,9 +68,15 @@ void DyldEngine::register_builtin_system_libraries() {
 }
 
 void DyldEngine::register_module(DyldLoadedModule module) {
-    // Remove if module with same install_name or name exists
+    // Remove if module with same non-empty install_name or name exists
     auto it = std::remove_if(modules_.begin(), modules_.end(), [&](const DyldLoadedModule& m) {
-        return m.install_name == module.install_name || m.name == module.name;
+        if (!module.install_name.empty() && m.install_name == module.install_name) {
+            return true;
+        }
+        if (!module.name.empty() && m.name == module.name) {
+            return true;
+        }
+        return false;
     });
     modules_.erase(it, modules_.end());
     modules_.push_back(std::move(module));
@@ -102,6 +108,40 @@ const DyldLoadedModule* DyldEngine::find_module(std::string_view name) const noe
     return nullptr;
 }
 
+namespace {
+
+std::optional<std::uint64_t> lookup_in_module_and_reexports(
+    const std::vector<DyldLoadedModule>& modules,
+    const DyldLoadedModule& mod,
+    std::string_view name,
+    std::set<std::string>& visited) noexcept {
+
+    std::string mod_key = mod.name.empty() ? mod.install_name : mod.name;
+    if (!visited.insert(mod_key).second) {
+        return std::nullopt;
+    }
+
+    auto it = mod.exports.find(std::string(name));
+    if (it != mod.exports.end()) {
+        return it->second + mod.slide;
+    }
+
+    for (const auto& reexp : mod.reexports) {
+        for (const auto& candidate : modules) {
+            if (candidate.name == reexp || candidate.install_name == reexp) {
+                auto res = lookup_in_module_and_reexports(modules, candidate, name, visited);
+                if (res.has_value()) {
+                    return res;
+                }
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+} // namespace
+
 std::optional<std::uint64_t> DyldEngine::resolve_symbol(
     std::string_view name,
     std::uint32_t ordinal) const noexcept {
@@ -109,17 +149,19 @@ std::optional<std::uint64_t> DyldEngine::resolve_symbol(
     // Ordinal-specific resolution (1-based ordinal pointing to dependent dylib)
     if (ordinal > 0 && ordinal <= modules_.size()) {
         const auto& mod = modules_[ordinal - 1];
-        auto it = mod.exports.find(std::string(name));
-        if (it != mod.exports.end()) {
-            return it->second + mod.slide;
+        std::set<std::string> visited;
+        auto addr = lookup_in_module_and_reexports(modules_, mod, name, visited);
+        if (addr.has_value()) {
+            return addr;
         }
     }
 
     // Broad search across all registered modules
     for (const auto& mod : modules_) {
-        auto it = mod.exports.find(std::string(name));
-        if (it != mod.exports.end()) {
-            return it->second + mod.slide;
+        std::set<std::string> visited;
+        auto addr = lookup_in_module_and_reexports(modules_, mod, name, visited);
+        if (addr.has_value()) {
+            return addr;
         }
     }
 
@@ -140,9 +182,10 @@ DyldLinkStatus DyldEngine::resolve_symbol_two_level(
         std::size_t idx = static_cast<std::size_t>(library_ordinal - 1);
         if (idx < modules_.size()) {
             const auto& mod = modules_[idx];
-            auto it = mod.exports.find(std::string(name));
-            if (it != mod.exports.end()) {
-                out_address = it->second + mod.slide;
+            std::set<std::string> visited;
+            auto addr = lookup_in_module_and_reexports(modules_, mod, name, visited);
+            if (addr.has_value()) {
+                out_address = *addr;
                 return DyldLinkStatus::Success;
             }
         }
@@ -158,9 +201,10 @@ DyldLinkStatus DyldEngine::resolve_symbol_two_level(
     if (library_ordinal == BIND_SPECIAL_DYLIB_MAIN_EXECUTABLE) {
         if (!modules_.empty()) {
             const auto& mod = modules_.front();
-            auto it = mod.exports.find(std::string(name));
-            if (it != mod.exports.end()) {
-                out_address = it->second + mod.slide;
+            std::set<std::string> visited;
+            auto addr = lookup_in_module_and_reexports(modules_, mod, name, visited);
+            if (addr.has_value()) {
+                out_address = *addr;
                 return DyldLinkStatus::Success;
             }
         }
@@ -174,9 +218,10 @@ DyldLinkStatus DyldEngine::resolve_symbol_two_level(
 
     // 3. Flat / broad lookup (BIND_SPECIAL_DYLIB_FLAT_LOOKUP or default 0)
     for (const auto& mod : modules_) {
-        auto it = mod.exports.find(std::string(name));
-        if (it != mod.exports.end()) {
-            out_address = it->second + mod.slide;
+        std::set<std::string> visited;
+        auto addr = lookup_in_module_and_reexports(modules_, mod, name, visited);
+        if (addr.has_value()) {
+            out_address = *addr;
             return DyldLinkStatus::Success;
         }
     }
@@ -393,19 +438,6 @@ bool DyldEngine::parse_symbol_table(
 
     const auto* bytes = static_cast<const std::uint8_t*>(macho_data);
 
-    std::size_t symtab_bytes = static_cast<std::size_t>(nsyms) * 16ULL;
-    if (static_cast<std::size_t>(symoff) + symtab_bytes > macho_size) {
-        out_error = "Symbol table extends beyond Mach-O image bounds";
-        return false;
-    }
-
-    if (static_cast<std::size_t>(stroff) + static_cast<std::size_t>(strsize) > macho_size) {
-        out_error = "String table extends beyond Mach-O image bounds";
-        return false;
-    }
-
-    const char* strtab = reinterpret_cast<const char*>(bytes + stroff);
-
     #pragma pack(push, 1)
     struct NList64Raw {
         std::uint32_t n_strx;
@@ -416,6 +448,25 @@ bool DyldEngine::parse_symbol_table(
     };
     #pragma pack(pop)
 
+    constexpr std::size_t kNListSize = sizeof(NList64Raw); // 16 bytes
+    if (static_cast<std::size_t>(nsyms) > (macho_size / kNListSize)) {
+        out_error = "Symbol table count exceeds buffer limits";
+        return false;
+    }
+
+    std::size_t symtab_bytes = static_cast<std::size_t>(nsyms) * kNListSize;
+    if (static_cast<std::size_t>(symoff) > (macho_size - symtab_bytes)) {
+        out_error = "Symbol table extends beyond Mach-O image bounds";
+        return false;
+    }
+
+    if (static_cast<std::size_t>(stroff) > macho_size ||
+        static_cast<std::size_t>(strsize) > (macho_size - static_cast<std::size_t>(stroff))) {
+        out_error = "String table extends beyond Mach-O image bounds";
+        return false;
+    }
+
+    const char* strtab = reinterpret_cast<const char*>(bytes + stroff);
     const auto* nlists = reinterpret_cast<const NList64Raw*>(bytes + symoff);
 
     for (std::uint32_t i = 0; i < nsyms; ++i) {
@@ -434,9 +485,22 @@ bool DyldEngine::parse_symbol_table(
         sym.is_weak_def = ((nl.n_desc & N_WEAK_DEF) != 0);
         sym.is_weak_ref = ((nl.n_desc & N_WEAK_REF) != 0);
 
-        if (nl.n_strx < strsize) {
-            sym.name = std::string(strtab + nl.n_strx);
+        if (nl.n_strx >= strsize) {
+            out_error = "Symbol string index out of bounds: " + std::to_string(nl.n_strx) + " >= " + std::to_string(strsize);
+            return false;
         }
+
+        const char* s_ptr = strtab + nl.n_strx;
+        std::size_t max_len = strsize - nl.n_strx;
+        std::size_t len = 0;
+        while (len < max_len && s_ptr[len] != '\0') {
+            len++;
+        }
+        if (len == max_len && (len == 0 || s_ptr[len - 1] != '\0')) {
+            out_error = "Unterminated symbol name string in string table at offset " + std::to_string(nl.n_strx);
+            return false;
+        }
+        sym.name = std::string(s_ptr, len);
 
         out_symbols.push_back(std::move(sym));
     }
@@ -835,16 +899,17 @@ inline std::size_t translate_patch_vaddr(
     std::uint64_t base_vaddr,
     std::size_t mem_size) noexcept {
 
-    if (patch_vaddr < mem_size) {
-        return static_cast<std::size_t>(patch_vaddr);
-    }
     if (base_vaddr > 0 && patch_vaddr >= base_vaddr) {
         std::uint64_t rel = patch_vaddr - base_vaddr;
         if (rel < mem_size) {
             return static_cast<std::size_t>(rel);
         }
+        return static_cast<std::size_t>(~0ULL);
     }
-    return static_cast<std::size_t>(patch_vaddr % mem_size);
+    if (patch_vaddr < mem_size) {
+        return static_cast<std::size_t>(patch_vaddr);
+    }
+    return static_cast<std::size_t>(~0ULL);
 }
 
 } // anonymous namespace
@@ -862,8 +927,8 @@ DyldLinkStatus DyldEngine::apply_rebases(
 
     for (const auto& r : rebases) {
         std::size_t off = translate_patch_vaddr(r.patch_vaddr, base_vaddr, memory.size());
-        if (off + 8 > memory.size()) {
-            out_error = "Rebase patch offset exceeds memory size";
+        if (off == static_cast<std::size_t>(~0ULL) || off + 8 > memory.size()) {
+            out_error = "Rebase patch offset exceeds memory size: " + std::to_string(r.patch_vaddr);
             return DyldLinkStatus::MemoryPatchFailed;
         }
 
@@ -888,7 +953,7 @@ DyldLinkStatus DyldEngine::apply_bindings(
             if (b.is_weak) {
                 // Weak undefined symbol resolves to NULL
                 std::size_t off = translate_patch_vaddr(b.patch_vaddr, base_vaddr, memory.size());
-                if (off + 8 <= memory.size()) {
+                if (off != static_cast<std::size_t>(~0ULL) && off + 8 <= memory.size()) {
                     memory.write_u64(off, 0);
                 }
                 continue;
@@ -899,8 +964,8 @@ DyldLinkStatus DyldEngine::apply_bindings(
 
         std::uint64_t final_target = *resolved + static_cast<std::uint64_t>(b.addend);
         std::size_t off = translate_patch_vaddr(b.patch_vaddr, base_vaddr, memory.size());
-        if (off + 8 > memory.size()) {
-            out_error = "Binding patch offset exceeds memory bounds";
+        if (off == static_cast<std::size_t>(~0ULL) || off + 8 > memory.size()) {
+            out_error = "Binding patch offset exceeds memory bounds: " + std::to_string(b.patch_vaddr);
             return DyldLinkStatus::MemoryPatchFailed;
         }
 
@@ -1180,7 +1245,12 @@ DyldLinkStatus DyldEngine::process_chained_fixups(
                                     memory.write_u64(chain_loc, final_target);
                                 }
                             } else {
-                                std::uint64_t target_vaddr = arm64e_dec.target + slide;
+                                std::uint64_t target_vaddr = 0;
+                                if (format == DYLD_CHAINED_PTR_ARM64E_USERLAND || format == DYLD_CHAINED_PTR_ARM64E_USERLAND24) {
+                                    target_vaddr = base_vaddr + (raw_val & 0x7FFFFFFFFFFULL) + slide;
+                                } else {
+                                    target_vaddr = arm64e_dec.target + slide;
+                                }
                                 memory.write_u64(chain_loc, target_vaddr);
                             }
                         }
@@ -1539,6 +1609,68 @@ std::vector<std::uint8_t> DyldFixtureBuilder::create_synthetic_export_trie(
     }
 
     return buf;
+}
+
+void DyldEngine::set_module_initializers(std::string_view module_name, std::vector<std::uint64_t> initializers) {
+    for (auto& mod : modules_) {
+        if (mod.name == module_name || mod.install_name == module_name) {
+            mod.initializers = std::move(initializers);
+            return;
+        }
+    }
+}
+
+bool DyldEngine::validate_initializers(
+    const DyldLoadedModule& mod,
+    const std::vector<MachOSegmentInfo>& segments,
+    std::string& out_error) const noexcept {
+
+    for (std::uint64_t fn : mod.initializers) {
+        if (fn == 0) {
+            out_error = "Null initializer function pointer in module '" + mod.name + "'";
+            return false;
+        }
+
+        bool in_exec = false;
+        for (const auto& seg : segments) {
+            if ((seg.initprot & kVmProtExecute) != 0) {
+                if (fn >= seg.vmaddr && fn < (seg.vmaddr + seg.vmsize)) {
+                    in_exec = true;
+                    break;
+                }
+            }
+        }
+
+        if (!in_exec) {
+            std::ostringstream ss;
+            ss << std::hex << fn;
+            out_error = "Initializer pointer 0x" + ss.str() + " in module '" + mod.name + "' is not in an executable segment";
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<std::uint64_t> DyldEngine::get_initialization_order(
+    const std::vector<std::string>& load_order,
+    std::vector<std::string>& out_initialized_modules) {
+
+    std::vector<std::uint64_t> ordered_funcs;
+
+    for (const auto& mod_name : load_order) {
+        for (auto& mod : modules_) {
+            if ((mod.name == mod_name || mod.install_name == mod_name) && !mod.is_initialized) {
+                mod.is_initialized = true;
+                out_initialized_modules.push_back(mod.name.empty() ? mod.install_name : mod.name);
+                for (std::uint64_t fn : mod.initializers) {
+                    ordered_funcs.push_back(fn + mod.slide);
+                }
+                break;
+            }
+        }
+    }
+
+    return ordered_funcs;
 }
 
 } // namespace winios::loader

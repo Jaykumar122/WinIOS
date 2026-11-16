@@ -31,6 +31,12 @@ inline constexpr std::uint32_t kMachPortRightSendOnce  = 2u;
 inline constexpr std::uint32_t kMachPortRightPortSet   = 3u;
 inline constexpr std::uint32_t kMachPortRightDeadName  = 4u;
 
+// Mach Notification IDs (mach/message.h)
+inline constexpr std::uint32_t MACH_NOTIFY_PORT_DESTROYED = 69u;
+inline constexpr std::uint32_t MACH_NOTIFY_NO_SENDERS     = 70u;
+inline constexpr std::uint32_t MACH_NOTIFY_SEND_ONCE      = 71u;
+inline constexpr std::uint32_t MACH_NOTIFY_DEAD_NAME      = 72u;
+
 // mach_msg Option Flags
 inline constexpr std::uint32_t kMachSendMsg            = 0x00000001u;
 inline constexpr std::uint32_t kMachRcvMsg             = 0x00000002u;
@@ -100,10 +106,32 @@ struct MachMsgOolDescriptorRaw {
 // -----------------------------------------------------------------------------
 class MachPortObject;
 
+struct DeadNameNotification {
+    std::uint32_t                   task_id{0};
+    mach_port_t                     notify_port_name{0};
+    std::shared_ptr<MachPortObject> notify_port_object;
+    mach_port_t                     monitored_name{0};
+};
+
+struct InFlightPortDescriptor {
+    std::shared_ptr<MachPortObject> object;
+    std::uint32_t                   disposition{0};
+};
+
+struct InFlightOolDescriptor {
+    std::vector<std::uint8_t> data;
+    std::uint32_t             size{0};
+    std::uint8_t              deallocate{0};
+    std::uint8_t              copy{0};
+};
+
 struct MachMessage {
-    MachMsgHeaderRaw                header{};
-    std::shared_ptr<MachPortObject> reply_port_object;
-    std::vector<std::uint8_t>       payload;
+    MachMsgHeaderRaw                    header{};
+    std::shared_ptr<MachPortObject>     reply_port_object;
+    std::vector<std::uint8_t>           payload;
+    bool                                is_complex{false};
+    std::vector<InFlightPortDescriptor> port_descriptors;
+    std::vector<InFlightOolDescriptor>  ool_descriptors;
 };
 
 // -----------------------------------------------------------------------------
@@ -124,7 +152,9 @@ public:
     void set_service_name(std::string name) { service_name_ = std::move(name); }
 
     [[nodiscard]] bool is_dead() const noexcept { return is_dead_; }
-    void mark_dead() noexcept { is_dead_ = true; }
+    void mark_dead() noexcept;
+
+    void add_dead_name_notification(DeadNameNotification notif);
 
     // Enqueue & Dequeue operations
     [[nodiscard]] bool enqueue_message(MachMessage msg);
@@ -134,12 +164,13 @@ public:
     void clear_queue() noexcept;
 
 private:
-    std::uint64_t            id_{0};
-    std::uint32_t            receiver_task_{0};
-    std::string              service_name_;
-    bool                     is_dead_{false};
-    mutable std::mutex       lock_;
-    std::deque<MachMessage>  queue_;
+    std::uint64_t                      id_{0};
+    std::uint32_t                      receiver_task_{0};
+    std::string                        service_name_;
+    bool                               is_dead_{false};
+    mutable std::mutex                 lock_;
+    std::deque<MachMessage>            queue_;
+    std::vector<DeadNameNotification>  dead_name_notifications_;
 };
 
 struct MachPortTableEntry {
@@ -187,6 +218,12 @@ public:
     // Consume send-once right after message transmission
     bool consume_send_once(mach_port_t name);
 
+    // Port Sets
+    [[nodiscard]] bool is_port_set(mach_port_t name) const;
+    [[nodiscard]] std::vector<mach_port_t> get_set_members(mach_port_t set_name) const;
+    bool insert_set_member(mach_port_t member, mach_port_t set);
+    bool extract_set_member(mach_port_t member, mach_port_t set);
+
     // Standard task rights
     [[nodiscard]] mach_port_t task_self() const noexcept { return task_self_; }
     [[nodiscard]] mach_port_t host_self() const noexcept { return host_self_; }
@@ -201,6 +238,8 @@ private:
     mutable std::mutex                   lock_;
     std::vector<MachPortTableEntry>      slots_;
     std::vector<std::uint16_t>           free_list_;
+    std::unordered_map<mach_port_t, std::vector<mach_port_t>> port_sets_;
+    std::unordered_map<mach_port_t, mach_port_t>              member_to_set_;
 };
 
 // -----------------------------------------------------------------------------
@@ -248,6 +287,11 @@ public:
     bool mach_port_deallocate(std::uint32_t task_id, mach_port_t port);
     bool mach_port_mod_refs(std::uint32_t task_id, mach_port_t port, std::uint32_t right, std::int32_t delta);
     [[nodiscard]] std::uint32_t mach_port_get_refs(std::uint32_t task_id, mach_port_t port, std::uint32_t right);
+
+    // Port Sets & Notifications
+    bool mach_port_insert_member(std::uint32_t task_id, mach_port_t member_port, mach_port_t set_port);
+    bool mach_port_extract_member(std::uint32_t task_id, mach_port_t member_port, mach_port_t set_port);
+    bool mach_port_request_notification(std::uint32_t task_id, mach_port_t name, std::uint32_t id, mach_port_t notify_port);
 
     // Trap Dispatch Helpers
     [[nodiscard]] mach_port_t mach_reply_port(std::uint32_t task_id);

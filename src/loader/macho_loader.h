@@ -40,6 +40,12 @@ constexpr std::uint32_t kLoadCmdUnixThread       = 0x00000005u; // LC_UNIXTHREAD
 constexpr std::uint32_t kLoadCmdThread           = 0x00000004u; // LC_THREAD
 constexpr std::uint32_t kLoadCmdMain             = 0x80000028u; // LC_MAIN
 constexpr std::uint32_t kLoadCmdFilesetEntry     = 0x80000035u; // LC_FILESET_ENTRY
+constexpr std::uint32_t kLoadCmdLoadDylib         = 0x0000000Cu; // LC_LOAD_DYLIB
+constexpr std::uint32_t kLoadCmdIdDylib           = 0x0000000Du; // LC_ID_DYLIB
+constexpr std::uint32_t kLoadCmdLoadWeakDylib     = 0x80000018u; // LC_LOAD_WEAK_DYLIB
+constexpr std::uint32_t kLoadCmdReexportDylib     = 0x8000001Fu; // LC_REEXPORT_DYLIB
+constexpr std::uint32_t kLoadCmdLoadUpwardDylib   = 0x80000023u; // LC_LOAD_UPWARD_DYLIB
+constexpr std::uint32_t kLoadCmdRpath             = 0x8000001Cu; // LC_RPATH
 
 // ARM64 Thread State Flavor
 constexpr std::uint32_t kArmThreadState64        = 0x00000006u;
@@ -129,6 +135,21 @@ struct MachOFilesetEntryCommand {
     std::uint32_t reserved;
 };
 
+struct MachODylibCommand {
+    std::uint32_t cmd;
+    std::uint32_t cmdsize;
+    std::uint32_t name_offset;
+    std::uint32_t timestamp;
+    std::uint32_t current_version;
+    std::uint32_t compatibility_version;
+};
+
+struct MachORpathCommand {
+    std::uint32_t cmd;
+    std::uint32_t cmdsize;
+    std::uint32_t path_offset;
+};
+
 struct MachOArmThreadState64 {
     std::uint64_t x[29];
     std::uint64_t fp;
@@ -158,6 +179,17 @@ struct MachOFilesetEntryInfo {
     std::string entry_id;
     std::uint64_t vmaddr{0};
     std::uint64_t fileoff{0};
+};
+
+struct MachODylibInfo {
+    std::string   path;
+    std::uint32_t current_version{0};
+    std::uint32_t compatibility_version{0};
+    std::uint32_t timestamp{0};
+    bool          is_weak{false};
+    bool          is_reexport{false};
+    bool          is_upward{false};
+    bool          is_id{false};
 };
 
 // -----------------------------------------------------------------------------
@@ -194,6 +226,10 @@ struct MachOLoadResult {
     std::uint64_t total_vmsize{0};
     std::vector<MachOSegmentInfo> segments;
     std::vector<MachOFilesetEntryInfo> fileset_entries;
+    std::vector<MachODylibInfo> dylib_dependencies;
+    std::vector<std::string> rpaths;
+    std::vector<std::uint64_t> mod_init_funcs;
+    std::string dylib_id;
     std::string sha256_hex;
 
     [[nodiscard]] bool is_success() const noexcept {

@@ -83,6 +83,7 @@ add_library(winios_core STATIC
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
     src/memory/unified_memory.cpp
+    src/memory/darwin_vm_object.cpp
     src/memory/memory_attributes.cpp
     src/memory/stage2_mmu.cpp
     src/memory/apple_physical_memory_map.cpp
@@ -119,6 +120,8 @@ add_library(winios_core STATIC
     src/runtime/linux_boot_snapshot.cpp
     src/runtime/darwin_boot_session.cpp
     src/runtime/darwin_syscall_dispatcher.cpp
+    src/runtime/darwin_process_startup.cpp
+    src/runtime/darwin_thread_runtime.cpp
     src/runtime/darwin_mach_ipc.cpp
     src/runtime/darwin_bsd_subsystem.cpp
     src/runtime/darwin_userspace_engine.cpp
@@ -3047,6 +3050,183 @@ add_executable(stage202_23_end_to_end_darwin_workload_tests
 target_link_libraries(stage202_23_end_to_end_darwin_workload_tests PRIVATE winios_core)
 winios_set_warnings(stage202_23_end_to_end_darwin_workload_tests)
 add_test(NAME stage202_23_end_to_end_darwin_workload_tests COMMAND stage202_23_end_to_end_darwin_workload_tests)
+
+# ==============================================================================
+# Campaign 203: Darwin Runtime, Kernel Services & Public Mach-O Compatibility
+# ==============================================================================
+add_executable(stage203_1_arm64e_chained_fixup_pac_tests
+    tests/unit/stage203_1_arm64e_chained_fixup_pac_tests.cpp
+)
+target_link_libraries(stage203_1_arm64e_chained_fixup_pac_tests PRIVATE winios_core)
+winios_set_warnings(stage203_1_arm64e_chained_fixup_pac_tests)
+add_test(NAME stage203_1_arm64e_chained_fixup_pac_tests COMMAND stage203_1_arm64e_chained_fixup_pac_tests)
+
+add_executable(stage203_2_el2_syndrome_hpfar_audit_tests
+    tests/unit/stage203_2_el2_syndrome_hpfar_audit_tests.cpp
+)
+target_link_libraries(stage203_2_el2_syndrome_hpfar_audit_tests PRIVATE winios_core)
+winios_set_warnings(stage203_2_el2_syndrome_hpfar_audit_tests)
+add_test(NAME stage203_2_el2_syndrome_hpfar_audit_tests COMMAND stage203_2_el2_syndrome_hpfar_audit_tests)
+
+add_executable(stage203_3_dma_mach_ipc_audit_tests
+    tests/unit/stage203_3_dma_mach_ipc_audit_tests.cpp
+)
+target_link_libraries(stage203_3_dma_mach_ipc_audit_tests PRIVATE winios_core)
+winios_set_warnings(stage203_3_dma_mach_ipc_audit_tests)
+add_test(NAME stage203_3_dma_mach_ipc_audit_tests COMMAND stage203_3_dma_mach_ipc_audit_tests)
+
+add_executable(stage203_4_macho_load_command_audit_tests
+    tests/unit/stage203_4_macho_load_command_audit_tests.cpp
+)
+target_link_libraries(stage203_4_macho_load_command_audit_tests PRIVATE winios_core)
+winios_set_warnings(stage203_4_macho_load_command_audit_tests)
+add_test(NAME stage203_4_macho_load_command_audit_tests COMMAND stage203_4_macho_load_command_audit_tests)
+
+add_executable(stage203_5_dyld_dependency_graph_tests
+    tests/unit/stage203_5_dyld_dependency_graph_tests.cpp
+)
+target_link_libraries(stage203_5_dyld_dependency_graph_tests PRIVATE winios_core)
+winios_set_warnings(stage203_5_dyld_dependency_graph_tests)
+add_test(NAME stage203_5_dyld_dependency_graph_tests COMMAND stage203_5_dyld_dependency_graph_tests)
+
+add_executable(stage203_6_symbol_resolution_tests
+    tests/unit/stage203_6_symbol_resolution_tests.cpp
+)
+target_link_libraries(stage203_6_symbol_resolution_tests PRIVATE winios_core)
+winios_set_warnings(stage203_6_symbol_resolution_tests)
+add_test(NAME stage203_6_symbol_resolution_tests COMMAND stage203_6_symbol_resolution_tests)
+
+add_executable(stage203_7_chained_fixup_coverage_tests
+    tests/unit/stage203_7_chained_fixup_coverage_tests.cpp
+)
+target_link_libraries(stage203_7_chained_fixup_coverage_tests PRIVATE winios_core)
+winios_set_warnings(stage203_7_chained_fixup_coverage_tests)
+add_test(NAME stage203_7_chained_fixup_coverage_tests COMMAND stage203_7_chained_fixup_coverage_tests)
+
+add_executable(stage203_8_relocation_rebase_bind_tests
+    tests/unit/stage203_8_relocation_rebase_bind_tests.cpp
+)
+target_link_libraries(stage203_8_relocation_rebase_bind_tests PRIVATE winios_core)
+winios_set_warnings(stage203_8_relocation_rebase_bind_tests)
+add_test(NAME stage203_8_relocation_rebase_bind_tests COMMAND stage203_8_relocation_rebase_bind_tests)
+
+add_executable(stage203_9_image_initializer_tests
+    tests/unit/stage203_9_image_initializer_tests.cpp
+)
+target_link_libraries(stage203_9_image_initializer_tests PRIVATE winios_core)
+winios_set_warnings(stage203_9_image_initializer_tests)
+add_test(NAME stage203_9_image_initializer_tests COMMAND stage203_9_image_initializer_tests)
+
+add_executable(stage203_10_synthetic_dyld_integration_tests
+    tests/unit/stage203_10_synthetic_dyld_integration_tests.cpp
+)
+target_link_libraries(stage203_10_synthetic_dyld_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage203_10_synthetic_dyld_integration_tests)
+add_test(NAME stage203_10_synthetic_dyld_integration_tests COMMAND stage203_10_synthetic_dyld_integration_tests)
+
+add_executable(stage203_11_vm_object_model_tests
+    tests/unit/stage203_11_vm_object_model_tests.cpp
+)
+target_link_libraries(stage203_11_vm_object_model_tests PRIVATE winios_core)
+winios_set_warnings(stage203_11_vm_object_model_tests)
+add_test(NAME stage203_11_vm_object_model_tests COMMAND stage203_11_vm_object_model_tests)
+
+add_executable(stage203_12_mmap_foundation_tests
+    tests/unit/stage203_12_mmap_foundation_tests.cpp
+)
+target_link_libraries(stage203_12_mmap_foundation_tests PRIVATE winios_core)
+winios_set_warnings(stage203_12_mmap_foundation_tests)
+add_test(NAME stage203_12_mmap_foundation_tests COMMAND stage203_12_mmap_foundation_tests)
+
+add_executable(stage203_13_munmap_lifecycle_tests
+    tests/unit/stage203_13_munmap_lifecycle_tests.cpp
+)
+target_link_libraries(stage203_13_munmap_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage203_13_munmap_lifecycle_tests)
+add_test(NAME stage203_13_munmap_lifecycle_tests COMMAND stage203_13_munmap_lifecycle_tests)
+
+add_executable(stage203_14_mprotect_permission_tests
+    tests/unit/stage203_14_mprotect_permission_tests.cpp
+)
+target_link_libraries(stage203_14_mprotect_permission_tests PRIVATE winios_core)
+winios_set_warnings(stage203_14_mprotect_permission_tests)
+add_test(NAME stage203_14_mprotect_permission_tests COMMAND stage203_14_mprotect_permission_tests)
+
+add_executable(stage203_15_mach_vm_foundation_tests
+    tests/unit/stage203_15_mach_vm_foundation_tests.cpp
+)
+target_link_libraries(stage203_15_mach_vm_foundation_tests PRIVATE winios_core)
+winios_set_warnings(stage203_15_mach_vm_foundation_tests)
+add_test(NAME stage203_15_mach_vm_foundation_tests COMMAND stage203_15_mach_vm_foundation_tests)
+
+add_executable(stage203_16_shared_backing_cow_tests
+    tests/unit/stage203_16_shared_backing_cow_tests.cpp
+)
+target_link_libraries(stage203_16_shared_backing_cow_tests PRIVATE winios_core)
+winios_set_warnings(stage203_16_shared_backing_cow_tests)
+add_test(NAME stage203_16_shared_backing_cow_tests COMMAND stage203_16_shared_backing_cow_tests)
+
+add_executable(stage203_17_mach_ipc_port_sets_notifications_tests
+    tests/unit/stage203_17_mach_ipc_port_sets_notifications_tests.cpp
+)
+target_link_libraries(stage203_17_mach_ipc_port_sets_notifications_tests PRIVATE winios_core)
+winios_set_warnings(stage203_17_mach_ipc_port_sets_notifications_tests)
+add_test(NAME stage203_17_mach_ipc_port_sets_notifications_tests COMMAND stage203_17_mach_ipc_port_sets_notifications_tests)
+
+add_executable(stage203_18_mach_message_descriptors_tests
+    tests/unit/stage203_18_mach_message_descriptors_tests.cpp
+)
+target_link_libraries(stage203_18_mach_message_descriptors_tests PRIVATE winios_core)
+winios_set_warnings(stage203_18_mach_message_descriptors_tests)
+add_test(NAME stage203_18_mach_message_descriptors_tests COMMAND stage203_18_mach_message_descriptors_tests)
+
+add_executable(stage203_19_mach_ipc_timeout_cancellation_tests
+    tests/unit/stage203_19_mach_ipc_timeout_cancellation_tests.cpp
+)
+target_link_libraries(stage203_19_mach_ipc_timeout_cancellation_tests PRIVATE winios_core)
+winios_set_warnings(stage203_19_mach_ipc_timeout_cancellation_tests)
+add_test(NAME stage203_19_mach_ipc_timeout_cancellation_tests COMMAND stage203_19_mach_ipc_timeout_cancellation_tests)
+
+add_executable(stage203_20_darwin_syscall_dispatcher_tests
+    tests/unit/stage203_20_darwin_syscall_dispatcher_tests.cpp
+)
+target_link_libraries(stage203_20_darwin_syscall_dispatcher_tests PRIVATE winios_core)
+winios_set_warnings(stage203_20_darwin_syscall_dispatcher_tests)
+add_test(NAME stage203_20_darwin_syscall_dispatcher_tests COMMAND stage203_20_darwin_syscall_dispatcher_tests)
+
+add_executable(stage203_21_process_startup_tests
+    tests/unit/stage203_21_process_startup_tests.cpp
+)
+target_link_libraries(stage203_21_process_startup_tests PRIVATE winios_core)
+winios_set_warnings(stage203_21_process_startup_tests)
+add_test(NAME stage203_21_process_startup_tests COMMAND stage203_21_process_startup_tests)
+
+add_executable(stage203_22_tls_thread_runtime_tests
+    tests/unit/stage203_22_tls_thread_runtime_tests.cpp
+)
+target_link_libraries(stage203_22_tls_thread_runtime_tests PRIVATE winios_core)
+winios_set_warnings(stage203_22_tls_thread_runtime_tests)
+add_test(NAME stage203_22_tls_thread_runtime_tests COMMAND stage203_22_tls_thread_runtime_tests)
+
+add_executable(stage203_23_end_to_end_darwin_workload_tests
+    tests/unit/stage203_23_end_to_end_darwin_workload_tests.cpp
+)
+target_link_libraries(stage203_23_end_to_end_darwin_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage203_23_end_to_end_darwin_workload_tests)
+add_test(NAME stage203_23_end_to_end_darwin_workload_tests COMMAND stage203_23_end_to_end_darwin_workload_tests)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
