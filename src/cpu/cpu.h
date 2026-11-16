@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -17,6 +18,11 @@
 #include "cpu/virtual_time.h"
 
 class Memory;
+
+namespace winios::device {
+class AppleAIC;
+class VirtualDeviceBus;
+}
 
 namespace winios {
 class SMPCluster;
@@ -303,6 +309,12 @@ public:
     // Phase 41/42: GICv3 interrupt controller and virtual interface
     winios::GICv3& get_gic() noexcept;
     const winios::GICv3& get_gic() const noexcept;
+
+    // Campaign 206: Apple Interrupt Controller (AIC) and Virtual Device Bus integration
+    void attach_aic(std::shared_ptr<winios::device::AppleAIC> aic) noexcept;
+    [[nodiscard]] std::shared_ptr<winios::device::AppleAIC> get_aic() const noexcept;
+    void attach_device_bus(std::shared_ptr<winios::device::VirtualDeviceBus> bus) noexcept;
+    [[nodiscard]] std::shared_ptr<winios::device::VirtualDeviceBus> get_device_bus() const noexcept;
 
     // Phase 42: Multicore SMP state accessors
     std::size_t get_core_id() const noexcept { return core_id_; }
@@ -658,6 +670,8 @@ private:
     std::uint64_t hcr_el2_{0};
     std::uint64_t mdcr_el2_{0};
     winios::GICv3 gic_{};
+    std::shared_ptr<winios::device::AppleAIC> aic_{nullptr};
+    std::shared_ptr<winios::device::VirtualDeviceBus> device_bus_{nullptr};
 
     // Phase 47: EL3 Secure Monitor state
     std::uint64_t sp_el3_{0};

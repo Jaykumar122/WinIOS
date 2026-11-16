@@ -19,6 +19,8 @@ struct KernelBootDeviceTreeConfig {
     std::uint32_t e_cores{4};
     std::uint64_t timer_frequency{24000000ULL}; // 24 MHz
     std::uint64_t uart_base{0x00090000ULL};
+    std::uint64_t aic_base{0x23B100000ULL};     // Apple AIC2 MMIO base on T8120
+    std::uint64_t aic_size{0x00100000ULL};     // 1 MB aperture
     std::uint64_t gic_dist_base{0x08000000ULL};
     std::uint64_t gic_redist_base{0x080A0000ULL};
     std::string   compatible{"apple,d37ap"};

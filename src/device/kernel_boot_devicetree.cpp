@@ -59,11 +59,13 @@ std::vector<std::uint8_t> KernelBootDeviceTreeBuilder::build_apple_devicetree(
     arm_io->add_property_u32("#address-cells", 2u);
     arm_io->add_property_u32("#size-cells", 2u);
 
-    // Interrupt controller (GICv3 / AIC)
+    // Interrupt controller (Apple AIC2)
     auto* aic = arm_io->add_child_node("aic");
     aic->add_property_string("name", "aic");
     aic->add_property_string("compatible", "apple,aic2");
     aic->add_property_u32("interrupt-controller", 1u);
+    std::uint64_t aic_reg[2] = { config.aic_base, config.aic_size };
+    aic->add_property_bytes("reg", aic_reg, sizeof(aic_reg));
 
     // UART Console
     auto* uart = arm_io->add_child_node("uart0");

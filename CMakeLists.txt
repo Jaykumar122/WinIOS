@@ -48,6 +48,7 @@ add_library(winios_core STATIC
     src/device/apple_devicetree.cpp
     src/device/kernel_boot_devicetree.cpp
     src/device/apple_devicetree_handoff.cpp
+    src/device/mmio_diagnostics.cpp
     src/device/apple_aic.cpp
     src/device/apple_pmgr.cpp
     src/device/apple_display.cpp
@@ -91,6 +92,7 @@ add_library(winios_core STATIC
     src/runtime/early_kernel_services.cpp
     src/runtime/smp_kernel_boot_manager.cpp
     src/loader/independent_kernel_fixture.cpp
+    src/loader/xnu_bootstrap_continuation.cpp
     src/loader/macho_dependency_graph.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
@@ -3533,6 +3535,101 @@ add_executable(stage205_23_boot_security_adversarial_tests
 target_link_libraries(stage205_23_boot_security_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage205_23_boot_security_adversarial_tests)
 add_test(NAME stage205_23_boot_security_adversarial_tests COMMAND stage205_23_boot_security_adversarial_tests)
+
+# =============================================================================
+# Campaign 206: XNU Early Boot Continuation Test Suites
+# =============================================================================
+add_executable(stage206_11_bootstrap_trace_expansion_tests
+    tests/unit/stage206_11_bootstrap_trace_expansion_tests.cpp
+)
+target_link_libraries(stage206_11_bootstrap_trace_expansion_tests PRIVATE winios_core)
+winios_set_warnings(stage206_11_bootstrap_trace_expansion_tests)
+add_test(NAME stage206_11_bootstrap_trace_expansion_tests COMMAND stage206_11_bootstrap_trace_expansion_tests)
+
+add_executable(stage206_12_bootstrap_memory_validation_tests
+    tests/unit/stage206_12_bootstrap_memory_validation_tests.cpp
+)
+target_link_libraries(stage206_12_bootstrap_memory_validation_tests PRIVATE winios_core)
+winios_set_warnings(stage206_12_bootstrap_memory_validation_tests)
+add_test(NAME stage206_12_bootstrap_memory_validation_tests COMMAND stage206_12_bootstrap_memory_validation_tests)
+
+add_executable(stage206_13_bootstrap_pagetable_execution_tests
+    tests/unit/stage206_13_bootstrap_pagetable_execution_tests.cpp
+)
+target_link_libraries(stage206_13_bootstrap_pagetable_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage206_13_bootstrap_pagetable_execution_tests)
+add_test(NAME stage206_13_bootstrap_pagetable_execution_tests COMMAND stage206_13_bootstrap_pagetable_execution_tests)
+
+add_executable(stage206_14_kernel_memory_protection_tests
+    tests/unit/stage206_14_kernel_memory_protection_tests.cpp
+)
+target_link_libraries(stage206_14_kernel_memory_protection_tests PRIVATE winios_core)
+winios_set_warnings(stage206_14_kernel_memory_protection_tests)
+add_test(NAME stage206_14_kernel_memory_protection_tests COMMAND stage206_14_kernel_memory_protection_tests)
+
+add_executable(stage206_15_early_physical_allocator_tests
+    tests/unit/stage206_15_early_physical_allocator_tests.cpp
+)
+target_link_libraries(stage206_15_early_physical_allocator_tests PRIVATE winios_core)
+winios_set_warnings(stage206_15_early_physical_allocator_tests)
+add_test(NAME stage206_15_early_physical_allocator_tests COMMAND stage206_15_early_physical_allocator_tests)
+
+add_executable(stage206_16_early_console_diagnostics_tests
+    tests/unit/stage206_16_early_console_diagnostics_tests.cpp
+)
+target_link_libraries(stage206_16_early_console_diagnostics_tests PRIVATE winios_core)
+winios_set_warnings(stage206_16_early_console_diagnostics_tests)
+add_test(NAME stage206_16_early_console_diagnostics_tests COMMAND stage206_16_early_console_diagnostics_tests)
+
+add_executable(stage206_17_early_cpu_init_tests
+    tests/unit/stage206_17_early_cpu_init_tests.cpp
+)
+target_link_libraries(stage206_17_early_cpu_init_tests PRIVATE winios_core)
+winios_set_warnings(stage206_17_early_cpu_init_tests)
+add_test(NAME stage206_17_early_cpu_init_tests COMMAND stage206_17_early_cpu_init_tests)
+
+add_executable(stage206_18_early_exception_handling_tests
+    tests/unit/stage206_18_early_exception_handling_tests.cpp
+)
+target_link_libraries(stage206_18_early_exception_handling_tests PRIVATE winios_core)
+winios_set_warnings(stage206_18_early_exception_handling_tests)
+add_test(NAME stage206_18_early_exception_handling_tests COMMAND stage206_18_early_exception_handling_tests)
+
+add_executable(stage206_19_kernel_initialization_boundary_tests
+    tests/unit/stage206_19_kernel_initialization_boundary_tests.cpp
+)
+target_link_libraries(stage206_19_kernel_initialization_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage206_19_kernel_initialization_boundary_tests)
+add_test(NAME stage206_19_kernel_initialization_boundary_tests COMMAND stage206_19_kernel_initialization_boundary_tests)
+
+add_executable(stage206_20_secondary_core_audit_tests
+    tests/unit/stage206_20_secondary_core_audit_tests.cpp
+)
+target_link_libraries(stage206_20_secondary_core_audit_tests PRIVATE winios_core)
+winios_set_warnings(stage206_20_secondary_core_audit_tests)
+add_test(NAME stage206_20_secondary_core_audit_tests COMMAND stage206_20_secondary_core_audit_tests)
+
+add_executable(stage206_21_kernel_synchronization_tests
+    tests/unit/stage206_21_kernel_synchronization_tests.cpp
+)
+target_link_libraries(stage206_21_kernel_synchronization_tests PRIVATE winios_core)
+winios_set_warnings(stage206_21_kernel_synchronization_tests)
+add_test(NAME stage206_21_kernel_synchronization_tests COMMAND stage206_21_kernel_synchronization_tests)
+
+add_executable(stage206_22_snapshot_replay_completeness_tests
+    tests/unit/stage206_22_snapshot_replay_completeness_tests.cpp
+)
+target_link_libraries(stage206_22_snapshot_replay_completeness_tests PRIVATE winios_core)
+winios_set_warnings(stage206_22_snapshot_replay_completeness_tests)
+add_test(NAME stage206_22_snapshot_replay_completeness_tests COMMAND stage206_22_snapshot_replay_completeness_tests)
+
+add_executable(stage206_23_adversarial_boot_tests
+    tests/unit/stage206_23_adversarial_boot_tests.cpp
+)
+target_link_libraries(stage206_23_adversarial_boot_tests PRIVATE winios_core)
+winios_set_warnings(stage206_23_adversarial_boot_tests)
+add_test(NAME stage206_23_adversarial_boot_tests COMMAND stage206_23_adversarial_boot_tests)
+
 
 
 

@@ -1,0 +1,148 @@
+{
+  "campaign": 206,
+  "stage": "206.11",
+  "continuation_image": {
+    "format": "MachO64",
+    "cpu_type": "ARM64",
+    "cpu_subtype": "ALL",
+    "sha256": "950e5eb67e9adeacd3bb459f200bb23c4535929e92c43659483db5cf8bb6786f",
+    "entry_vaddr": "0x1000",
+    "text_vmaddr": "0x0000",
+    "vbar_vaddr": "0x4000"
+  },
+  "execution_metrics": {
+    "total_genuine_instructions_retired": 62,
+    "boundary_expansion_ratio": "3.26x (from 19 instructions in Campaign 205 to 62 instructions in Campaign 206)",
+    "stop_condition": "WFI (Wait For Interrupt) clean architectural halt",
+    "status_mailbox_address": "0x50000",
+    "status_mailbox_value": "0xCAFEBABE206",
+    "uart_base_address": "0x90000",
+    "uart_emitted_string": "XNU206\\n",
+    "aic_base_address": "0x23B100000",
+    "aic_transactions_captured": 4,
+    "mmio_faults": 0
+  },
+  "instruction_phases": [
+    {
+      "phase": 1,
+      "name": "Prologue & CPU Identity",
+      "pc_range": "0x1000 - 0x1008",
+      "instruction_count": 3,
+      "instructions": [
+        { "pc": "0x1000", "mnemonic": "MSR DAIFSet, #0xF", "purpose": "Mask all architectural interrupts (Debug, SError, IRQ, FIQ)" },
+        { "pc": "0x1004", "mnemonic": "MOV X19, X0", "purpose": "Preserve boot_args pointer in callee-saved register X19" },
+        { "pc": "0x1008", "mnemonic": "MRS X20, MPIDR_EL1", "purpose": "Read multiprocessor affinity register" }
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Exception Vector Table Setup",
+      "pc_range": "0x100C - 0x1020",
+      "instruction_count": 5,
+      "instructions": [
+        { "pc": "0x100C", "mnemonic": "MOVZ X4, #0x4000", "purpose": "Load 2KB-aligned vector base address" },
+        { "pc": "0x101C", "mnemonic": "MSR VBAR_EL1, X4", "purpose": "Install kernel exception vector table" }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "BootArgs Parameter Extraction",
+      "pc_range": "0x1020 - 0x1030",
+      "instruction_count": 4,
+      "instructions": [
+        { "pc": "0x1020", "mnemonic": "LDR X21, [X19, #16]", "purpose": "Load physBase (0x800000000)" },
+        { "pc": "0x1024", "mnemonic": "LDR X22, [X19, #24]", "purpose": "Load memSize (0x40000000)" },
+        { "pc": "0x1028", "mnemonic": "LDR X23, [X19, #96]", "purpose": "Load deviceTreeP (0x800040000)" },
+        { "pc": "0x102C", "mnemonic": "LDR X24, [X19, #32]", "purpose": "Load topOfKernelData (0x800100000)" }
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Apple AIC2 Interrupt Controller Probe",
+      "pc_range": "0x1030 - 0x1050",
+      "instruction_count": 8,
+      "instructions": [
+        { "pc": "0x1030", "mnemonic": "MOVZ/MOVK X27, #0x23B100000", "purpose": "Load AIC2 MMIO aperture base address" },
+        { "pc": "0x1040", "mnemonic": "LDR W1, [X27, #4]", "purpose": "Read AIC_INFO register (hardware revision 0x41494332)" },
+        { "pc": "0x1044", "mnemonic": "LDR W2, [X27, #8192]", "purpose": "Read AIC_WHOAMI register (current core index 0)" },
+        { "pc": "0x1048", "mnemonic": "MOVZ W3, #1", "purpose": "Prepare enable bit" },
+        { "pc": "0x104C", "mnemonic": "STR W3, [X27, #16]", "purpose": "Write AIC_CONFIG register to enable interrupt distribution" }
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "Early Memory Stealer & Page Table Root Allocation",
+      "pc_range": "0x1050 - 0x1074",
+      "instruction_count": 8,
+      "instructions": [
+        { "pc": "0x1050", "mnemonic": "MOVZ X5, #0x3FFF", "purpose": "Prepare 16KB alignment mask" },
+        { "pc": "0x1054", "mnemonic": "ADD X2, X24, X5", "purpose": "Round up topOfKernelData" },
+        { "pc": "0x1058", "mnemonic": "AND X2, X2, X6", "purpose": "Align to 16KB boundary for page table root" },
+        { "pc": "0x1068", "mnemonic": "MOVZ X7, #0x0701", "purpose": "Construct valid L1 block descriptor" },
+        { "pc": "0x106C", "mnemonic": "STR X7, [X2]", "purpose": "Store descriptor to page table root" }
+      ]
+    },
+    {
+      "phase": 6,
+      "name": "System Register Configuration (16KB Granule MMU)",
+      "pc_range": "0x1070 - 0x10A8",
+      "instruction_count": 14,
+      "instructions": [
+        { "pc": "0x1070", "mnemonic": "MOVZ/MOVK X8, #0x0000000444FF0400", "purpose": "Prepare MAIR_EL1 memory attribute encodings" },
+        { "pc": "0x1080", "mnemonic": "MSR MAIR_EL1, X8", "purpose": "Write MAIR_EL1" },
+        { "pc": "0x1084", "mnemonic": "MOVZ/MOVK X9, TCR_EL1_VAL", "purpose": "Prepare TCR_EL1 (TG0=16KB, TG1=16KB, T0SZ=25, T1SZ=25)" },
+        { "pc": "0x1094", "mnemonic": "MSR TCR_EL1, X9", "purpose": "Write TCR_EL1" },
+        { "pc": "0x1098", "mnemonic": "MSR TTBR0_EL1, X2", "purpose": "Install Level 1 translation table base for user VA space" },
+        { "pc": "0x109C", "mnemonic": "MSR TTBR1_EL1, X2", "purpose": "Install Level 1 translation table base for kernel VA space" },
+        { "pc": "0x10A0", "mnemonic": "MOVZ X10, #0x300000", "purpose": "Prepare CPACR_EL1 FPEN=3 (enable NEON/FP)" },
+        { "pc": "0x10A4", "mnemonic": "MSR CPACR_EL1, X10", "purpose": "Write CPACR_EL1" }
+      ]
+    },
+    {
+      "phase": 7,
+      "name": "Early UART Diagnostics Output",
+      "pc_range": "0x10A8 - 0x10E4",
+      "instruction_count": 16,
+      "instructions": [
+        { "pc": "0x10A8", "mnemonic": "MOVZ X26, #0x90000", "purpose": "Load UART transmit FIFO base address" },
+        { "pc": "0x10B8", "mnemonic": "MOVZ W25, #'X' / STRB W25, [X26, #0]", "purpose": "Emit 'X'" },
+        { "pc": "0x10C0", "mnemonic": "MOVZ W25, #'N' / STRB W25, [X26, #1]", "purpose": "Emit 'N'" },
+        { "pc": "0x10C8", "mnemonic": "MOVZ W25, #'U' / STRB W25, [X26, #2]", "purpose": "Emit 'U'" },
+        { "pc": "0x10D0", "mnemonic": "MOVZ W25, #'2' / STRB W25, [X26, #3]", "purpose": "Emit '2'" },
+        { "pc": "0x10D8", "mnemonic": "MOVZ W25, #'0' / STRB W25, [X26, #4]", "purpose": "Emit '0'" },
+        { "pc": "0x10E0", "mnemonic": "MOVZ W25, #'6' / STRB W25, [X26, #5]", "purpose": "Emit '6'" },
+        { "pc": "0x10E4", "mnemonic": "MOVZ W25, #'\\n' / STRB W25, [X26, #6]", "purpose": "Emit newline" }
+      ]
+    },
+    {
+      "phase": 8,
+      "name": "Architectural Synchronization Barriers",
+      "pc_range": "0x10E8 - 0x10EC",
+      "instruction_count": 2,
+      "instructions": [
+        { "pc": "0x10E8", "mnemonic": "DSB ISH", "purpose": "Data Synchronization Barrier (Inner Shareable)" },
+        { "pc": "0x10EC", "mnemonic": "ISB", "purpose": "Instruction Synchronization Barrier (flushes pipeline)" }
+      ]
+    },
+    {
+      "phase": 9,
+      "name": "Status Mailbox Completion Write",
+      "pc_range": "0x10F0 - 0x110C",
+      "instruction_count": 6,
+      "instructions": [
+        { "pc": "0x10F0", "mnemonic": "MOVZ X11, #0x50000", "purpose": "Load status mailbox physical address" },
+        { "pc": "0x10F8", "mnemonic": "MOVZ/MOVK X12, #0xCAFEBABE206", "purpose": "Prepare 64-bit completion magic" },
+        { "pc": "0x1108", "mnemonic": "STR X12, [X11]", "purpose": "Commit completion word to shared physical memory" }
+      ]
+    },
+    {
+      "phase": 10,
+      "name": "Clean Architectural Halt",
+      "pc_range": "0x1110",
+      "instruction_count": 1,
+      "instructions": [
+        { "pc": "0x1110", "mnemonic": "WFI", "purpose": "Enter low-power wait-for-interrupt state" }
+      ]
+    }
+  ]
+}

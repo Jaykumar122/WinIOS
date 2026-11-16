@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,10 @@
 
 class CPU;
 class Memory;
+
+namespace winios::device {
+class AppleAIC;
+}
 
 namespace winios::runtime {
 
@@ -28,6 +33,9 @@ struct KernelBootConfig {
     std::uint64_t             boot_flags{0ULL};
     std::uint64_t             custom_initial_sp{0ULL};          // If 0, auto-computed
     bool                      enable_apple_devicetree{true};
+    bool                      enable_apple_aic{false};          // Campaign 206: Apple AIC2 responder
+    std::uint64_t             aic_base{0x23B100000ULL};
+    std::uint64_t             aic_size{0x00100000ULL};
     std::uint64_t             vbar_el1{0xFFFFFE0007002000ULL}; // 2KB aligned default
     std::uint64_t             sctlr_el1{0x30D00800ULL};
     std::uint64_t             tcr_el1{0x2B5593519ULL};          // 16KB granule, 48-bit VA
@@ -50,6 +58,7 @@ struct KernelBootResult {
     std::uint64_t top_of_kernel_data{0};
     std::size_t   segments_mapped{0};
     std::size_t   bytes_mapped{0};
+    std::shared_ptr<device::AppleAIC> aic{nullptr};
 };
 
 // -----------------------------------------------------------------------------

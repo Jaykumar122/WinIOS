@@ -1,0 +1,167 @@
+{
+  "campaign": 206,
+  "summary": {
+    "total_registered_tests": 569,
+    "passed": 568,
+    "skipped": 1,
+    "failed": 0,
+    "pass_rate_percentage": 99.82,
+    "active_pass_rate_percentage": 100.0,
+    "skipped_test_details": [
+      {
+        "test_number": 383,
+        "name": "inferno_integration_tests",
+        "reason": "Requires external Inferno sandbox environment (by design)"
+      }
+    ]
+  },
+  "campaign_206_test_suites": [
+    {
+      "test_number": 557,
+      "name": "stage206_11_bootstrap_trace_expansion_tests",
+      "stage": "206.11",
+      "status": "PASSED",
+      "cases_verified": [
+        "XNU bootstrap instruction trace expansion (62 genuine instructions retired)",
+        "WFI clean completion halt",
+        "Status mailbox confirmation (0xCAFEBABE206)",
+        "UART console output ('XNU206\\n')",
+        "Apple AIC MMIO diagnostics capture (4 transactions, 0 faults)"
+      ]
+    },
+    {
+      "test_number": 558,
+      "name": "stage206_12_bootstrap_memory_validation_tests",
+      "stage": "206.12",
+      "status": "PASSED",
+      "cases_verified": [
+        "physBase alignment and range validation",
+        "memSize 16KB granule alignment",
+        "topOfKernelData page table reference boundary validation",
+        "Early memory stealer reservation bounds"
+      ]
+    },
+    {
+      "test_number": 559,
+      "name": "stage206_13_bootstrap_pagetable_execution_tests",
+      "stage": "206.13",
+      "status": "PASSED",
+      "cases_verified": [
+        "16KB granule translation (TG0=16KB, TG1=16KB)",
+        "TTBR0 identity mapping translation",
+        "TTBR1 higher-half kernel mapping translation",
+        "Unmapped virtual address translation fault generation"
+      ]
+    },
+    {
+      "test_number": 560,
+      "name": "stage206_14_kernel_memory_protection_tests",
+      "stage": "206.14",
+      "status": "PASSED",
+      "cases_verified": [
+        "Strict W^X policy enforcement across kernel segments",
+        "Rejection of simultaneously writable and executable segments",
+        "Staging phase RW to runtime RX permission transitions"
+      ]
+    },
+    {
+      "test_number": 561,
+      "name": "stage206_15_early_physical_allocator_tests",
+      "stage": "206.15",
+      "status": "PASSED",
+      "cases_verified": [
+        "16KB alignment enforcement per allocation",
+        "Zero-initialization of allocated physical pages",
+        "Memory pool exhaustion detection and graceful error reporting"
+      ]
+    },
+    {
+      "test_number": 562,
+      "name": "stage206_16_early_console_diagnostics_tests",
+      "stage": "206.16",
+      "status": "PASSED",
+      "cases_verified": [
+        "Guest character emission to UART transmit FIFO (0x00090000)",
+        "Console log buffer capture ('Darwin Kernel Version 23.0.0\\n')",
+        "Strict separation of guest console output from host diagnostic logs"
+      ]
+    },
+    {
+      "test_number": 563,
+      "name": "stage206_17_early_cpu_init_tests",
+      "stage": "206.17",
+      "status": "PASSED",
+      "cases_verified": [
+        "Privilege level verification (EL1h, SP_EL1 selected)",
+        "Register handoff integrity (X0, X19 pointing to boot_args)",
+        "System register programming (VBAR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1)"
+      ]
+    },
+    {
+      "test_number": 564,
+      "name": "stage206_18_early_exception_handling_tests",
+      "stage": "206.18",
+      "status": "PASSED",
+      "cases_verified": [
+        "Synchronous exception entry from EL1 to VBAR_EL1 + 0x200",
+        "ESR_EL1 syndrome decoding (EC = 0x25 Data Abort)",
+        "FAR_EL1 fault address capture",
+        "ERET instruction return to resumed instruction stream"
+      ]
+    },
+    {
+      "test_number": 565,
+      "name": "stage206_19_kernel_initialization_boundary_tests",
+      "stage": "206.19",
+      "status": "PASSED",
+      "cases_verified": [
+        "Sequential milestone verification (M1 through M11)",
+        "Architectural boundary classification up to Level 4 Darwin services",
+        "Explicit distinction of production iOS requirements"
+      ]
+    },
+    {
+      "test_number": 566,
+      "name": "stage206_20_secondary_core_audit_tests",
+      "stage": "206.20",
+      "status": "PASSED",
+      "cases_verified": [
+        "Tier 1: DeviceTree multi-core nodes (cpu0..cpu5)",
+        "Tier 2: Virtual SMP infrastructure with per-core affinity & rendezvous signaling",
+        "Tier 3: Single-core execution reality during early start.s"
+      ]
+    },
+    {
+      "test_number": 567,
+      "name": "stage206_21_kernel_synchronization_tests",
+      "stage": "206.21",
+      "status": "PASSED",
+      "cases_verified": [
+        "ARM64 exclusive monitor operations (LDXR, STXR)",
+        "Exclusive monitor clearance on CLREX (0xD5033F5F)",
+        "Architectural barrier counters (DMB, ISB)"
+      ]
+    },
+    {
+      "test_number": 568,
+      "name": "stage206_22_snapshot_replay_completeness_tests",
+      "stage": "206.22",
+      "status": "PASSED",
+      "cases_verified": [
+        "Apple AIC2 register and pending IPI state serialization",
+        "Bit-exact restoration into fresh AIC instance",
+        "Omission cataloging for unmodeled coprocessors"
+      ]
+    },
+    {
+      "test_number": 569,
+      "name": "stage206_23_adversarial_boot_tests",
+      "stage": "206.23",
+      "status": "PASSED",
+      "cases_verified": [
+        "15 comprehensive adversarial boot security attack cases",
+        "Rejection of corrupted headers, misaligned PCs, RWX segments, inverted memory bounds, truncated DeviceTrees, unmapped MMIO aborts, and illegal exceptions"
+      ]
+    }
+  ]
+}

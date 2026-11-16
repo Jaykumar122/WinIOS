@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "cpu/cpu.h"
+#include "device/apple_aic.h"
 #include "memory/memory.h"
 
 namespace winios::runtime {
@@ -147,7 +148,15 @@ KernelBootResult KernelBootCoordinator::prepare_and_boot(
         return result;
     }
 
-    // 8. Populate success outcome
+    // 8. Attach Apple AIC2 Interrupt Controller if requested
+    if (config.enable_apple_aic) {
+        auto aic = std::make_shared<device::AppleAIC>(
+            0x41494332u, config.aic_base, config.aic_size, config.num_cores);
+        cpu.attach_aic(aic);
+        result.aic = aic;
+    }
+
+    // 9. Populate success outcome
     result.success = true;
     result.entry_pc = parsed_image.entry_point_vaddr;
     result.boot_args_phys = ba_phys;

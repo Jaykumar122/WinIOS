@@ -1,0 +1,112 @@
+{
+  "campaign": 206,
+  "manifest_name": "xnu_early_boot_state_manifest",
+  "target_research_profile": "iPhone 15 / D37AP / Apple A16 Bionic T8120",
+  "cpu_state_at_kernel_entry": {
+    "privilege_level": "EL1",
+    "stack_pointer_mode": "EL1h (SPSel = 1)",
+    "initial_pc": "0x0000000000001000",
+    "initial_sp_el1": "0x0000000800080000",
+    "spsr_el1": "0x00000000000003C5",
+    "daif_status": {
+      "debug_masked": true,
+      "serror_masked": true,
+      "irq_masked": true,
+      "fiq_masked": true
+    },
+    "register_handoff": {
+      "x0": "0x0000000800040000",
+      "x19": "0x0000000800040000",
+      "purpose": "Pointer to serialized boot_args structure in contiguous DRAM"
+    },
+    "system_registers_at_handoff": {
+      "vbar_el1": "0x0000000000004000",
+      "sctlr_el1": "0x0000000000000000",
+      "tcr_el1": "0x0000004000801919",
+      "tcr_el1_decoded": {
+        "tg0": "16KB (0b10)",
+        "tg1": "16KB (0b01)",
+        "t0sz": 25,
+        "t1sz": 25,
+        "va_bits": 39,
+        "ips": "32-bit (0b000)"
+      },
+      "mair_el1": "0x0000000444FF0400",
+      "mair_el1_decoded": {
+        "attr0": "0x00 (Device-nGnRnE)",
+        "attr1": "0x04 (Device-nGnRE)",
+        "attr2": "0xFF (Normal Inner/Outer Write-Back Non-Transient)",
+        "attr3": "0x44 (Normal Non-Cacheable)"
+      },
+      "cpacr_el1": "0x0000000000300000",
+      "cpacr_el1_decoded": {
+        "fpen": "0b11 (No trapping of FP/SIMD at EL0 and EL1)"
+      },
+      "ttbr0_el1": "0x0000000800104000",
+      "ttbr1_el1": "0x0000000800104000"
+    }
+  },
+  "physical_memory_map": {
+    "dram_base": "0x0000000800000000",
+    "dram_size": "0x0000000180000000",
+    "dram_size_human": "6.0 GB",
+    "regions": [
+      {
+        "name": "Kernel Bootstrap __TEXT",
+        "phys_addr": "0x0000000800000000",
+        "size": "0x0000000000008000",
+        "permissions": "R-X",
+        "kind": "KernelText"
+      },
+      {
+        "name": "Kernel Bootstrap __DATA",
+        "phys_addr": "0x0000000800008000",
+        "size": "0x0000000000008000",
+        "permissions": "RW-",
+        "kind": "KernelData"
+      },
+      {
+        "name": "Boot Arguments Buffer",
+        "phys_addr": "0x0000000800040000",
+        "size": "0x0000000000004000",
+        "permissions": "RW-",
+        "kind": "BootArgs"
+      },
+      {
+        "name": "DeviceTree Blob Buffer",
+        "phys_addr": "0x0000000800044000",
+        "size": "0x0000000000020000",
+        "permissions": "R--",
+        "kind": "DeviceTree"
+      },
+      {
+        "name": "Primary Stack Pool (EL1)",
+        "phys_addr": "0x0000000800080000",
+        "size": "0x0000000000010000",
+        "permissions": "RW-",
+        "kind": "StackPool"
+      },
+      {
+        "name": "Early L1 Page Table Root",
+        "phys_addr": "0x0000000800104000",
+        "size": "0x0000000000004000",
+        "permissions": "RW-",
+        "kind": "PageTables"
+      }
+    ]
+  },
+  "mmio_apertures": [
+    {
+      "name": "Early UART Transmit FIFO",
+      "base_addr": "0x0000000000090000",
+      "size": "0x0000000000001000",
+      "type": "PL011/AppleUART compatible"
+    },
+    {
+      "name": "Apple AIC2 Interrupt Controller",
+      "base_addr": "0x000000023B100000",
+      "size": "0x0000000000100000",
+      "type": "AICv2 (T8120)"
+    }
+  ]
+}

@@ -8,6 +8,9 @@
 #include "sndl/sndl_source_hooks.h"
 #include "trace/trace_manager.h"
 #include "trace/trace_event.h"
+#include "device/apple_aic.h"
+#include "device/virtual_device_bus.h"
+#include "device/mmio_diagnostics.h"
 #include <atomic>
 #include <bit>
 #include <cmath>
@@ -1126,6 +1129,32 @@ private:
                 value = cpu_.get_gic().read_mmio(pa1, width);
                 winios::sndl::hook_mmio_read(static_cast<std::uint16_t>(cpu_.get_core_id()), instruction_address_, cpu_.get_instruction_retirement_count(), pa1, value, width, 0);
             }
+        } else if (cpu_.get_aic() && pa1 >= cpu_.get_aic()->mmio_base() &&
+                   pa1 < (cpu_.get_aic()->mmio_base() + cpu_.get_aic()->mmio_size())) {
+            const std::uint64_t aic_offset = pa1 - cpu_.get_aic()->mmio_base();
+            value = cpu_.get_aic()->read_register(aic_offset, width);
+            winios::device::MmioTransaction tx{};
+            tx.cycle = cpu_.get_instruction_retirement_count();
+            tx.pc = instruction_address_;
+            tx.physical_address = pa1;
+            tx.width = width;
+            tx.is_write = false;
+            tx.value = value;
+            tx.privilege_el = static_cast<unsigned>(cpu_.get_current_el());
+            tx.device_class = winios::device::DeviceClassification::AppleAic;
+            winios::device::MmioDiagnostics::instance().record(tx);
+        } else if (cpu_.get_device_bus() && cpu_.get_device_bus()->is_device_address(pa1)) {
+            value = cpu_.get_device_bus()->read_mmio(pa1, width, static_cast<std::uint32_t>(cpu_.get_core_id()), cpu_.get_instruction_retirement_count());
+            winios::device::MmioTransaction tx{};
+            tx.cycle = cpu_.get_instruction_retirement_count();
+            tx.pc = instruction_address_;
+            tx.physical_address = pa1;
+            tx.width = width;
+            tx.is_write = false;
+            tx.value = value;
+            tx.privilege_el = static_cast<unsigned>(cpu_.get_current_el());
+            tx.device_class = winios::device::MmioDiagnostics::classify_address(pa1);
+            winios::device::MmioDiagnostics::instance().record(tx);
         } else if (second_bytes == 0u) {
             switch (width) {
             case 1u: value = memory_.read_u8(static_cast<std::size_t>(pa1)); break;
@@ -1161,6 +1190,32 @@ private:
         const_cast<CPU&>(cpu_).get_pmu().on_event(winios::ARMV8_EVENT_L1D_CACHE_WRITE, static_cast<unsigned>(cpu_.get_current_el()));
         if (cpu_.get_gic().is_mmio_address(pa1)) {
             const_cast<CPU&>(cpu_).get_gic().write_mmio(pa1, value, width);
+        } else if (cpu_.get_aic() && pa1 >= cpu_.get_aic()->mmio_base() &&
+                   pa1 < (cpu_.get_aic()->mmio_base() + cpu_.get_aic()->mmio_size())) {
+            const std::uint64_t aic_offset = pa1 - cpu_.get_aic()->mmio_base();
+            cpu_.get_aic()->write_register(aic_offset, value, width);
+            winios::device::MmioTransaction tx{};
+            tx.cycle = cpu_.get_instruction_retirement_count();
+            tx.pc = instruction_address_;
+            tx.physical_address = pa1;
+            tx.width = width;
+            tx.is_write = true;
+            tx.value = value;
+            tx.privilege_el = static_cast<unsigned>(cpu_.get_current_el());
+            tx.device_class = winios::device::DeviceClassification::AppleAic;
+            winios::device::MmioDiagnostics::instance().record(tx);
+        } else if (cpu_.get_device_bus() && cpu_.get_device_bus()->is_device_address(pa1)) {
+            cpu_.get_device_bus()->write_mmio(pa1, value, width, static_cast<std::uint32_t>(cpu_.get_core_id()), cpu_.get_instruction_retirement_count());
+            winios::device::MmioTransaction tx{};
+            tx.cycle = cpu_.get_instruction_retirement_count();
+            tx.pc = instruction_address_;
+            tx.physical_address = pa1;
+            tx.width = width;
+            tx.is_write = true;
+            tx.value = value;
+            tx.privilege_el = static_cast<unsigned>(cpu_.get_current_el());
+            tx.device_class = winios::device::MmioDiagnostics::classify_address(pa1);
+            winios::device::MmioDiagnostics::instance().record(tx);
         } else if (second_bytes == 0u) {
             switch (width) {
             case 1u: memory_.write_u8(static_cast<std::size_t>(pa1), static_cast<std::uint8_t>(value)); break;
@@ -1206,8 +1261,18 @@ private:
         if (cpu_.get_gic().is_mmio_address(address)) {
             return;
         }
+        if (cpu_.get_aic() && address >= cpu_.get_aic()->mmio_base() &&
+            address < (cpu_.get_aic()->mmio_base() + cpu_.get_aic()->mmio_size())) {
+            return;
+        }
+        if (cpu_.get_device_bus() && cpu_.get_device_bus()->is_device_address(address)) {
+            return;
+        }
         const std::uint64_t size = static_cast<std::uint64_t>(memory_.size());
         if (address > size || static_cast<std::uint64_t>(width) > size - address) {
+            winios::device::MmioDiagnostics::instance().record_fault(
+                instruction_address_, address, width, (access == AccessType::Write),
+                static_cast<unsigned>(cpu_.get_current_el()), "Physical address out of RAM bounds and unmapped in MMIO");
             fault(address, access, FaultStatus::SynchronousExternal, width);
         }
     }
@@ -4219,6 +4284,22 @@ winios::GICv3& CPU::get_gic() noexcept {
 const winios::GICv3& CPU::get_gic() const noexcept {
     if (smp_cluster_) return smp_cluster_->get_gic();
     return gic_;
+}
+
+void CPU::attach_aic(std::shared_ptr<winios::device::AppleAIC> aic) noexcept {
+    aic_ = std::move(aic);
+}
+
+std::shared_ptr<winios::device::AppleAIC> CPU::get_aic() const noexcept {
+    return aic_;
+}
+
+void CPU::attach_device_bus(std::shared_ptr<winios::device::VirtualDeviceBus> bus) noexcept {
+    device_bus_ = std::move(bus);
+}
+
+std::shared_ptr<winios::device::VirtualDeviceBus> CPU::get_device_bus() const noexcept {
+    return device_bus_;
 }
 
 void CPU::set_core_id(std::size_t id) noexcept {
