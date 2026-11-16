@@ -134,6 +134,15 @@ divergence_report.json
 !artifacts/campaign-206/*.json
 !artifacts/campaign-206/*.txt
 !artifacts/campaign-206/*.sha256
+!docs/campaign207/
+!docs/campaign207/*.md
+!docs/campaign207/*.json
+!docs/campaign207/*.txt
+!artifacts/campaign-207/
+!artifacts/campaign-207/*.md
+!artifacts/campaign-207/*.json
+!artifacts/campaign-207/*.txt
+!artifacts/campaign-207/*.sha256
 Testing/
 reports/
 __pycache__/

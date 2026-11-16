@@ -1,0 +1,104 @@
+{
+  "campaign": 207,
+  "date": "2026-11-16",
+  "toolchain": "Visual Studio 2026 MSVC C++20 Release",
+  "total_registered_tests": 584,
+  "tests_passed": 583,
+  "tests_failed": 0,
+  "tests_skipped": 1,
+  "skipped_test_name": "inferno_integration_tests",
+  "campaign_207_tests": [
+    {
+      "test_name": "stage207_7_genuine_c_entry_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "instructions_retired": 445,
+      "assertions_passed": 12
+    },
+    {
+      "test_name": "stage207_10_physical_memory_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 5
+    },
+    {
+      "test_name": "stage207_11_kernel_virtual_memory_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6
+    },
+    {
+      "test_name": "stage207_12_arm64_translation_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 5
+    },
+    {
+      "test_name": "stage207_13_cpu_feature_init_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 6
+    },
+    {
+      "test_name": "stage207_14_aic2_integration_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 8
+    },
+    {
+      "test_name": "stage207_15_timer_init_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6
+    },
+    {
+      "test_name": "stage207_16_early_console_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 4
+    },
+    {
+      "test_name": "stage207_17_function_call_trace_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 6
+    },
+    {
+      "test_name": "stage207_18_initialization_milestones_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 5
+    },
+    {
+      "test_name": "stage207_19_kernel_failure_recovery_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "assertions_passed": 5
+    },
+    {
+      "test_name": "stage207_20_secondary_core_startup_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 4
+    },
+    {
+      "test_name": "stage207_21_kernel_atomics_scheduler_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.03,
+      "assertions_passed": 5
+    },
+    {
+      "test_name": "stage207_22_snapshot_replay_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.05,
+      "assertions_passed": 6
+    },
+    {
+      "test_name": "stage207_23_adversarial_boot_tests",
+      "status": "PASSED",
+      "execution_time_sec": 0.02,
+      "attacks_tested": 15,
+      "attacks_passed": 15
+    }
+  ]
+}

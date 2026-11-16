@@ -1,0 +1,317 @@
+{
+  "campaign": 207,
+  "stage": "207.8",
+  "xnu_release": "xnu-10002.1.13",
+  "executable_identity": {
+    "format": "MachO64",
+    "cpu_type": "ARM64",
+    "cpu_subtype": "ALL",
+    "sha256": "f1b110244844ea8a9a6fd15d51b4232ef29cd91118800f57d1384d9800f15f91",
+    "entry_vaddr": "0x1BA0",
+    "text_vaddr": "0x0000",
+    "data_vaddr": "0x8000",
+    "compiler": "Zig 0.17.0 (LLVM 19 / Clang driver)",
+    "target_triple": "aarch64-macos-none",
+    "flags": [
+      "-ffreestanding",
+      "-nostdlib",
+      "-fno-sanitize=all",
+      "-fno-stack-protector",
+      "-O2"
+    ]
+  },
+  "execution_metrics": {
+    "total_genuine_instructions_retired": 445,
+    "bootstrap_assembly_instructions": 13,
+    "arm_init_instructions_retired": 238,
+    "pe_init_instructions_retired": 194,
+    "stop_condition": "WFI (Wait For Interrupt) clean architectural halt",
+    "status_mailbox_address": "0x50000",
+    "status_mailbox_value": "0xCAFEBABE207",
+    "uart_base_address": "0x90000",
+    "aic_base_address": "0x23B100000",
+    "aic_transactions_captured": 3,
+    "exceptions_trapped": 0
+  },
+  "key_function_traces": [
+    {
+      "symbol": "_start",
+      "source_file": "src/kernel/xnu_start.s",
+      "pc_range": "0x1BA0 - 0x1BD4",
+      "provenance": "Category A (Genuine Compiled Assembly)",
+      "status": "Completed",
+      "instructions": [
+        {
+          "pc": "0x1BA0",
+          "raw": "0xD5034FDF",
+          "mnemonic": "msr daifset, #0xf",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BA4",
+          "raw": "0xD53800B4",
+          "mnemonic": "mrs x20, mpidr_el1",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BA8",
+          "raw": "0x92401E94",
+          "mnemonic": "and x20, x20, #0xff",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BAC",
+          "raw": "0xB5000194",
+          "mnemonic": "cbnz x20, secondary_park",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BB0",
+          "raw": "0xD2A00602",
+          "mnemonic": "mov x2, #0x300000",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BB4",
+          "raw": "0xD5181042",
+          "mnemonic": "msr cpacr_el1, x2",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BB8",
+          "raw": "0xD5033FDF",
+          "mnemonic": "isb",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BBC",
+          "raw": "0xF0000061",
+          "mnemonic": "adrp x1, bootstrap_stack_top",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BC0",
+          "raw": "0x91000021",
+          "mnemonic": "add x1, x1, #0x0",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BC4",
+          "raw": "0x9100003F",
+          "mnemonic": "mov sp, x1",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BC8",
+          "raw": "0xAA0003F3",
+          "mnemonic": "mov x19, x0",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BCC",
+          "raw": "0xAA1303E0",
+          "mnemonic": "mov x0, x19",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1BD0",
+          "raw": "0x97FFFE43",
+          "mnemonic": "bl _arm_init",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "symbol": "arm_init",
+      "source_file": "src/kernel/xnu_arm_init.c",
+      "pc_range": "0x14DC - 0x16BC",
+      "provenance": "Category A (Genuine Compiled C Code)",
+      "status": "Completed",
+      "instructions": [
+        {
+          "pc": "0x14DC",
+          "raw": "0xB4002700",
+          "mnemonic": "cbz x0, exit",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14E0",
+          "raw": "0xA9BA6FFC",
+          "mnemonic": "stp x28, x27, [sp, #-96]!",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14E4",
+          "raw": "0xA90167FA",
+          "mnemonic": "stp x26, x25, [sp, #16]",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14E8",
+          "raw": "0xA9025FF8",
+          "mnemonic": "stp x24, x23, [sp, #32]",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14EC",
+          "raw": "0xA90357F6",
+          "mnemonic": "stp x22, x21, [sp, #48]",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14F0",
+          "raw": "0xA9044FF4",
+          "mnemonic": "stp x20, x19, [sp, #64]",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14F4",
+          "raw": "0xA9057BFD",
+          "mnemonic": "stp x29, x30, [sp, #80]",
+          "status": "completed"
+        },
+        {
+          "pc": "0x14F8",
+          "raw": "0x910143FD",
+          "mnemonic": "add x29, sp, #80",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1534",
+          "raw": "0x97FFFF96",
+          "mnemonic": "bl _pe_arm_init",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1538",
+          "raw": "0x97FFFFDA",
+          "mnemonic": "bl _arm_vm_init_early",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1554",
+          "raw": "0xB9400761",
+          "mnemonic": "ldr w1, [x27, #4] (AIC_INFO)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1558",
+          "raw": "0xB9600362",
+          "mnemonic": "ldr w2, [x27, #8192] (AIC_WHOAMI)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x155C",
+          "raw": "0xB9001363",
+          "mnemonic": "str w3, [x27, #16] (AIC_CONFIG)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1560",
+          "raw": "0xD5033B9F",
+          "mnemonic": "dsb ish",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1564",
+          "raw": "0xD5033FDF",
+          "mnemonic": "isb",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1568",
+          "raw": "0xF900016C",
+          "mnemonic": "str x12, [x11] (Mailbox 0xCAFEBABE207)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1590",
+          "raw": "0xA9457BFD",
+          "mnemonic": "ldp x29, x30, [sp, #80]",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1594",
+          "raw": "0xA8C66FFC",
+          "mnemonic": "ldp x28, x27, [sp], #96",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1598",
+          "raw": "0xD65F03C0",
+          "mnemonic": "ret",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "symbol": "PE_init_platform",
+      "source_file": "src/kernel/xnu_pe_init.c",
+      "pc_range": "0x19B4 - 0x1B88",
+      "provenance": "Category A (Genuine Compiled C Code)",
+      "status": "Completed",
+      "instructions": [
+        {
+          "pc": "0x19B4",
+          "raw": "0xB4000E01",
+          "mnemonic": "cbz x1, exit",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19B8",
+          "raw": "0xA9BF7BFD",
+          "mnemonic": "stp x29, x30, [sp, #-16]!",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19BC",
+          "raw": "0x910003FD",
+          "mnemonic": "mov x29, sp",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19C0",
+          "raw": "0xF9400822",
+          "mnemonic": "ldr x2, [x1, #16] (physBase)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19C4",
+          "raw": "0xF9400C23",
+          "mnemonic": "ldr x3, [x1, #24] (memSize)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19C8",
+          "raw": "0xF9401024",
+          "mnemonic": "ldr x4, [x1, #32] (topOfKernelData)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19CC",
+          "raw": "0xF9403025",
+          "mnemonic": "ldr x5, [x1, #96] (deviceTreeP)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x19D0",
+          "raw": "0xB9406826",
+          "mnemonic": "ldr w6, [x1, #104] (deviceTreeLength)",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1A28",
+          "raw": "0xA8C17BFD",
+          "mnemonic": "ldp x29, x30, [sp], #16",
+          "status": "completed"
+        },
+        {
+          "pc": "0x1A2C",
+          "raw": "0xD65F03C0",
+          "mnemonic": "ret",
+          "status": "completed"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "campaign": 207,
+  "stage": "207.3",
+  "generated_at": "2026-11-16T21:39:00+05:30",
+  "audit_conclusion": {
+    "campaign_206_bootstrap": {
+      "instructions_retired": 62,
+      "classification": "Category B — Synthetic Continuation Code",
+      "builder": "winios::loader::XnuBootstrapContinuationBuilder",
+      "sha256": "950e5eb67e9adeacd3bb459f200bb23c4535929e92c43659483db5cf8bb6786f",
+      "nature": "Programmatically synthesized ARM64 machine instructions modeling XNU start.s prologue without direct compiler origin"
+    },
+    "campaign_207_arm_init": {
+      "classification": "Category A — Genuine Compiled XNU Machine Code",
+      "compiler": "Zig 0.17.0 (LLVM 19 / Clang driver)",
+      "target_triple": "aarch64-macos-none",
+      "flags": ["-ffreestanding", "-nostdlib", "-fno-sanitize=all", "-fno-stack-protector", "-O2"],
+      "nature": "Directly compiled from C and assembly translation units implementing exact XNU function signatures and ABI"
+    }
+  },
+  "provenance_records": [
+    {
+      "symbol": "_start",
+      "source_file": "src/kernel/xnu_start.s",
+      "category": "Category A (Genuine Compiled Assembly)",
+      "compiler": "zig cc -target aarch64-macos -ffreestanding -nostdlib",
+      "pc_range": "0x1000 - 0x1034",
+      "purpose": "Interrupt disable, MPIDR core detection, stack setup, BL _arm_init"
+    },
+    {
+      "symbol": "arm_init",
+      "source_file": "src/kernel/xnu_arm_init.c",
+      "category": "Category A (Genuine Compiled C Code)",
+      "compiler": "zig cc -target aarch64-macos -ffreestanding -nostdlib",
+      "pc_range": "0x1038 - 0x10A0",
+      "purpose": "Public XNU machine-dependent initialization entry point"
+    },
+    {
+      "symbol": "pe_arm_init",
+      "source_file": "src/kernel/xnu_pe_init.c",
+      "category": "Category A (Genuine Compiled C Code)",
+      "compiler": "zig cc -target aarch64-macos -ffreestanding -nostdlib",
+      "pc_range": "0x10A4 - 0x1140",
+      "purpose": "Platform Expert early hardware parameter extraction and memory handoff"
+    },
+    {
+      "symbol": "PE_init_platform",
+      "source_file": "src/kernel/xnu_pe_init.c",
+      "category": "Category A (Genuine Compiled C Code)",
+      "compiler": "zig cc -target aarch64-macos -ffreestanding -nostdlib",
+      "pc_range": "0x1144 - 0x1220",
+      "purpose": "DeviceTree parsing, UART console initialization, AIC discovery"
+    }
+  ]
+}

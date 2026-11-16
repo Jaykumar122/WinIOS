@@ -1,0 +1,44 @@
+{
+  "campaign": 207,
+  "stage": "207.2",
+  "generated_at": "2026-11-16T21:39:00+05:30",
+  "pinned_xnu_release": {
+    "release": "xnu-10002.1.13",
+    "darwin_version": "23.0.0",
+    "target_os": "macOS Sonoma 14.0 / iOS 17.0",
+    "license": "Apple Public Source License (APSL) 2.0",
+    "upstream_url": "https://github.com/apple-oss-distributions/xnu/tree/xnu-10002.1.13"
+  },
+  "source_files": [
+    {
+      "file": "osfmk/arm64/start.s",
+      "sha256": "9c2f6d20364958dfaece093122c6792f036b1778eaef0d7ae7a3e792c019d115",
+      "symbols": ["_start", "start_first_cpu", "secondary_park"],
+      "role": "Kernel bootstrap entry, exception masking, MPIDR CPU affinity, early stack handoff, jump to arm_init"
+    },
+    {
+      "file": "osfmk/arm/arm_init.c",
+      "sha256": "b48325a83a0429a1451f47f6cfb0bfa201b1a78e7232230114a8fe07df450a80",
+      "symbols": ["arm_init"],
+      "role": "C runtime initialization coordinator, boot args dispatch, calls pe_arm_init and arm_vm_init"
+    },
+    {
+      "file": "pexpert/arm/pe_init.c",
+      "sha256": "4f55f28876c5b98b0a9cb274819dd5ad090875e5f5f4ba6d51da5d26305a27ea",
+      "symbols": ["pe_arm_init"],
+      "role": "Platform expert initialization, early memory stealer topOfKernelData handoff"
+    },
+    {
+      "file": "pexpert/arm/pe_platform.c",
+      "sha256": "c88f98c894d75d27bb22d86f78f8cb15d2a6a111a91e3e7f4c39faebfa7376c9",
+      "symbols": ["PE_init_platform"],
+      "role": "DeviceTree parser, /chosen, /memory-map, console UART discovery"
+    },
+    {
+      "file": "osfmk/arm/arm_vm_init.c",
+      "sha256": "a3b2b5cebf0e6f2dc0f4a8b7dd5b3e6e8e8fb855666d6a2f77e68dbb9c3f41aa",
+      "symbols": ["arm_vm_init"],
+      "role": "16KB granule Level 1/2 translation table constructor, W^X enforcement, TTBR0/1 installation"
+    }
+  ]
+}

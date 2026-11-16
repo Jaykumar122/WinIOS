@@ -93,6 +93,7 @@ add_library(winios_core STATIC
     src/runtime/smp_kernel_boot_manager.cpp
     src/loader/independent_kernel_fixture.cpp
     src/loader/xnu_bootstrap_continuation.cpp
+    src/loader/xnu_genuine_init_builder.cpp
     src/loader/macho_dependency_graph.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
@@ -3537,8 +3538,113 @@ winios_set_warnings(stage205_23_boot_security_adversarial_tests)
 add_test(NAME stage205_23_boot_security_adversarial_tests COMMAND stage205_23_boot_security_adversarial_tests)
 
 # =============================================================================
-# Campaign 206: XNU Early Boot Continuation Test Suites
+# Campaign 207: Genuine XNU Machine-Dependent Initialization Test Suites
 # =============================================================================
+add_executable(stage207_7_genuine_c_entry_tests
+    tests/unit/stage207_7_genuine_c_entry_tests.cpp
+)
+target_link_libraries(stage207_7_genuine_c_entry_tests PRIVATE winios_core)
+winios_set_warnings(stage207_7_genuine_c_entry_tests)
+add_test(NAME stage207_7_genuine_c_entry_tests COMMAND stage207_7_genuine_c_entry_tests)
+
+add_executable(stage207_10_physical_memory_tests
+    tests/unit/stage207_10_physical_memory_tests.cpp
+)
+target_link_libraries(stage207_10_physical_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage207_10_physical_memory_tests)
+add_test(NAME stage207_10_physical_memory_tests COMMAND stage207_10_physical_memory_tests)
+
+add_executable(stage207_11_kernel_virtual_memory_tests
+    tests/unit/stage207_11_kernel_virtual_memory_tests.cpp
+)
+target_link_libraries(stage207_11_kernel_virtual_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage207_11_kernel_virtual_memory_tests)
+add_test(NAME stage207_11_kernel_virtual_memory_tests COMMAND stage207_11_kernel_virtual_memory_tests)
+
+add_executable(stage207_12_arm64_translation_tests
+    tests/unit/stage207_12_arm64_translation_tests.cpp
+)
+target_link_libraries(stage207_12_arm64_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage207_12_arm64_translation_tests)
+add_test(NAME stage207_12_arm64_translation_tests COMMAND stage207_12_arm64_translation_tests)
+
+add_executable(stage207_13_cpu_feature_init_tests
+    tests/unit/stage207_13_cpu_feature_init_tests.cpp
+)
+target_link_libraries(stage207_13_cpu_feature_init_tests PRIVATE winios_core)
+winios_set_warnings(stage207_13_cpu_feature_init_tests)
+add_test(NAME stage207_13_cpu_feature_init_tests COMMAND stage207_13_cpu_feature_init_tests)
+
+add_executable(stage207_14_aic2_integration_tests
+    tests/unit/stage207_14_aic2_integration_tests.cpp
+)
+target_link_libraries(stage207_14_aic2_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage207_14_aic2_integration_tests)
+add_test(NAME stage207_14_aic2_integration_tests COMMAND stage207_14_aic2_integration_tests)
+
+add_executable(stage207_15_timer_init_tests
+    tests/unit/stage207_15_timer_init_tests.cpp
+)
+target_link_libraries(stage207_15_timer_init_tests PRIVATE winios_core)
+winios_set_warnings(stage207_15_timer_init_tests)
+add_test(NAME stage207_15_timer_init_tests COMMAND stage207_15_timer_init_tests)
+
+add_executable(stage207_16_early_console_tests
+    tests/unit/stage207_16_early_console_tests.cpp
+)
+target_link_libraries(stage207_16_early_console_tests PRIVATE winios_core)
+winios_set_warnings(stage207_16_early_console_tests)
+add_test(NAME stage207_16_early_console_tests COMMAND stage207_16_early_console_tests)
+
+add_executable(stage207_17_function_call_trace_tests
+    tests/unit/stage207_17_function_call_trace_tests.cpp
+)
+target_link_libraries(stage207_17_function_call_trace_tests PRIVATE winios_core)
+winios_set_warnings(stage207_17_function_call_trace_tests)
+add_test(NAME stage207_17_function_call_trace_tests COMMAND stage207_17_function_call_trace_tests)
+
+add_executable(stage207_18_initialization_milestones_tests
+    tests/unit/stage207_18_initialization_milestones_tests.cpp
+)
+target_link_libraries(stage207_18_initialization_milestones_tests PRIVATE winios_core)
+winios_set_warnings(stage207_18_initialization_milestones_tests)
+add_test(NAME stage207_18_initialization_milestones_tests COMMAND stage207_18_initialization_milestones_tests)
+
+add_executable(stage207_19_kernel_failure_recovery_tests
+    tests/unit/stage207_19_kernel_failure_recovery_tests.cpp
+)
+target_link_libraries(stage207_19_kernel_failure_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage207_19_kernel_failure_recovery_tests)
+add_test(NAME stage207_19_kernel_failure_recovery_tests COMMAND stage207_19_kernel_failure_recovery_tests)
+
+add_executable(stage207_20_secondary_core_startup_tests
+    tests/unit/stage207_20_secondary_core_startup_tests.cpp
+)
+target_link_libraries(stage207_20_secondary_core_startup_tests PRIVATE winios_core)
+winios_set_warnings(stage207_20_secondary_core_startup_tests)
+add_test(NAME stage207_20_secondary_core_startup_tests COMMAND stage207_20_secondary_core_startup_tests)
+
+add_executable(stage207_21_kernel_atomics_scheduler_tests
+    tests/unit/stage207_21_kernel_atomics_scheduler_tests.cpp
+)
+target_link_libraries(stage207_21_kernel_atomics_scheduler_tests PRIVATE winios_core)
+winios_set_warnings(stage207_21_kernel_atomics_scheduler_tests)
+add_test(NAME stage207_21_kernel_atomics_scheduler_tests COMMAND stage207_21_kernel_atomics_scheduler_tests)
+
+add_executable(stage207_22_snapshot_replay_tests
+    tests/unit/stage207_22_snapshot_replay_tests.cpp
+)
+target_link_libraries(stage207_22_snapshot_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage207_22_snapshot_replay_tests)
+add_test(NAME stage207_22_snapshot_replay_tests COMMAND stage207_22_snapshot_replay_tests)
+
+add_executable(stage207_23_adversarial_boot_tests
+    tests/unit/stage207_23_adversarial_boot_tests.cpp
+)
+target_link_libraries(stage207_23_adversarial_boot_tests PRIVATE winios_core)
+winios_set_warnings(stage207_23_adversarial_boot_tests)
+add_test(NAME stage207_23_adversarial_boot_tests COMMAND stage207_23_adversarial_boot_tests)
+
 add_executable(stage206_11_bootstrap_trace_expansion_tests
     tests/unit/stage206_11_bootstrap_trace_expansion_tests.cpp
 )

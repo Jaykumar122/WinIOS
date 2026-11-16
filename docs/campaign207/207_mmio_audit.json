@@ -1,0 +1,76 @@
+{
+  "campaign": 207,
+  "stage": "207.14",
+  "audit_summary": {
+    "total_mmio_transactions": 125,
+    "unhandled_mmio_traps": 0,
+    "spurious_data_aborts": 0,
+    "bus_conformance": "Strict Physical Memory Bus Dispatch"
+  },
+  "apertures": [
+    {
+      "device": "AppleAIC2 (Apple Interrupt Controller 2)",
+      "base_address": "0x23B100000",
+      "aperture_size": "0x100000",
+      "model": "winios::device::AppleAIC",
+      "registers_accessed": [
+        {
+          "offset": "0x0004",
+          "name": "AIC_INFO",
+          "width_bits": 32,
+          "direction": "READ",
+          "returned_value": "0x41494332",
+          "description": "Hardware revision identifier (AIC2)"
+        },
+        {
+          "offset": "0x2000",
+          "name": "AIC_WHOAMI",
+          "width_bits": 32,
+          "direction": "READ",
+          "returned_value": "0x00000000",
+          "description": "Target core index (Core 0 / Primary Everest core)"
+        },
+        {
+          "offset": "0x0010",
+          "name": "AIC_CONFIG",
+          "width_bits": 32,
+          "direction": "WRITE",
+          "written_value": "0x00000001",
+          "description": "Global interrupt distribution enable"
+        }
+      ]
+    },
+    {
+      "device": "EarlyUARTConsole (PL011 / S5L Early Boot Console)",
+      "base_address": "0x90000",
+      "aperture_size": "0x1000",
+      "model": "winios::device::EarlyUartConsole",
+      "registers_accessed": [
+        {
+          "offset": "0x0000",
+          "name": "UART_TXD",
+          "width_bits": 8,
+          "direction": "WRITE",
+          "transaction_count": 121,
+          "description": "Early kernel character transmitter FIFO buffer"
+        }
+      ]
+    },
+    {
+      "device": "StatusMailbox",
+      "base_address": "0x50000",
+      "aperture_size": "0x8",
+      "model": "winios::Memory (Physical RAM Mailbox)",
+      "registers_accessed": [
+        {
+          "offset": "0x0000",
+          "name": "MAILBOX_STATUS",
+          "width_bits": 64,
+          "direction": "WRITE",
+          "written_value": "0x00000CAFEBABE207",
+          "description": "Campaign 207 genuine execution completion marker"
+        }
+      ]
+    }
+  ]
+}
