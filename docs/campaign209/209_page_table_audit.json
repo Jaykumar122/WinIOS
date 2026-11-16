@@ -1,0 +1,107 @@
+{
+  "campaign": 209,
+  "granule": "16KB",
+  "levels": 2,
+  "tables": {
+    "level1": {
+      "base_address": "0x20000",
+      "entry_count": 2048,
+      "entries": [
+        {
+          "index": 0,
+          "descriptor": "0x0000000000024003",
+          "target_table": "0x24000",
+          "type": "Table Descriptor",
+          "valid": true,
+          "notes": "Points to Level-2 Block Table at 0x24000"
+        }
+      ]
+    },
+    "level2": {
+      "base_address": "0x24000",
+      "entry_count": 2048,
+      "block_size_bytes": 33554432,
+      "block_size_human": "32MB",
+      "entries": [
+        {
+          "index": 0,
+          "va_range": "0x00000000 - 0x01FFFFFF",
+          "descriptor": "0x0000000000000701",
+          "output_pa_base": "0x00000000",
+          "type": "Block Descriptor",
+          "valid": true,
+          "memory_type": "Normal Cacheable Inner Shareable",
+          "access_permissions": "Kernel RW (AP=0b00)",
+          "access_flag": 1,
+          "notes": "Maps low DRAM window covering genuine 8 MiB DRAM (0x0 - 0x800000)"
+        },
+        {
+          "index": 1,
+          "va_range": "0x02000000 - 0x03FFFFFF",
+          "descriptor": "0x0000000000000000",
+          "output_pa_base": "0x00000000",
+          "type": "Invalid / Unmapped",
+          "valid": false,
+          "notes": "AUDIT FIX: Eradicated 32MB ghost memory mapping (previously 0x02000701). Unmapped to prevent non-existent DRAM access and trigger MMU translation fault."
+        },
+        {
+          "index": 285,
+          "va_range": "0x23A000000 - 0x23BFFFFFF",
+          "descriptor": "0x000000023A000705",
+          "output_pa_base": "0x23A000000",
+          "type": "Block Descriptor",
+          "valid": true,
+          "memory_type": "Device-nGnRE Inner Shareable",
+          "access_permissions": "Kernel RW (AP=0b00)",
+          "access_flag": 1,
+          "notes": "AUDIT FIX: Corrected base calculation (285 * 32MB = 0x23A000000). Previously 0x0220000705 had base 0x220000000, displacing AIC2 registers by 416 MiB. Now identity-maps AIC2 at VA 0x23B100000 to PA 0x23B100000."
+        }
+      ]
+    }
+  },
+  "address_translations": [
+    {
+      "virtual_address": "0x00001000",
+      "expected_physical_address": "0x00001000",
+      "translation_result": "SUCCESS",
+      "fault": null
+    },
+    {
+      "virtual_address": "0x00028000",
+      "expected_physical_address": "0x00028000",
+      "translation_result": "SUCCESS",
+      "purpose": "Physical Page Metadata Header"
+    },
+    {
+      "virtual_address": "0x00028020",
+      "expected_physical_address": "0x00028020",
+      "translation_result": "SUCCESS",
+      "purpose": "pmap_phys_attributes table (512 entries)"
+    },
+    {
+      "virtual_address": "0x00028220",
+      "expected_physical_address": "0x00028220",
+      "translation_result": "SUCCESS",
+      "purpose": "vm_pages descriptors array (496 entries)"
+    },
+    {
+      "virtual_address": "0x02000000",
+      "expected_physical_address": null,
+      "translation_result": "TRANSLATION_FAULT",
+      "fault": "Stage 1 Translation Fault Level 2",
+      "notes": "Protected against ghost DRAM access"
+    },
+    {
+      "virtual_address": "0x23B100004",
+      "expected_physical_address": "0x23B100004",
+      "translation_result": "SUCCESS",
+      "purpose": "Apple AIC2 AIC_INFO MMIO register"
+    },
+    {
+      "virtual_address": "0x23B102000",
+      "expected_physical_address": "0x23B102000",
+      "translation_result": "SUCCESS",
+      "purpose": "Apple AIC2 AIC_WHOAMI MMIO register"
+    }
+  ]
+}

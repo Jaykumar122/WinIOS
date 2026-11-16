@@ -1,0 +1,65 @@
+{
+  "campaign": 209,
+  "xnu_release": "xnu-10002.1.13",
+  "apple_os_version": "macOS 14.0 Sonoma / iOS 17.0",
+  "license": "Apple Public Source License 2.0 (APSL-2.0)",
+  "repository_url": "https://github.com/apple-oss-distributions/xnu",
+  "tracked_functions": [
+    {
+      "function_name": "_start",
+      "source_file": "osfmk/arm64/start.s",
+      "lines": "112-215",
+      "category": "Category B",
+      "adaptation_notes": "Freestanding assembly, direct EL1h stack setup at 0x10000, secondary core WFE park"
+    },
+    {
+      "function_name": "arm_init",
+      "source_file": "osfmk/arm/arm_init.c",
+      "lines": "280-360",
+      "category": "Category B",
+      "adaptation_notes": "Freestanding C entry point, preserved AAPCS64 boot_args pointer, invokes pe_arm_init and pmap_bootstrap"
+    },
+    {
+      "function_name": "pe_arm_init",
+      "source_file": "pexpert/arm/pe_init.c",
+      "lines": "110-150",
+      "category": "Category A/B",
+      "adaptation_notes": "Unmodified public function prototype, dispatches directly to PE_init_platform"
+    },
+    {
+      "function_name": "PE_init_platform",
+      "source_file": "pexpert/arm/pe_init.c",
+      "lines": "160-240",
+      "category": "Category B",
+      "adaptation_notes": "Initializes g_pe_state at 0x10040, emits diagnostic banner to UART at 0x90000"
+    },
+    {
+      "function_name": "arm_vm_init_early",
+      "source_file": "osfmk/arm/arm_vm_init.c",
+      "lines": "120-180",
+      "category": "Category B",
+      "adaptation_notes": "Steals early 16KB root table from topOfKernelData, populates L2 block identity descriptors"
+    },
+    {
+      "function_name": "pmap_bootstrap",
+      "source_file": "osfmk/arm/pmap.c",
+      "lines": "450-510",
+      "category": "Category B",
+      "adaptation_notes": "Calculates avail_start (0x40000) and avail_end (0x800000), marks pmap_initialized=1"
+    },
+    {
+      "function_name": "pmap_init",
+      "source_file": "osfmk/arm/pmap.c",
+      "lines": "520-615",
+      "category": "Category B",
+      "adaptation_notes": "Initializes physical page attributes array (pmap_phys_attributes) across all 512 frames"
+    },
+    {
+      "function_name": "vm_page_bootstrap",
+      "source_file": "osfmk/vm/vm_page.c",
+      "lines": "180-270",
+      "category": "Category B",
+      "adaptation_notes": "Initializes vm_page_t descriptor array for 496 allocatable physical frames"
+    }
+  ]
+}

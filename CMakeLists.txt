@@ -3851,6 +3851,94 @@ target_link_libraries(stage208_22_performance_instrumentation_tests PRIVATE wini
 winios_set_warnings(stage208_22_performance_instrumentation_tests)
 add_test(NAME stage208_22_performance_instrumentation_tests COMMAND stage208_22_performance_instrumentation_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 209: Genuine XNU VM Initialization & Physical Page Management Tests
+# -----------------------------------------------------------------------------
+add_executable(stage209_2_aic2_physical_mapping_tests tests/unit/stage209_2_aic2_physical_mapping_tests.cpp)
+target_link_libraries(stage209_2_aic2_physical_mapping_tests PRIVATE winios_core)
+winios_set_warnings(stage209_2_aic2_physical_mapping_tests)
+add_test(NAME stage209_2_aic2_physical_mapping_tests COMMAND stage209_2_aic2_physical_mapping_tests)
+
+add_executable(stage209_3_physical_memory_consistency_tests tests/unit/stage209_3_physical_memory_consistency_tests.cpp)
+target_link_libraries(stage209_3_physical_memory_consistency_tests PRIVATE winios_core)
+winios_set_warnings(stage209_3_physical_memory_consistency_tests)
+add_test(NAME stage209_3_physical_memory_consistency_tests COMMAND stage209_3_physical_memory_consistency_tests)
+
+add_executable(stage209_5_provenance_audit_tests tests/unit/stage209_5_provenance_audit_tests.cpp)
+target_link_libraries(stage209_5_provenance_audit_tests PRIVATE winios_core)
+winios_set_warnings(stage209_5_provenance_audit_tests)
+add_test(NAME stage209_5_provenance_audit_tests COMMAND stage209_5_provenance_audit_tests)
+
+add_executable(stage209_6_physical_page_metadata_tests tests/unit/stage209_6_physical_page_metadata_tests.cpp)
+target_link_libraries(stage209_6_physical_page_metadata_tests PRIVATE winios_core)
+winios_set_warnings(stage209_6_physical_page_metadata_tests)
+add_test(NAME stage209_6_physical_page_metadata_tests COMMAND stage209_6_physical_page_metadata_tests)
+
+add_executable(stage209_7_page_allocator_correctness_tests tests/unit/stage209_7_page_allocator_correctness_tests.cpp)
+target_link_libraries(stage209_7_page_allocator_correctness_tests PRIVATE winios_core)
+winios_set_warnings(stage209_7_page_allocator_correctness_tests)
+add_test(NAME stage209_7_page_allocator_correctness_tests COMMAND stage209_7_page_allocator_correctness_tests)
+
+add_executable(stage209_8_page_metadata_init_execution_tests tests/unit/stage209_8_page_metadata_init_execution_tests.cpp)
+target_link_libraries(stage209_8_page_metadata_init_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage209_8_page_metadata_init_execution_tests)
+add_test(NAME stage209_8_page_metadata_init_execution_tests COMMAND stage209_8_page_metadata_init_execution_tests)
+
+add_executable(stage209_9_kernel_va_map_tests tests/unit/stage209_9_kernel_va_map_tests.cpp)
+target_link_libraries(stage209_9_kernel_va_map_tests PRIVATE winios_core)
+winios_set_warnings(stage209_9_kernel_va_map_tests)
+add_test(NAME stage209_9_kernel_va_map_tests COMMAND stage209_9_kernel_va_map_tests)
+
+add_executable(stage209_10_kernel_mapping_services_tests tests/unit/stage209_10_kernel_mapping_services_tests.cpp)
+target_link_libraries(stage209_10_kernel_mapping_services_tests PRIVATE winios_core)
+winios_set_warnings(stage209_10_kernel_mapping_services_tests)
+add_test(NAME stage209_10_kernel_mapping_services_tests COMMAND stage209_10_kernel_mapping_services_tests)
+
+add_executable(stage209_11_wx_memory_isolation_tests tests/unit/stage209_11_wx_memory_isolation_tests.cpp)
+target_link_libraries(stage209_11_wx_memory_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage209_11_wx_memory_isolation_tests)
+add_test(NAME stage209_11_wx_memory_isolation_tests COMMAND stage209_11_wx_memory_isolation_tests)
+
+add_executable(stage209_12_tlb_lifecycle_tests tests/unit/stage209_12_tlb_lifecycle_tests.cpp)
+target_link_libraries(stage209_12_tlb_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage209_12_tlb_lifecycle_tests)
+add_test(NAME stage209_12_tlb_lifecycle_tests COMMAND stage209_12_tlb_lifecycle_tests)
+
+add_executable(stage209_16_vm_fault_integration_tests tests/unit/stage209_16_vm_fault_integration_tests.cpp)
+target_link_libraries(stage209_16_vm_fault_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage209_16_vm_fault_integration_tests)
+add_test(NAME stage209_16_vm_fault_integration_tests COMMAND stage209_16_vm_fault_integration_tests)
+
+add_executable(stage209_18_genuine_xnu_vm_expansion_tests tests/unit/stage209_18_genuine_xnu_vm_expansion_tests.cpp)
+target_link_libraries(stage209_18_genuine_xnu_vm_expansion_tests PRIVATE winios_core)
+winios_set_warnings(stage209_18_genuine_xnu_vm_expansion_tests)
+add_test(NAME stage209_18_genuine_xnu_vm_expansion_tests COMMAND stage209_18_genuine_xnu_vm_expansion_tests)
+
+add_executable(stage209_19_kernel_init_state_machine_tests tests/unit/stage209_19_kernel_init_state_machine_tests.cpp)
+target_link_libraries(stage209_19_kernel_init_state_machine_tests PRIVATE winios_core)
+winios_set_warnings(stage209_19_kernel_init_state_machine_tests)
+add_test(NAME stage209_19_kernel_init_state_machine_tests COMMAND stage209_19_kernel_init_state_machine_tests)
+
+add_executable(stage209_20_smp_per_core_vm_tests tests/unit/stage209_20_smp_per_core_vm_tests.cpp)
+target_link_libraries(stage209_20_smp_per_core_vm_tests PRIVATE winios_core)
+winios_set_warnings(stage209_20_smp_per_core_vm_tests)
+add_test(NAME stage209_20_smp_per_core_vm_tests COMMAND stage209_20_smp_per_core_vm_tests)
+
+add_executable(stage209_21_snapshot_replay_tests tests/unit/stage209_21_snapshot_replay_tests.cpp)
+target_link_libraries(stage209_21_snapshot_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage209_21_snapshot_replay_tests)
+add_test(NAME stage209_21_snapshot_replay_tests COMMAND stage209_21_snapshot_replay_tests)
+
+add_executable(stage209_22_adversarial_memory_tests tests/unit/stage209_22_adversarial_memory_tests.cpp)
+target_link_libraries(stage209_22_adversarial_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage209_22_adversarial_memory_tests)
+add_test(NAME stage209_22_adversarial_memory_tests COMMAND stage209_22_adversarial_memory_tests)
+
+add_executable(stage209_23_performance_instrumentation_tests tests/unit/stage209_23_performance_instrumentation_tests.cpp)
+target_link_libraries(stage209_23_performance_instrumentation_tests PRIVATE winios_core)
+winios_set_warnings(stage209_23_performance_instrumentation_tests)
+add_test(NAME stage209_23_performance_instrumentation_tests COMMAND stage209_23_performance_instrumentation_tests)
+
 
 
 

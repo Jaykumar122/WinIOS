@@ -43,11 +43,17 @@ public:
     // Returns the embedded bit-exact genuine compiled Mach-O image (Campaign 208)
     static std::vector<std::uint8_t> get_embedded_image_208();
 
+    // Returns the embedded bit-exact genuine compiled Mach-O image (Campaign 209)
+    static std::vector<std::uint8_t> get_embedded_image_209();
+
     // Loads the genuine image from disk if available, otherwise falls back to embedded
     static std::vector<std::uint8_t> load_or_get_image(const std::string& preferred_path = "");
 
     // Loads the Campaign 208 image specifically
     static std::vector<std::uint8_t> load_or_get_image_208(const std::string& preferred_path = "");
+
+    // Loads the Campaign 209 image specifically
+    static std::vector<std::uint8_t> load_or_get_image_209(const std::string& preferred_path = "");
 
     // Attempts to recompile directly from src/kernel/xnu_*.c and .s using zig cc
     static bool recompile_with_zig(

@@ -1,0 +1,75 @@
+{
+  "campaign": 209,
+  "hardware_profile": "iPhone 15 / iPhone15,4 / D37AP / Apple A16 Bionic T8120",
+  "translation_granule_bytes": 16384,
+  "dram": {
+    "base": "0x00000000",
+    "size_bytes": 8388608,
+    "size_human": "8.0 MiB",
+    "total_pages": 512,
+    "regions": [
+      {
+        "name": "null_guard",
+        "start": "0x00000000",
+        "end": "0x00003FFF",
+        "size_bytes": 16384,
+        "pages": 1,
+        "type": "reserved"
+      },
+      {
+        "name": "kernel_macho_image",
+        "start": "0x000014A0",
+        "end": "0x00003FFF",
+        "size_bytes": 10976,
+        "pages": 1,
+        "type": "kernel_code_data"
+      },
+      {
+        "name": "bootstrap_stack",
+        "start": "0x0000C000",
+        "end": "0x0000FFFF",
+        "size_bytes": 16384,
+        "pages": 1,
+        "type": "stack"
+      },
+      {
+        "name": "kernel_global_state",
+        "start": "0x00010000",
+        "end": "0x0001FFFF",
+        "size_bytes": 65536,
+        "pages": 4,
+        "type": "data_structures"
+      },
+      {
+        "name": "stolen_page_tables",
+        "start": "0x00020000",
+        "end": "0x0003FFFF",
+        "size_bytes": 131072,
+        "pages": 8,
+        "type": "page_tables"
+      },
+      {
+        "name": "allocatable_dram_frames",
+        "start": "0x00040000",
+        "end": "0x00800000",
+        "size_bytes": 8126464,
+        "pages": 496,
+        "type": "free_physical_frames"
+      }
+    ]
+  },
+  "mmio_apertures": [
+    {
+      "name": "early_uart_console",
+      "start": "0x00090000",
+      "size_bytes": 4096,
+      "type": "device_registers"
+    },
+    {
+      "name": "apple_aic2_interrupt_controller",
+      "start": "0x023B100000",
+      "size_bytes": 1048576,
+      "type": "device_nGnRE"
+    }
+  ]
+}

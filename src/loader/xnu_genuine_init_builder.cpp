@@ -8,6 +8,7 @@
 #include "loader/real_artifact_harness.h"
 #include "loader/embedded_xnu_image.inl"
 #include "loader/embedded_xnu_image_208.inl"
+#include "loader/embedded_xnu_image_209.inl"
 
 namespace winios::loader {
 
@@ -21,6 +22,12 @@ std::vector<std::uint8_t> XnuGenuineInitBuilder::get_embedded_image_208() {
     return std::vector<std::uint8_t>(
         kEmbeddedXnuGenuineImage208,
         kEmbeddedXnuGenuineImage208 + kEmbeddedXnuGenuineImage208Size);
+}
+
+std::vector<std::uint8_t> XnuGenuineInitBuilder::get_embedded_image_209() {
+    return std::vector<std::uint8_t>(
+        kEmbeddedXnuImage209Data,
+        kEmbeddedXnuImage209Data + kEmbeddedXnuImage209Size);
 }
 
 std::vector<std::uint8_t> XnuGenuineInitBuilder::load_or_get_image(const std::string& preferred_path) {
@@ -88,6 +95,39 @@ std::vector<std::uint8_t> XnuGenuineInitBuilder::load_or_get_image_208(const std
     }
 
     return get_embedded_image_208();
+}
+
+std::vector<std::uint8_t> XnuGenuineInitBuilder::load_or_get_image_209(const std::string& preferred_path) {
+    if (!preferred_path.empty()) {
+        std::ifstream file(preferred_path, std::ios::binary);
+        if (file.is_open()) {
+            return std::vector<std::uint8_t>(
+                (std::istreambuf_iterator<char>(file)),
+                std::istreambuf_iterator<char>());
+        }
+        std::ifstream file_rel("../" + preferred_path, std::ios::binary);
+        if (file_rel.is_open()) {
+            return std::vector<std::uint8_t>(
+                (std::istreambuf_iterator<char>(file_rel)),
+                std::istreambuf_iterator<char>());
+        }
+    }
+
+    std::ifstream file("artifacts/campaign-209/xnu_genuine_init.macho", std::ios::binary);
+    if (file.is_open()) {
+        return std::vector<std::uint8_t>(
+            (std::istreambuf_iterator<char>(file)),
+            std::istreambuf_iterator<char>());
+    }
+
+    std::ifstream file_build("../artifacts/campaign-209/xnu_genuine_init.macho", std::ios::binary);
+    if (file_build.is_open()) {
+        return std::vector<std::uint8_t>(
+            (std::istreambuf_iterator<char>(file_build)),
+            std::istreambuf_iterator<char>());
+    }
+
+    return get_embedded_image_209();
 }
 
 bool XnuGenuineInitBuilder::recompile_with_zig(
