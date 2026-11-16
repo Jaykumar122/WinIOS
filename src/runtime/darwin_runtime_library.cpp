@@ -63,11 +63,18 @@ void DarwinRuntimeLibrary::initialize_stub_catalog() {
 
     static const StubDef kDefs[] = {
         {"_exit",                 RuntimeStubKind::BsdSyscall, 1},
+        {"_open",                 RuntimeStubKind::BsdSyscall, 5},
+        {"_close",                RuntimeStubKind::BsdSyscall, 6},
         {"_read",                 RuntimeStubKind::BsdSyscall, 3},
         {"_write",                RuntimeStubKind::BsdSyscall, 4},
         {"_getpid",               RuntimeStubKind::BsdSyscall, 20},
+        {"_getuid",               RuntimeStubKind::BsdSyscall, 24},
+        {"_geteuid",              RuntimeStubKind::BsdSyscall, 25},
+        {"_getgid",               RuntimeStubKind::BsdSyscall, 47},
         {"_munmap",               RuntimeStubKind::BsdSyscall, 73},
         {"_mmap",                 RuntimeStubKind::BsdSyscall, 197},
+        {"_lseek",                RuntimeStubKind::BsdSyscall, 199},
+        {"_fstat",                RuntimeStubKind::BsdSyscall, 189},
         {"_kdebug_trace",         RuntimeStubKind::BsdSyscall, 180},
         {"_mach_msg_trap",        RuntimeStubKind::MachTrap,   -31},
         {"_mach_reply_port",      RuntimeStubKind::MachTrap,   -26},
@@ -100,7 +107,7 @@ void DarwinRuntimeLibrary::initialize_stub_catalog() {
         current_addr += kSlotStride;
     }
 
-    // 16. Custom: _free (mov x0, #0; ret)
+    // Custom: _free (mov x0, #0; ret)
     {
         RuntimeStubDescriptor free_stub;
         free_stub.name = "_free";
@@ -113,15 +120,155 @@ void DarwinRuntimeLibrary::initialize_stub_catalog() {
         current_addr += kSlotStride;
     }
 
-    // 17. Custom: ___error (Darwin errno pointer)
+    // Custom: _strlen
+    {
+        RuntimeStubDescriptor strlen_stub;
+        strlen_stub.name = "_strlen";
+        strlen_stub.kind = RuntimeStubKind::CustomRoutine;
+        strlen_stub.number = 0;
+        strlen_stub.address = current_addr;
+        strlen_stub.code = {
+            0xAA0003E1u, // mov x1, x0
+            0x38401422u, // ldrb w2, [x1], #1
+            0x35FFFFE2u, // cbnz w2, -4 (loop to ldrb)
+            0xCB000020u, // sub x0, x1, x0
+            0xD1000400u, // sub x0, x0, #1
+            0xD65F03C0u  // ret
+        };
+        exports_[strlen_stub.name] = strlen_stub.address;
+        stubs_.push_back(std::move(strlen_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Custom: _memset
+    {
+        RuntimeStubDescriptor memset_stub;
+        memset_stub.name = "_memset";
+        memset_stub.kind = RuntimeStubKind::CustomRoutine;
+        memset_stub.number = 0;
+        memset_stub.address = current_addr;
+        memset_stub.code = {
+            0xAA0003E3u, // mov x3, x0
+            0xB4000082u, // cbz x2, +16 (ret)
+            0x38001461u, // strb w1, [x3], #1
+            0xD1000442u, // sub x2, x2, #1
+            0x35FFFFC2u, // cbnz x2, -8 (loop to strb)
+            0xD65F03C0u  // ret
+        };
+        exports_[memset_stub.name] = memset_stub.address;
+        stubs_.push_back(std::move(memset_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Custom: _memcpy and _memmove
+    {
+        RuntimeStubDescriptor memcpy_stub;
+        memcpy_stub.name = "_memcpy";
+        memcpy_stub.kind = RuntimeStubKind::CustomRoutine;
+        memcpy_stub.number = 0;
+        memcpy_stub.address = current_addr;
+        memcpy_stub.code = {
+            0xAA0003E3u, // mov x3, x0
+            0xB40000A2u, // cbz x2, +20 (ret)
+            0x38401424u, // ldrb w4, [x1], #1
+            0x38001464u, // strb w4, [x3], #1
+            0xD1000442u, // sub x2, x2, #1
+            0x35FFFFA2u, // cbnz x2, -12 (loop to ldrb)
+            0xD65F03C0u  // ret
+        };
+        exports_["_memcpy"] = memcpy_stub.address;
+        exports_["_memmove"] = memcpy_stub.address;
+        stubs_.push_back(std::move(memcpy_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Custom: _strcmp
+    {
+        RuntimeStubDescriptor strcmp_stub;
+        strcmp_stub.name = "_strcmp";
+        strcmp_stub.kind = RuntimeStubKind::CustomRoutine;
+        strcmp_stub.number = 0;
+        strcmp_stub.address = current_addr;
+        strcmp_stub.code = {
+            0x38401402u, // ldrb w2, [x0], #1
+            0x38401423u, // ldrb w3, [x1], #1
+            0x34000062u, // cbz w2, +12 (done)
+            0x6B03005Fu, // cmp w2, w3
+            0x54FFFF80u, // b.eq -16 (loop)
+            0x4B030040u, // sub w0, w2, w3
+            0xD65F03C0u  // ret
+        };
+        exports_[strcmp_stub.name] = strcmp_stub.address;
+        stubs_.push_back(std::move(strcmp_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Custom: _abort
+    {
+        RuntimeStubDescriptor abort_stub;
+        abort_stub.name = "_abort";
+        abort_stub.kind = RuntimeStubKind::CustomRoutine;
+        abort_stub.number = 0;
+        abort_stub.address = current_addr;
+        abort_stub.code = {
+            0xD28010C0u, // movz x0, #134 (SIGABRT)
+            0xD2800030u, // movz x16, #1 (sys_exit)
+            0xD4001001u, // svc #0x80
+            0xD65F03C0u  // ret
+        };
+        exports_[abort_stub.name] = abort_stub.address;
+        stubs_.push_back(std::move(abort_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Custom: ___tlv_bootstrap and __tlv_bootstrap
+    {
+        RuntimeStubDescriptor tlv_stub;
+        tlv_stub.name = "___tlv_bootstrap";
+        tlv_stub.kind = RuntimeStubKind::CustomRoutine;
+        tlv_stub.number = 0;
+        tlv_stub.address = current_addr;
+        tlv_stub.code = {
+            0xF9400400u, // ldr x0, [x0, #8]
+            0xD65F03C0u  // ret
+        };
+        exports_["___tlv_bootstrap"] = tlv_stub.address;
+        exports_["__tlv_bootstrap"] = tlv_stub.address;
+        stubs_.push_back(std::move(tlv_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Custom: ___stack_chk_fail
+    {
+        RuntimeStubDescriptor chk_stub;
+        chk_stub.name = "___stack_chk_fail";
+        chk_stub.kind = RuntimeStubKind::CustomRoutine;
+        chk_stub.number = 0;
+        chk_stub.address = current_addr;
+        chk_stub.code = {
+            0xD2800020u, // movz x0, #1
+            0xD2800030u, // movz x16, #1 (exit)
+            0xD4001001u, // svc #0x80
+            0xD65F03C0u  // ret
+        };
+        exports_[chk_stub.name] = chk_stub.address;
+        stubs_.push_back(std::move(chk_stub));
+        current_addr += kSlotStride;
+    }
+
+    // Data storage: errno and stack canary
+    errno_address_ = current_addr;
+    stack_guard_address_ = current_addr + 0x10;
+    exports_["___stack_chk_guard"] = stack_guard_address_;
+    current_addr += kSlotStride;
+
+    // Custom: ___error (Darwin errno pointer)
     {
         RuntimeStubDescriptor err_stub;
         err_stub.name = "___error";
         err_stub.kind = RuntimeStubKind::CustomRoutine;
         err_stub.number = 0;
         err_stub.address = current_addr;
-        // movz x0, #0xFF00, lsl #0; movk x0, #0x1800, lsl #16 -> pointer to errno storage
-        // movz x0, #0x1000; ret
         err_stub.code = {0xD2820000u, 0xD65F03C0u}; // movz x0, #0x1000; ret
         exports_[err_stub.name] = err_stub.address;
         stubs_.push_back(std::move(err_stub));
@@ -143,6 +290,21 @@ bool DarwinRuntimeLibrary::stage_into_memory(Memory& memory, std::string& out_er
             memory.write_u32(mem_off + (i * sizeof(std::uint32_t)), stub.code[i]);
         }
     }
+
+    if (errno_address_ != 0) {
+        std::size_t off = translate_vaddr(errno_address_, memory.size(), base_vaddr_);
+        if (off + 4 <= memory.size()) {
+            memory.write_u32(off, 0);
+        }
+    }
+
+    if (stack_guard_address_ != 0) {
+        std::size_t off = translate_vaddr(stack_guard_address_, memory.size(), base_vaddr_);
+        if (off + 8 <= memory.size()) {
+            memory.write_u64(off, stack_guard_value_);
+        }
+    }
+
     return true;
 }
 

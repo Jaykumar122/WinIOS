@@ -4,11 +4,41 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
+#include <optional>
+#include <unordered_map>
+#include <mutex>
 
 #include "cpu/cpu.h"
 #include "memory/memory.h"
 
 namespace winios::runtime {
+
+class DarwinBsdSubsystem;
+
+enum class DarwinThreadState {
+    Running,
+    Suspended,
+    Blocked,
+    Terminated
+};
+
+struct DarwinManagedThread {
+    std::uint64_t       tid{0};
+    std::uint32_t       pid{0};
+    DarwinThreadState   state{DarwinThreadState::Running};
+    std::uint64_t       entry_point{0};
+    std::uint64_t       arg{0};
+    std::uint64_t       stack_base{0};
+    std::size_t         stack_size{0};
+    std::size_t         guard_size{0x4000}; // 16 KB default
+    std::uint64_t       pthread_va{0};
+    std::uint64_t       tls_base{0};
+    std::size_t         tls_size{0};
+    std::uint64_t       initial_sp{0};
+    int                 exit_code{0};
+    bool                cancelled{false};
+};
 
 // Darwin Thread Specific Data (TSD) Slot Offsets
 constexpr std::size_t kDarwinTsdThreadSelf       = 0;  // Slot 0 (Offset 0x00): pthread_t self-pointer
@@ -85,6 +115,44 @@ public:
         const CPU& cpu,
         const Memory& memory,
         std::uint64_t tlv_descriptor_va);
+
+    // Stack Allocation with Guard Page (PROT_NONE)
+    [[nodiscard]] static bool allocate_thread_stack(
+        DarwinBsdSubsystem& bsd,
+        std::uint32_t pid,
+        std::size_t stack_size,
+        std::size_t guard_size,
+        std::uint64_t& out_stack_base,
+        std::uint64_t& out_initial_sp);
+
+    // Managed Thread Lifecycle
+    std::uint64_t create_managed_thread(
+        DarwinBsdSubsystem& bsd,
+        Memory& memory,
+        std::uint32_t pid,
+        std::uint64_t entry_point,
+        std::uint64_t arg,
+        std::size_t stack_size = 0x80000,
+        std::size_t guard_size = 0x4000,
+        std::size_t tls_size = 0x1000);
+
+    bool suspend_thread(std::uint64_t tid);
+    bool resume_thread(std::uint64_t tid);
+    bool block_thread(std::uint64_t tid);
+    bool unblock_thread(std::uint64_t tid);
+    bool terminate_thread(std::uint64_t tid, int exit_code = 0);
+    bool cancel_thread(std::uint64_t tid);
+    [[nodiscard]] bool is_thread_cancelled(std::uint64_t tid) const;
+
+    [[nodiscard]] std::optional<DarwinManagedThread> get_thread(std::uint64_t tid) const;
+    [[nodiscard]] std::vector<DarwinManagedThread> get_threads_for_process(std::uint32_t pid) const;
+    [[nodiscard]] std::size_t active_thread_count() const noexcept;
+    [[nodiscard]] std::size_t total_thread_count() const noexcept;
+
+private:
+    mutable std::mutex lock_;
+    std::uint64_t next_tid_{100};
+    std::unordered_map<std::uint64_t, DarwinManagedThread> threads_;
 };
 
 } // namespace winios::runtime

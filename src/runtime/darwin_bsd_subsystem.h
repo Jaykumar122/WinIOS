@@ -131,6 +131,7 @@ struct FileDescriptor {
     std::shared_ptr<PipeChannel> pipe;
     std::uint32_t                flags{0};
     std::uint64_t                offset{0};
+    bool                         cloexec{false};
 
     [[nodiscard]] bool is_pipe() const noexcept { return pipe != nullptr; }
 };
@@ -149,6 +150,12 @@ public:
     bool write_file(const std::string& path, const void* data, std::size_t size);
     std::optional<std::vector<std::uint8_t>> read_file(const std::string& path) const;
     std::vector<std::string> list_directory(const std::string& path) const;
+    bool remove_file(const std::string& path);
+    bool remove_directory(const std::string& path);
+    bool exists(const std::string& path) const;
+    bool is_directory(const std::string& path) const;
+    bool is_regular_file(const std::string& path) const;
+    bool stat_path(const std::string& path, VfsNode& out_stat) const;
 
 private:
     std::shared_ptr<VfsNode> resolve_path_locked(const std::string& path, int max_symlinks) const;
@@ -192,9 +199,14 @@ struct DarwinProcess {
     std::uint32_t                     ppid{0};
     std::uint32_t                     uid{0};
     std::uint32_t                     gid{0};
+    std::uint32_t                     euid{0};
+    std::uint32_t                     egid{0};
     ProcessState                      state{ProcessState::Running};
     int                               exit_code{0};
     std::string                       executable_path;
+    std::string                       cwd{"/"};
+    std::vector<std::string>          argv;
+    std::vector<std::string>          envp;
     std::unordered_map<int, FileDescriptor> fds;
     int                               next_fd{3}; // 0, 1, 2 are stdin, stdout, stderr
     std::uint64_t                     pending_signals{0};
@@ -243,20 +255,31 @@ public:
     std::int64_t read(std::uint32_t pid, int fd, void* buffer, std::size_t count);
     std::int64_t pread(std::uint32_t pid, int fd, void* buffer, std::size_t count, std::int64_t offset);
     std::int64_t write(std::uint32_t pid, int fd, const void* buffer, std::size_t count);
+    std::int64_t pwrite(std::uint32_t pid, int fd, const void* buffer, std::size_t count, std::int64_t offset);
     std::int64_t lseek(std::uint32_t pid, int fd, std::int64_t offset, int whence);
     int fstat64(std::uint32_t pid, int fd, DarwinStat64Raw& out_stat);
     int stat64(std::uint32_t pid, const std::string& path, DarwinStat64Raw& out_stat);
     int ioctl(std::uint32_t pid, int fd, std::uint64_t request, void* argp);
+    int fcntl(std::uint32_t pid, int fd, int cmd, std::int64_t arg = 0);
     int pipe(std::uint32_t pid, int fds[2]);
     int dup(std::uint32_t pid, int oldfd);
     int dup2(std::uint32_t pid, int oldfd, int newfd);
     int getdirentries64(std::uint32_t pid, int fd, void* buf, std::size_t nbytes, std::int64_t* basep);
 
-    // Identity
+    // Identity & Working Directory
+    int chdir(std::uint32_t pid, const std::string& path);
+    std::string getcwd(std::uint32_t pid) const;
+    bool setuid(std::uint32_t pid, std::uint32_t uid);
+    bool seteuid(std::uint32_t pid, std::uint32_t euid);
+    bool setgid(std::uint32_t pid, std::uint32_t gid);
+    bool setegid(std::uint32_t pid, std::uint32_t egid);
     std::uint32_t getuid(std::uint32_t pid) const noexcept;
     std::uint32_t geteuid(std::uint32_t pid) const noexcept;
     std::uint32_t getgid(std::uint32_t pid) const noexcept;
     std::uint32_t getegid(std::uint32_t pid) const noexcept;
+    void set_process_args(std::uint32_t pid, const std::vector<std::string>& argv, const std::vector<std::string>& envp);
+    std::vector<std::string> get_process_argv(std::uint32_t pid) const;
+    std::vector<std::string> get_process_envp(std::uint32_t pid) const;
 
     // Time
     int gettimeofday(DarwinTimeval64& out_tv) const noexcept;

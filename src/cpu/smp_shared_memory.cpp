@@ -181,4 +181,16 @@ void SmpSharedMemory::reset_telemetry() noexcept {
     }
 }
 
+void SmpSharedMemory::record_dma_telemetry(std::size_t core_id, std::size_t bytes_read, std::size_t bytes_written) {
+    ensure_core_telemetry(core_id);
+    if (bytes_read > 0) {
+        telemetry_[core_id].reads++;
+        telemetry_[core_id].bytes_read += bytes_read;
+    }
+    if (bytes_written > 0) {
+        telemetry_[core_id].writes++;
+        telemetry_[core_id].bytes_written += bytes_written;
+    }
+}
+
 } // namespace winios

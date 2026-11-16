@@ -10,11 +10,14 @@ std::size_t DarwinProcessStartup::translate_vaddr(
     std::uint64_t vaddr,
     std::size_t mem_size,
     std::uint64_t stack_top) noexcept {
+    if (mem_size == 0) {
+        return static_cast<std::size_t>(-1);
+    }
     if (vaddr < mem_size) {
         return static_cast<std::size_t>(vaddr);
     }
-    // High-address stack region (canonical 48-bit userspace)
-    if (vaddr >= 0x0000700000000000ULL && stack_top <= 0x00007FFFFFFFFFFFULL && vaddr <= stack_top) {
+    // High-address or virtual stack region mapped to the top of allocated memory
+    if (stack_top >= mem_size && vaddr <= stack_top) {
         std::uint64_t dist = stack_top - vaddr;
         if (dist < mem_size) {
             return mem_size - static_cast<std::size_t>(dist);

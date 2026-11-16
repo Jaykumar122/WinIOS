@@ -6,8 +6,12 @@
 #include <sstream>
 
 #include "loader/linux_image_loader.h"
+#include "loader/dyld_engine.h"
+#include "memory/darwin_vm_object.h"
 
 namespace winios::loader {
+
+using namespace winios::memory;
 
 const char* userspace_macho_status_string(UserspaceMachOLoadStatus s) noexcept {
     switch (s) {
@@ -474,6 +478,182 @@ UserspaceLoadResult UserspaceMachOLoader::load_into_memory(
 
     result.status = UserspaceMachOLoadStatus::Success;
     return result;
+}
+
+UserspaceLoadResult UserspaceMachOLoader::load_into_vm_space(
+    const void* data,
+    std::size_t size,
+    DarwinVmSpace& vm_space,
+    const UserspaceLoadConfig& config) {
+
+    UserspaceLoadResult result{};
+    if (!parse_metadata(data, size, result)) {
+        return result;
+    }
+
+    std::string val_err;
+    auto val_status = validate_segments(result.segments, size, config.page_size, val_err);
+    if (val_status != UserspaceMachOLoadStatus::Success) {
+        result.status = val_status;
+        result.error_message = val_err;
+        return result;
+    }
+
+    const std::uint64_t slide = config.aslr_enabled ? config.aslr_slide : 0ULL;
+    result.aslr_slide = slide;
+    result.entry_point += slide;
+
+    const auto* file_bytes = static_cast<const std::uint8_t*>(data);
+
+    for (auto& s : result.segments) {
+        s.mapped_vaddr = s.vmaddr + (s.is_pagezero ? 0ULL : slide);
+
+        std::uint32_t prot = kDarwinVmProtNone;
+        if (s.initprot & kProtRead)    prot |= kDarwinVmProtRead;
+        if (s.initprot & kProtWrite)   prot |= kDarwinVmProtWrite;
+        if (s.initprot & kProtExecute) prot |= kDarwinVmProtExecute;
+
+        if (s.is_pagezero) {
+            // Reserve pagezero as an unbacked inaccessible region
+            (void)vm_space.map_object(nullptr, s.mapped_vaddr, static_cast<std::size_t>(s.vmsize), kDarwinVmProtNone, kDarwinMapFixed | kDarwinMapAnonymous, 0);
+            continue;
+        }
+
+        auto vm_obj = std::make_shared<DarwinVmObject>(static_cast<std::size_t>(s.vmsize), VmMappingType::FileBacked, false);
+        if (s.filesize > 0 && s.fileoff < size) {
+            std::size_t copy_len = std::min(static_cast<std::size_t>(s.filesize), size - static_cast<std::size_t>(s.fileoff));
+            (void)vm_obj->write_bytes(0, file_bytes + s.fileoff, copy_len);
+        }
+
+        std::uint64_t map_res = vm_space.map_object(
+            vm_obj,
+            s.mapped_vaddr,
+            static_cast<std::size_t>(s.vmsize),
+            prot,
+            kDarwinMapFixed | kDarwinMapPrivate,
+            0);
+
+        if (map_res == 0) {
+            result.status = UserspaceMachOLoadStatus::MemoryWriteFailed;
+            result.error_message = "Failed to map segment '" + s.name + "' into DarwinVmSpace";
+            return result;
+        }
+    }
+
+    const auto* entry_entry = vm_space.find_entry(result.entry_point);
+    if (!entry_entry || !(entry_entry->prot & kDarwinVmProtExecute)) {
+        result.status = UserspaceMachOLoadStatus::MissingEntryPoint;
+        result.error_message = "Entry point does not reside in an executable segment";
+        return result;
+    }
+
+    result.status = UserspaceMachOLoadStatus::Success;
+    return result;
+}
+
+bool UserspaceMachOLoader::relocate_and_finalize_protections(
+    memory::DarwinVmSpace& vm_space,
+    const UserspaceLoadResult& load_info,
+    const DyldEngine& dyld_engine,
+    const std::vector<DyldRebaseRecord>& rebases,
+    const std::vector<DyldBindingRecord>& bindings,
+    std::string& out_error) {
+
+    // 1. Apply Rebases (ASLR slide)
+    if (load_info.aslr_slide != 0) {
+        for (const auto& r : rebases) {
+            std::uint64_t current_val = 0;
+            if (vm_space.mach_vm_read(r.patch_vaddr, &current_val, sizeof(current_val)) != 0) {
+                out_error = "Failed to read rebase location: 0x" + std::to_string(r.patch_vaddr);
+                return false;
+            }
+            std::uint64_t rebased_val = current_val + load_info.aslr_slide;
+            if (vm_space.mach_vm_write(r.patch_vaddr, &rebased_val, sizeof(rebased_val)) != 0) {
+                out_error = "Failed to write rebase location: 0x" + std::to_string(r.patch_vaddr);
+                return false;
+            }
+        }
+    }
+
+    // 2. Apply Bindings
+    for (const auto& b : bindings) {
+        std::optional<std::uint64_t> resolved;
+        DyldLinkStatus status = dyld_engine.resolve_symbol_two_level(
+            b.symbol_name,
+            static_cast<std::int32_t>(b.dylib_ordinal),
+            b.is_weak,
+            resolved,
+            out_error);
+
+        if (status != DyldLinkStatus::Success) {
+            auto broad = dyld_engine.resolve_symbol(b.symbol_name, 0);
+            if (broad.has_value()) {
+                resolved = broad;
+            } else if (b.is_weak) {
+                resolved = 0;
+            } else {
+                return false;
+            }
+        }
+
+        std::uint64_t final_target = 0;
+        if (resolved.has_value() && *resolved != 0) {
+            final_target = *resolved + static_cast<std::uint64_t>(b.addend);
+        }
+
+        if (vm_space.mach_vm_write(b.patch_vaddr, &final_target, sizeof(final_target)) != 0) {
+            out_error = "Failed to write binding target to 0x" + std::to_string(b.patch_vaddr);
+            return false;
+        }
+    }
+
+    // 3. Finalize Protections: revoke write permission on __DATA_CONST segments
+    for (const auto& s : load_info.segments) {
+        if (s.name.find("CONST") != std::string::npos || s.name == "__DATA_CONST") {
+            int prot_rc = vm_space.mprotect(s.mapped_vaddr, static_cast<std::size_t>(s.vmsize), kDarwinVmProtRead);
+            if (prot_rc != 0) {
+                out_error = "Failed to finalize protection (mprotect to R--) for segment " + s.name;
+                return false;
+            }
+        }
+    }
+
+    // 4. Verify W^X and protection state across all mapped segments
+    for (const auto& s : load_info.segments) {
+        if (s.is_pagezero) {
+            if (vm_space.check_access(s.mapped_vaddr, 1, kDarwinVmProtRead) ||
+                vm_space.check_access(s.mapped_vaddr, 1, kDarwinVmProtWrite) ||
+                vm_space.check_access(s.mapped_vaddr, 1, kDarwinVmProtExecute)) {
+                out_error = "__PAGEZERO must not permit any access";
+                return false;
+            }
+            continue;
+        }
+
+        const auto* entry = vm_space.find_entry(s.mapped_vaddr);
+        if (!entry) {
+            out_error = "Missing VM entry for mapped segment " + s.name;
+            return false;
+        }
+
+        if ((entry->prot & kDarwinVmProtWrite) && (entry->prot & kDarwinVmProtExecute)) {
+            out_error = "W^X violation on segment " + s.name;
+            return false;
+        }
+
+        if (s.name == "__TEXT" && !(entry->prot & kDarwinVmProtExecute)) {
+            out_error = "__TEXT segment must be executable";
+            return false;
+        }
+
+        if ((s.name.find("CONST") != std::string::npos || s.name == "__DATA_CONST") &&
+            (entry->prot & kDarwinVmProtWrite)) {
+            out_error = "__DATA_CONST must be read-only after finalization";
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool UserspaceMachOLoader::construct_initial_stack(

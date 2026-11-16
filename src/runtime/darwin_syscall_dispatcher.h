@@ -17,6 +17,7 @@ class DarwinVmSpace;
 namespace winios::runtime {
 
 class MachIpcSubsystem;
+class DarwinBsdSubsystem;
 
 // -----------------------------------------------------------------------------
 // Darwin BSD POSIX Syscall Numbers (passed in X16 with SVC 0x80)
@@ -28,14 +29,32 @@ enum class DarwinBsdSyscall : std::uint64_t {
     Write               = 4,
     Open                = 5,
     Close               = 6,
+    Chdir               = 12,
     GetPid              = 20,
     GetUid              = 24,
     GetEuid             = 25,
+    Dup                 = 41,
+    Pipe                = 42,
+    GetEgid             = 43,
+    GetGid              = 47,
+    Ioctl               = 54,
     Munmap              = 73,
     Mprotect            = 74,
+    Madvise             = 75,
+    Dup2                = 90,
+    Fcntl               = 92,
+    Gettimeofday        = 116,
     Pread               = 153,
-    Mmap                = 197,
+    Pwrite              = 154,
     KdebugTrace         = 180,
+    Mmap                = 197,
+    Lseek               = 199,
+    ClockGettime        = 232,
+    Stat64              = 338,
+    Fstat64             = 339,
+    Getdirentries64     = 344,
+    BsdThreadCreate     = 360,
+    BsdThreadTerminate  = 361,
     BsdThreadRegister   = 366
 };
 
@@ -114,9 +133,12 @@ public:
     // Subsystem Bindings
     void bind_vm_space(std::shared_ptr<memory::DarwinVmSpace> vm_space);
     void bind_mach_ipc(std::shared_ptr<MachIpcSubsystem> mach_ipc, std::uint32_t task_id);
+    void bind_bsd_subsystem(std::shared_ptr<DarwinBsdSubsystem> bsd, std::uint32_t pid);
     [[nodiscard]] std::shared_ptr<memory::DarwinVmSpace> vm_space() const noexcept { return vm_space_; }
     [[nodiscard]] std::shared_ptr<MachIpcSubsystem> mach_ipc() const noexcept { return mach_ipc_; }
+    [[nodiscard]] std::shared_ptr<DarwinBsdSubsystem> bsd_subsystem() const noexcept { return bsd_subsystem_; }
     [[nodiscard]] std::uint32_t task_id() const noexcept { return task_id_; }
+    [[nodiscard]] std::uint32_t process_id() const noexcept { return pid_; }
 
     // Diagnostics & Inspection
     [[nodiscard]] const std::string& stdout_buffer() const noexcept { return stdout_buffer_; }
@@ -134,7 +156,9 @@ private:
 
     std::shared_ptr<memory::DarwinVmSpace> vm_space_;
     std::shared_ptr<MachIpcSubsystem> mach_ipc_;
+    std::shared_ptr<DarwinBsdSubsystem> bsd_subsystem_;
     std::uint32_t task_id_{1};
+    std::uint32_t pid_{1};
 
     std::string stdout_buffer_;
     bool has_exited_{false};

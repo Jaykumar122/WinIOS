@@ -9,7 +9,15 @@
 
 #include "memory/memory.h"
 
+namespace winios::memory {
+class DarwinVmSpace;
+}
+
 namespace winios::loader {
+
+class DyldEngine;
+struct DyldRebaseRecord;
+struct DyldBindingRecord;
 
 // -----------------------------------------------------------------------------
 // Mach-O Public Constants for Userspace
@@ -250,6 +258,22 @@ public:
         std::size_t size,
         Memory& memory,
         const UserspaceLoadConfig& config);
+
+    // Load binary segments into DarwinVmSpace enforcing Apple Silicon 16KB W^X protections
+    [[nodiscard]] static UserspaceLoadResult load_into_vm_space(
+        const void* data,
+        std::size_t size,
+        memory::DarwinVmSpace& vm_space,
+        const UserspaceLoadConfig& config);
+
+    // Relocate and finalize protections for mapped Mach-O segments in DarwinVmSpace
+    [[nodiscard]] static bool relocate_and_finalize_protections(
+        memory::DarwinVmSpace& vm_space,
+        const UserspaceLoadResult& load_info,
+        const DyldEngine& dyld_engine,
+        const std::vector<DyldRebaseRecord>& rebases,
+        const std::vector<DyldBindingRecord>& bindings,
+        std::string& out_error);
 
     // Initial userspace stack builder conforming to ARM64 Darwin ABI
     [[nodiscard]] static bool construct_initial_stack(

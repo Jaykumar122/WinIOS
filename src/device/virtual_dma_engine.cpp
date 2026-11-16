@@ -216,6 +216,7 @@ VirtualDmaEngineResult VirtualDmaEngine::execute_descriptor_chain(std::uint64_t 
             if (zero_copy_enabled_) {
                 std::uint8_t* raw_mem = shared_memory_->raw_memory().raw_data();
                 std::memmove(raw_mem + effective_dst_pa, raw_mem + effective_src_pa, static_cast<std::size_t>(desc.length_bytes));
+                shared_memory_->record_dma_telemetry(core_id, static_cast<std::size_t>(desc.length_bytes), static_cast<std::size_t>(desc.length_bytes));
             } else {
                 bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
                 shared_memory_->read_bytes(core_id, effective_src_pa, bounce_buffer.data(), bounce_buffer.size());
@@ -237,6 +238,7 @@ VirtualDmaEngineResult VirtualDmaEngine::execute_descriptor_chain(std::uint64_t 
                         raw_mem[effective_dst_pa + i] = pat_bytes[i % 4];
                     }
                 }
+                shared_memory_->record_dma_telemetry(core_id, 0, static_cast<std::size_t>(desc.length_bytes));
             } else {
                 bounce_buffer.resize(static_cast<std::size_t>(desc.length_bytes));
                 const std::uint32_t pat = desc.fill_pattern;

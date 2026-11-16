@@ -168,12 +168,52 @@ std::optional<std::uint64_t> DyldEngine::resolve_symbol(
     return std::nullopt;
 }
 
+std::optional<std::uint64_t> DyldEngine::resolve_symbol_coalesced(
+    std::string_view name) const noexcept {
+
+    std::optional<std::uint64_t> weak_candidate;
+
+    for (const auto& mod : modules_) {
+        std::set<std::string> visited;
+        auto it = mod.exports.find(std::string(name));
+        if (it != mod.exports.end()) {
+            bool is_weak = (mod.weak_exports.find(std::string(name)) != mod.weak_exports.end());
+            if (!is_weak) {
+                return it->second + mod.slide;
+            }
+            if (!weak_candidate.has_value()) {
+                weak_candidate = it->second + mod.slide;
+            }
+        }
+
+        for (const auto& reexp : mod.reexports) {
+            for (const auto& cand : modules_) {
+                if (cand.name == reexp || cand.install_name == reexp) {
+                    auto res = lookup_in_module_and_reexports(modules_, cand, name, visited);
+                    if (res.has_value()) {
+                        bool cand_weak = (cand.weak_exports.find(std::string(name)) != cand.weak_exports.end());
+                        if (!cand_weak) {
+                            return res;
+                        }
+                        if (!weak_candidate.has_value()) {
+                            weak_candidate = res;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return weak_candidate;
+}
+
 DyldLinkStatus DyldEngine::resolve_symbol_two_level(
     std::string_view name,
     std::int32_t library_ordinal,
     bool is_weak_import,
     std::optional<std::uint64_t>& out_address,
-    std::string& out_error) const noexcept {
+    std::string& out_error,
+    std::string_view caller_module_name) const noexcept {
 
     out_address.reset();
 
@@ -216,14 +256,24 @@ DyldLinkStatus DyldEngine::resolve_symbol_two_level(
         return DyldLinkStatus::UndefinedSymbol;
     }
 
-    // 3. Flat / broad lookup (BIND_SPECIAL_DYLIB_FLAT_LOOKUP or default 0)
-    for (const auto& mod : modules_) {
-        std::set<std::string> visited;
-        auto addr = lookup_in_module_and_reexports(modules_, mod, name, visited);
-        if (addr.has_value()) {
-            out_address = *addr;
-            return DyldLinkStatus::Success;
+    // 3. BIND_SPECIAL_DYLIB_SELF (0)
+    if (library_ordinal == BIND_SPECIAL_DYLIB_SELF && !caller_module_name.empty()) {
+        const auto* mod = find_module(caller_module_name);
+        if (mod) {
+            std::set<std::string> visited;
+            auto addr = lookup_in_module_and_reexports(modules_, *mod, name, visited);
+            if (addr.has_value()) {
+                out_address = *addr;
+                return DyldLinkStatus::Success;
+            }
         }
+    }
+
+    // 4. Flat / broad lookup (BIND_SPECIAL_DYLIB_FLAT_LOOKUP, BIND_SPECIAL_DYLIB_WEAK_LOOKUP, or default 0)
+    auto coal = resolve_symbol_coalesced(name);
+    if (coal.has_value()) {
+        out_address = *coal;
+        return DyldLinkStatus::Success;
     }
 
     if (is_weak_import) {
@@ -341,17 +391,27 @@ bool DyldEngine::parse_export_trie(
     const auto* bytes = static_cast<const std::uint8_t*>(data);
     const auto* end = bytes + size;
 
-    std::set<std::size_t> visited_offsets;
+    std::set<std::size_t> active_recursion_stack;
 
-    auto walk_node = [&](auto& self, std::size_t offset, const std::string& prefix) -> bool {
+    auto walk_node = [&](auto& self, std::size_t offset, const std::string& prefix, unsigned depth) -> bool {
+        if (depth > 64) {
+            out_error = "Export trie traversal depth exceeded maximum limit";
+            return false;
+        }
         if (offset >= size) {
             out_error = "Export trie node offset " + std::to_string(offset) + " exceeds trie size";
             return false;
         }
-        if (!visited_offsets.insert(offset).second) {
+        if (!active_recursion_stack.insert(offset).second) {
             out_error = "Export trie cycle detected at offset " + std::to_string(offset);
             return false;
         }
+
+        struct StackScopeGuard {
+            std::set<std::size_t>& s;
+            std::size_t off;
+            ~StackScopeGuard() { s.erase(off); }
+        } guard{active_recursion_stack, offset};
 
         const std::uint8_t* p = bytes + offset;
         std::uint64_t terminal_size = read_uleb128(p, end);
@@ -380,9 +440,9 @@ bool DyldEngine::parse_export_trie(
                 }
                 info.reexport_name = reexport_name.empty() ? prefix : reexport_name;
             } else if ((info.flags & EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) != 0) {
+                info.is_stub_and_resolver = true;
                 info.address = read_uleb128(term_p, end);
-                std::uint64_t resolver_off = read_uleb128(term_p, end);
-                (void)resolver_off;
+                info.resolver_offset = read_uleb128(term_p, end);
             } else {
                 info.address = read_uleb128(term_p, end);
             }
@@ -409,7 +469,7 @@ bool DyldEngine::parse_export_trie(
                 return false;
             }
             std::uint64_t child_offset = read_uleb128(p, end);
-            if (!self(self, static_cast<std::size_t>(child_offset), prefix + edge)) {
+            if (!self(self, static_cast<std::size_t>(child_offset), prefix + edge, depth + 1)) {
                 return false;
             }
         }
@@ -417,7 +477,7 @@ bool DyldEngine::parse_export_trie(
         return true;
     };
 
-    return walk_node(walk_node, 0, "");
+    return walk_node(walk_node, 0, "", 0);
 }
 
 bool DyldEngine::parse_symbol_table(
@@ -857,39 +917,184 @@ bool DyldEngine::parse_binding_stream(
     return true;
 }
 
+std::string DyldEngine::expand_path_tokens(
+    std::string_view path,
+    std::string_view executable_dir,
+    std::string_view loader_dir) {
+
+    std::string s(path);
+    if (s.starts_with("@executable_path")) {
+        s.replace(0, 16, executable_dir);
+    } else if (s.starts_with("@loader_path")) {
+        s.replace(0, 12, loader_dir);
+    }
+    return s;
+}
+
+std::string DyldEngine::normalize_virtual_path(std::string_view path) {
+    if (path.empty()) {
+        return ".";
+    }
+
+    std::string s(path);
+    for (char& c : s) {
+        if (c == '\\') c = '/';
+    }
+
+    bool is_abs = (s.front() == '/');
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (start < s.size()) {
+        while (start < s.size() && s[start] == '/') {
+            start++;
+        }
+        if (start >= s.size()) break;
+        std::size_t end = s.find('/', start);
+        if (end == std::string::npos) end = s.size();
+        std::string part = s.substr(start, end - start);
+        start = end;
+
+        if (part == "." || part.empty()) {
+            continue;
+        }
+        if (part == "..") {
+            if (!parts.empty() && parts.back() != "..") {
+                parts.pop_back();
+            } else if (!is_abs) {
+                parts.push_back("..");
+            }
+        } else {
+            parts.push_back(std::move(part));
+        }
+    }
+
+    std::string result;
+    if (is_abs) {
+        result += '/';
+    }
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0 || (is_abs && !result.empty() && result.back() != '/')) {
+            result += '/';
+        }
+        result += parts[i];
+    }
+
+    return result.empty() ? (is_abs ? "/" : ".") : result;
+}
+
+bool DyldEngine::is_path_sandboxed(std::string_view path, std::string_view sandbox_root) {
+    if (sandbox_root.empty()) {
+        return true;
+    }
+
+    std::string norm_path = normalize_virtual_path(path);
+    std::string norm_root = normalize_virtual_path(sandbox_root);
+
+    if (norm_path == norm_root) {
+        return true;
+    }
+
+    if (!norm_root.empty() && norm_root.back() != '/') {
+        norm_root += '/';
+    }
+
+    return norm_path.starts_with(norm_root);
+}
+
+std::string DyldEngine::resolve_dependency_path(
+    std::string_view install_name,
+    const DyldPathResolveOptions& options) {
+
+    auto check_candidate = [&](const std::string& raw) -> std::string {
+        std::string norm = normalize_virtual_path(raw);
+        if (!options.sandbox_root.empty() && !is_path_sandboxed(norm, options.sandbox_root)) {
+            return ""; // Rejected sandbox traversal
+        }
+        if (options.file_exists_predicate) {
+            if (options.file_exists_predicate(norm)) {
+                return norm;
+            }
+        } else {
+            std::ifstream check(norm, std::ios::binary);
+            if (check.good()) {
+                return norm;
+            }
+        }
+        return "";
+    };
+
+    // Case 1: @rpath/
+    if (install_name.starts_with("@rpath/")) {
+        std::string_view suffix = install_name.substr(7);
+        for (const auto& rp : options.rpaths) {
+            std::string exp_rp = expand_path_tokens(rp, options.executable_dir, options.loader_dir);
+            std::string cand = exp_rp;
+            if (!cand.empty() && cand.back() != '/') cand += '/';
+            cand += std::string(suffix);
+            std::string res = check_candidate(cand);
+            if (!res.empty()) return res;
+        }
+
+        for (const auto& fb : options.fallback_paths) {
+            std::string cand = fb;
+            if (!cand.empty() && cand.back() != '/') cand += '/';
+            cand += std::string(suffix);
+            std::string res = check_candidate(cand);
+            if (!res.empty()) return res;
+        }
+
+        return "";
+    }
+
+    // Case 2: @executable_path/
+    if (install_name.starts_with("@executable_path/")) {
+        std::string_view suffix = install_name.substr(17);
+        std::string cand = options.executable_dir;
+        if (!cand.empty() && cand.back() != '/') cand += '/';
+        cand += std::string(suffix);
+        return check_candidate(cand);
+    }
+
+    // Case 3: @loader_path/
+    if (install_name.starts_with("@loader_path/")) {
+        std::string_view suffix = install_name.substr(13);
+        std::string cand = options.loader_dir;
+        if (!cand.empty() && cand.back() != '/') cand += '/';
+        cand += std::string(suffix);
+        return check_candidate(cand);
+    }
+
+    // Case 4: Direct or absolute path
+    std::string direct_res = check_candidate(std::string(install_name));
+    if (!direct_res.empty()) {
+        return direct_res;
+    }
+
+    if (!install_name.starts_with("/")) {
+        for (const auto& fb : options.fallback_paths) {
+            std::string cand = fb;
+            if (!cand.empty() && cand.back() != '/') cand += '/';
+            cand += std::string(install_name);
+            std::string res = check_candidate(cand);
+            if (!res.empty()) return res;
+        }
+    }
+
+    return "";
+}
+
 std::string DyldEngine::resolve_rpath_path(
     std::string_view install_name,
     const std::vector<std::string>& rpaths,
     std::string_view executable_dir,
     std::string_view loader_dir) {
 
-    if (!install_name.starts_with("@rpath/")) {
-        return std::string(install_name);
-    }
-
-    std::string_view suffix = install_name.substr(7);
-
-    for (const auto& rp : rpaths) {
-        std::string candidate_dir = rp;
-        if (candidate_dir.starts_with("@executable_path")) {
-            candidate_dir.replace(0, 16, executable_dir);
-        } else if (candidate_dir.starts_with("@loader_path")) {
-            candidate_dir.replace(0, 12, loader_dir);
-        }
-
-        std::string candidate_path = candidate_dir;
-        if (!candidate_path.empty() && candidate_path.back() != '/' && candidate_path.back() != '\\') {
-            candidate_path += '/';
-        }
-        candidate_path += std::string(suffix);
-
-        std::ifstream check(candidate_path, std::ios::binary);
-        if (check.good()) {
-            return candidate_path;
-        }
-    }
-
-    return "";
+    DyldPathResolveOptions opts;
+    opts.executable_dir = std::string(executable_dir);
+    opts.loader_dir = std::string(loader_dir);
+    opts.rpaths = rpaths;
+    opts.fallback_paths.clear();
+    return resolve_dependency_path(install_name, opts);
 }
 
 namespace {
@@ -899,13 +1104,27 @@ inline std::size_t translate_patch_vaddr(
     std::uint64_t base_vaddr,
     std::size_t mem_size) noexcept {
 
-    if (base_vaddr > 0 && patch_vaddr >= base_vaddr) {
-        std::uint64_t rel = patch_vaddr - base_vaddr;
+    if (mem_size == 0) return static_cast<std::size_t>(~0ULL);
+
+    if (base_vaddr > 0) {
+        if (patch_vaddr >= base_vaddr) {
+            std::uint64_t rel = patch_vaddr - base_vaddr;
+            if (rel < mem_size) {
+                return static_cast<std::size_t>(rel);
+            }
+        }
+        return static_cast<std::size_t>(~0ULL);
+    }
+
+    // When base_vaddr == 0, check for standard 64-bit Mach-O load address (>= 0x100000000ULL)
+    if (patch_vaddr >= 0x100000000ULL) {
+        std::uint64_t rel = patch_vaddr - 0x100000000ULL;
         if (rel < mem_size) {
             return static_cast<std::size_t>(rel);
         }
         return static_cast<std::size_t>(~0ULL);
     }
+
     if (patch_vaddr < mem_size) {
         return static_cast<std::size_t>(patch_vaddr);
     }
@@ -947,22 +1166,33 @@ DyldLinkStatus DyldEngine::apply_bindings(
     std::string& out_error) {
 
     for (const auto& b : bindings) {
-        auto resolved = resolve_symbol(b.symbol_name, b.dylib_ordinal);
+        std::optional<std::uint64_t> resolved;
+        DyldLinkStatus status = resolve_symbol_two_level(
+            b.symbol_name,
+            static_cast<std::int32_t>(b.dylib_ordinal),
+            b.is_weak,
+            resolved,
+            out_error);
 
-        if (!resolved.has_value()) {
-            if (b.is_weak) {
-                // Weak undefined symbol resolves to NULL
-                std::size_t off = translate_patch_vaddr(b.patch_vaddr, base_vaddr, memory.size());
-                if (off != static_cast<std::size_t>(~0ULL) && off + 8 <= memory.size()) {
-                    memory.write_u64(off, 0);
-                }
-                continue;
+        // Fallback to broad search if not found in designated ordinal
+        if (status != DyldLinkStatus::Success) {
+            auto broad = resolve_symbol(b.symbol_name, 0);
+            if (broad.has_value()) {
+                resolved = broad;
+                status = DyldLinkStatus::Success;
+            } else if (b.is_weak) {
+                resolved = 0;
+                status = DyldLinkStatus::Success;
+            } else {
+                return status;
             }
-            out_error = "Undefined dynamic symbol: " + b.symbol_name;
-            return DyldLinkStatus::UndefinedSymbol;
         }
 
-        std::uint64_t final_target = *resolved + static_cast<std::uint64_t>(b.addend);
+        std::uint64_t final_target = 0;
+        if (resolved.has_value() && *resolved != 0) {
+            final_target = *resolved + static_cast<std::uint64_t>(b.addend);
+        }
+
         std::size_t off = translate_patch_vaddr(b.patch_vaddr, base_vaddr, memory.size());
         if (off == static_cast<std::size_t>(~0ULL) || off + 8 > memory.size()) {
             out_error = "Binding patch offset exceeds memory bounds: " + std::to_string(b.patch_vaddr);
@@ -1620,6 +1850,24 @@ void DyldEngine::set_module_initializers(std::string_view module_name, std::vect
     }
 }
 
+void DyldEngine::set_module_terminators(std::string_view module_name, std::vector<std::uint64_t> terminators) {
+    for (auto& mod : modules_) {
+        if (mod.name == module_name || mod.install_name == module_name) {
+            mod.terminators = std::move(terminators);
+            return;
+        }
+    }
+}
+
+void DyldEngine::set_module_dependencies(std::string_view module_name, std::vector<std::string> dependencies) {
+    for (auto& mod : modules_) {
+        if (mod.name == module_name || mod.install_name == module_name) {
+            mod.dependencies = std::move(dependencies);
+            return;
+        }
+    }
+}
+
 bool DyldEngine::validate_initializers(
     const DyldLoadedModule& mod,
     const std::vector<MachOSegmentInfo>& segments,
@@ -1666,6 +1914,73 @@ std::vector<std::uint64_t> DyldEngine::get_initialization_order(
                     ordered_funcs.push_back(fn + mod.slide);
                 }
                 break;
+            }
+        }
+    }
+
+    return ordered_funcs;
+}
+
+std::vector<std::uint64_t> DyldEngine::compute_topological_initializers(
+    const std::string& root_module,
+    std::vector<std::string>& out_initialized_modules) {
+
+    std::vector<std::uint64_t> ordered_funcs;
+    std::set<std::string> visiting;
+    std::set<std::string> visited;
+    std::vector<std::string> topo_order;
+
+    auto dfs = [&](auto& self, const std::string& name) -> void {
+        if (visited.count(name) || visiting.count(name)) {
+            return;
+        }
+        visiting.insert(name);
+
+        const auto* mod = find_module(name);
+        if (mod) {
+            for (const auto& dep : mod->dependencies) {
+                self(self, dep);
+            }
+            for (const auto& reexp : mod->reexports) {
+                self(self, reexp);
+            }
+        }
+
+        visiting.erase(name);
+        visited.insert(name);
+        topo_order.push_back(name);
+    };
+
+    dfs(dfs, root_module);
+
+    for (const auto& mod_name : topo_order) {
+        for (auto& mod : modules_) {
+            if ((mod.name == mod_name || mod.install_name == mod_name) && !mod.is_initialized) {
+                mod.is_initialized = true;
+                out_initialized_modules.push_back(mod.name.empty() ? mod.install_name : mod.name);
+                for (std::uint64_t fn : mod.initializers) {
+                    ordered_funcs.push_back(fn + mod.slide);
+                }
+                break;
+            }
+        }
+    }
+
+    return ordered_funcs;
+}
+
+std::vector<std::uint64_t> DyldEngine::compute_topological_terminators(
+    std::vector<std::string>& out_terminated_modules) {
+
+    std::vector<std::uint64_t> ordered_funcs;
+
+    for (auto it = modules_.rbegin(); it != modules_.rend(); ++it) {
+        auto& mod = *it;
+        if (mod.is_initialized && !mod.is_terminated) {
+            mod.is_terminated = true;
+            out_terminated_modules.push_back(mod.name.empty() ? mod.install_name : mod.name);
+            for (std::uint64_t fn : mod.terminators) {
+                ordered_funcs.push_back(fn + mod.slide);
             }
         }
     }

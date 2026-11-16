@@ -79,6 +79,7 @@ add_library(winios_core STATIC
     src/loader/dyld_engine.cpp
     src/loader/real_artifact_harness.cpp
     src/loader/macho_corpus_builder.cpp
+    src/loader/macho_fixture_corpus.cpp
     src/loader/macho_dependency_graph.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
@@ -122,6 +123,8 @@ add_library(winios_core STATIC
     src/runtime/darwin_syscall_dispatcher.cpp
     src/runtime/darwin_process_startup.cpp
     src/runtime/darwin_thread_runtime.cpp
+    src/runtime/darwin_sync_primitives.cpp
+    src/runtime/darwin_application_runner.cpp
     src/runtime/darwin_mach_ipc.cpp
     src/runtime/darwin_bsd_subsystem.cpp
     src/runtime/darwin_userspace_engine.cpp
@@ -3214,6 +3217,174 @@ add_executable(stage203_23_end_to_end_darwin_workload_tests
 target_link_libraries(stage203_23_end_to_end_darwin_workload_tests PRIVATE winios_core)
 winios_set_warnings(stage203_23_end_to_end_darwin_workload_tests)
 add_test(NAME stage203_23_end_to_end_darwin_workload_tests COMMAND stage203_23_end_to_end_darwin_workload_tests)
+
+# ==============================================================================
+# WinIOS Campaign 204 Mach-O Application Execution & Darwin Runtime Tests
+# ==============================================================================
+add_executable(stage204_1_hpfar_el2_reverification_tests
+    tests/unit/stage204_1_hpfar_el2_reverification_tests.cpp
+)
+target_link_libraries(stage204_1_hpfar_el2_reverification_tests PRIVATE winios_core)
+winios_set_warnings(stage204_1_hpfar_el2_reverification_tests)
+add_test(NAME stage204_1_hpfar_el2_reverification_tests COMMAND stage204_1_hpfar_el2_reverification_tests)
+
+add_executable(stage204_2_dma_benchmark_reproducibility_tests
+    tests/unit/stage204_2_dma_benchmark_reproducibility_tests.cpp
+)
+target_link_libraries(stage204_2_dma_benchmark_reproducibility_tests PRIVATE winios_core)
+winios_set_warnings(stage204_2_dma_benchmark_reproducibility_tests)
+add_test(NAME stage204_2_dma_benchmark_reproducibility_tests COMMAND stage204_2_dma_benchmark_reproducibility_tests)
+
+add_executable(stage204_3_mach_ipc_reconciliation_tests
+    tests/unit/stage204_3_mach_ipc_reconciliation_tests.cpp
+)
+target_link_libraries(stage204_3_mach_ipc_reconciliation_tests PRIVATE winios_core)
+winios_set_warnings(stage204_3_mach_ipc_reconciliation_tests)
+add_test(NAME stage204_3_mach_ipc_reconciliation_tests COMMAND stage204_3_mach_ipc_reconciliation_tests)
+
+add_executable(stage204_4_macho_fixture_corpus_tests
+    tests/unit/stage204_4_macho_fixture_corpus_tests.cpp
+)
+target_link_libraries(stage204_4_macho_fixture_corpus_tests PRIVATE winios_core)
+winios_set_warnings(stage204_4_macho_fixture_corpus_tests)
+add_test(NAME stage204_4_macho_fixture_corpus_tests COMMAND stage204_4_macho_fixture_corpus_tests)
+
+add_executable(stage204_5_segment_mapping_vm_tests
+    tests/unit/stage204_5_segment_mapping_vm_tests.cpp
+)
+target_link_libraries(stage204_5_segment_mapping_vm_tests PRIVATE winios_core)
+winios_set_warnings(stage204_5_segment_mapping_vm_tests)
+add_test(NAME stage204_5_segment_mapping_vm_tests COMMAND stage204_5_segment_mapping_vm_tests)
+
+add_executable(stage204_6_export_trie_metadata_tests
+    tests/unit/stage204_6_export_trie_metadata_tests.cpp
+)
+target_link_libraries(stage204_6_export_trie_metadata_tests PRIVATE winios_core)
+winios_set_warnings(stage204_6_export_trie_metadata_tests)
+add_test(NAME stage204_6_export_trie_metadata_tests COMMAND stage204_6_export_trie_metadata_tests)
+
+add_executable(stage204_7_binding_resolution_tests
+    tests/unit/stage204_7_binding_resolution_tests.cpp
+)
+target_link_libraries(stage204_7_binding_resolution_tests PRIVATE winios_core)
+winios_set_warnings(stage204_7_binding_resolution_tests)
+add_test(NAME stage204_7_binding_resolution_tests COMMAND stage204_7_binding_resolution_tests)
+
+add_executable(stage204_8_rpath_dependency_identity_tests
+    tests/unit/stage204_8_rpath_dependency_identity_tests.cpp
+)
+target_link_libraries(stage204_8_rpath_dependency_identity_tests PRIVATE winios_core)
+winios_set_warnings(stage204_8_rpath_dependency_identity_tests)
+add_test(NAME stage204_8_rpath_dependency_identity_tests COMMAND stage204_8_rpath_dependency_identity_tests)
+
+add_executable(stage204_9_loader_relocation_protection_tests
+    tests/unit/stage204_9_loader_relocation_protection_tests.cpp
+)
+target_link_libraries(stage204_9_loader_relocation_protection_tests PRIVATE winios_core)
+winios_set_warnings(stage204_9_loader_relocation_protection_tests)
+add_test(NAME stage204_9_loader_relocation_protection_tests COMMAND stage204_9_loader_relocation_protection_tests)
+
+add_executable(stage204_10_image_initialization_order_tests
+    tests/unit/stage204_10_image_initialization_order_tests.cpp
+)
+target_link_libraries(stage204_10_image_initialization_order_tests PRIVATE winios_core)
+winios_set_warnings(stage204_10_image_initialization_order_tests)
+add_test(NAME stage204_10_image_initialization_order_tests COMMAND stage204_10_image_initialization_order_tests)
+
+add_executable(stage204_11_libsystem_compatibility_tests
+    tests/unit/stage204_11_libsystem_compatibility_tests.cpp
+)
+target_link_libraries(stage204_11_libsystem_compatibility_tests PRIVATE winios_core)
+winios_set_warnings(stage204_11_libsystem_compatibility_tests)
+add_test(NAME stage204_11_libsystem_compatibility_tests COMMAND stage204_11_libsystem_compatibility_tests)
+
+add_executable(stage204_12_vfs_architecture_tests
+    tests/unit/stage204_12_vfs_architecture_tests.cpp
+)
+target_link_libraries(stage204_12_vfs_architecture_tests PRIVATE winios_core)
+winios_set_warnings(stage204_12_vfs_architecture_tests)
+add_test(NAME stage204_12_vfs_architecture_tests COMMAND stage204_12_vfs_architecture_tests)
+
+add_executable(stage204_13_file_descriptors_io_tests
+    tests/unit/stage204_13_file_descriptors_io_tests.cpp
+)
+target_link_libraries(stage204_13_file_descriptors_io_tests PRIVATE winios_core)
+winios_set_warnings(stage204_13_file_descriptors_io_tests)
+add_test(NAME stage204_13_file_descriptors_io_tests COMMAND stage204_13_file_descriptors_io_tests)
+
+add_executable(stage204_14_bsd_syscall_dispatcher_tests
+    tests/unit/stage204_14_bsd_syscall_dispatcher_tests.cpp
+)
+target_link_libraries(stage204_14_bsd_syscall_dispatcher_tests PRIVATE winios_core)
+winios_set_warnings(stage204_14_bsd_syscall_dispatcher_tests)
+add_test(NAME stage204_14_bsd_syscall_dispatcher_tests COMMAND stage204_14_bsd_syscall_dispatcher_tests)
+
+add_executable(stage204_15_process_identity_env_tests
+    tests/unit/stage204_15_process_identity_env_tests.cpp
+)
+target_link_libraries(stage204_15_process_identity_env_tests PRIVATE winios_core)
+winios_set_warnings(stage204_15_process_identity_env_tests)
+add_test(NAME stage204_15_process_identity_env_tests COMMAND stage204_15_process_identity_env_tests)
+
+add_executable(stage204_16_thread_lifecycle_tests
+    tests/unit/stage204_16_thread_lifecycle_tests.cpp
+)
+target_link_libraries(stage204_16_thread_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage204_16_thread_lifecycle_tests)
+add_test(NAME stage204_16_thread_lifecycle_tests COMMAND stage204_16_thread_lifecycle_tests)
+
+add_executable(stage204_17_pthread_sync_tests
+    tests/unit/stage204_17_pthread_sync_tests.cpp
+)
+target_link_libraries(stage204_17_pthread_sync_tests PRIVATE winios_core)
+winios_set_warnings(stage204_17_pthread_sync_tests)
+add_test(NAME stage204_17_pthread_sync_tests COMMAND stage204_17_pthread_sync_tests)
+
+add_executable(stage204_18_instruction_coverage_tests
+    tests/unit/stage204_18_instruction_coverage_tests.cpp
+)
+target_link_libraries(stage204_18_instruction_coverage_tests PRIVATE winios_core)
+winios_set_warnings(stage204_18_instruction_coverage_tests)
+add_test(NAME stage204_18_instruction_coverage_tests COMMAND stage204_18_instruction_coverage_tests)
+
+add_executable(stage204_19_application_runner_tests
+    tests/unit/stage204_19_application_runner_tests.cpp
+)
+target_link_libraries(stage204_19_application_runner_tests PRIVATE winios_core)
+winios_set_warnings(stage204_19_application_runner_tests)
+add_test(NAME stage204_19_application_runner_tests COMMAND stage204_19_application_runner_tests)
+
+add_executable(stage204_20_execution_tracing_tests
+    tests/unit/stage204_20_execution_tracing_tests.cpp
+)
+target_link_libraries(stage204_20_execution_tracing_tests PRIVATE winios_core)
+winios_set_warnings(stage204_20_execution_tracing_tests)
+add_test(NAME stage204_20_execution_tracing_tests COMMAND stage204_20_execution_tracing_tests)
+
+add_executable(stage204_21_workload_compatibility_tests
+    tests/unit/stage204_21_workload_compatibility_tests.cpp
+)
+target_link_libraries(stage204_21_workload_compatibility_tests PRIVATE winios_core)
+winios_set_warnings(stage204_21_workload_compatibility_tests)
+add_test(NAME stage204_21_workload_compatibility_tests COMMAND stage204_21_workload_compatibility_tests)
+
+add_executable(stage204_22_security_hardening_tests
+    tests/unit/stage204_22_security_hardening_tests.cpp
+)
+target_link_libraries(stage204_22_security_hardening_tests PRIVATE winios_core)
+winios_set_warnings(stage204_22_security_hardening_tests)
+add_test(NAME stage204_22_security_hardening_tests COMMAND stage204_22_security_hardening_tests)
+
+add_executable(stage204_23_e2e_workload_demos_tests
+    tests/unit/stage204_23_e2e_workload_demos_tests.cpp
+)
+target_link_libraries(stage204_23_e2e_workload_demos_tests PRIVATE winios_core)
+winios_set_warnings(stage204_23_e2e_workload_demos_tests)
+add_test(NAME stage204_23_e2e_workload_demos_tests COMMAND stage204_23_e2e_workload_demos_tests)
+
+
+
+
 
 
 

@@ -72,6 +72,7 @@ public:
     // Per-core telemetry
     [[nodiscard]] CoreMemoryTelemetry get_telemetry(std::size_t core_id) const;
     void reset_telemetry() noexcept;
+    void record_dma_telemetry(std::size_t core_id, std::size_t bytes_read, std::size_t bytes_written);
 
 private:
     void ensure_core_telemetry(std::size_t core_id) const;

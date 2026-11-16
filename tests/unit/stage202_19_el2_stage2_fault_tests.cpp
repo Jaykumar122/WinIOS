@@ -80,7 +80,7 @@ void test_translation_fault_injection_and_syndromes() {
     TEST_CHECK(syn_read.esr_el2 == expected_esr_read,
                "ESR_EL2 for Data Read Abort must match expected: 0x" + std::to_string(syn_read.esr_el2));
     TEST_CHECK(syn_read.far_el2 == faulting_va, "FAR_EL2 must match faulting VA");
-    const std::uint64_t expected_hpfar = (0x40001000ULL >> 8u) & 0x00000FFFFFFFF000ULL;
+    const std::uint64_t expected_hpfar = (0x40001000ULL >> 8u) & 0x000000FFFFFFFFF0ULL;
     TEST_CHECK(syn_read.hpfar_el2 == expected_hpfar, "HPFAR_EL2 must match (ipa >> 8)");
 
     // 2. Data Write Fault
@@ -240,7 +240,7 @@ void test_end_to_end_el2_fault_and_guest_recovery() {
     // 2. EL2 Hypervisor catches the fault and processes syndrome registers
     auto syn_report = make_stage2_syndrome_report(trapped_fault, target_va);
     TEST_CHECK(syn_report.far_el2 == target_va, "Step 2: FAR_EL2 must match guest VA");
-    TEST_CHECK(syn_report.hpfar_el2 == ((target_ipa >> 8u) & 0x00000FFFFFFFF000ULL), "Step 2: HPFAR_EL2 must match ipa >> 8");
+    TEST_CHECK(syn_report.hpfar_el2 == ((target_ipa >> 8u) & 0x000000FFFFFFFFF0ULL), "Step 2: HPFAR_EL2 must match ipa >> 8");
     TEST_CHECK((syn_report.esr_el2 >> 26u) == 0x24u, "Step 2: ESR_EL2 EC must be Data Abort");
 
     // 3. Hypervisor fixes mapping: Allocates page and constructs Stage-2 page table entry

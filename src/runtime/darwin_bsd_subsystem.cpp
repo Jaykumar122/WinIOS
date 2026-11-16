@@ -41,6 +41,21 @@ void DarwinVfs::populate_default_rootfs() {
     write_file("/dev/null", dummy, 0);
     write_file("/dev/zero", dummy, 0);
     write_file("/dev/random", dummy, 0);
+    write_file("/dev/urandom", dummy, 0);
+
+    auto set_device = [&](const std::string& devpath) {
+        auto d = resolve_path(devpath);
+        if (d) {
+            d->type = VfsNodeType::CharacterDevice;
+            d->mode = 0666;
+        }
+    };
+    set_device("/dev/null");
+    set_device("/dev/zero");
+    set_device("/dev/random");
+    set_device("/dev/urandom");
+
+    create_directory("/private/var/mobile/Containers/Data/Application");
 
     // Initial dummy system binaries
     const char launchd_mock[] = "\xCF\xFA\xED\xFE"; // Mock binary placeholder
@@ -68,7 +83,8 @@ std::string DarwinVfs::canonicalize_path(const std::string& path) const {
     return res.empty() ? "/" : res;
 }
 
-std::shared_ptr<VfsNode> DarwinVfs::resolve_path_locked(const std::string& path, int max_symlinks) const {
+std::shared_ptr<VfsNode> DarwinVfs::resolve_path_locked(const std::string& raw_path, int max_symlinks) const {
+    std::string path = canonicalize_path(raw_path);
     if (path.empty() || path == "/") {
         return root_;
     }
@@ -237,6 +253,81 @@ std::vector<std::string> DarwinVfs::list_directory(const std::string& path) cons
     return names;
 }
 
+bool DarwinVfs::remove_file(const std::string& path) {
+    if (path.empty() || path == "/") return false;
+    std::string dir_path;
+    std::string filename;
+    auto last_slash = path.rfind('/');
+    if (last_slash == std::string::npos) {
+        dir_path = "/";
+        filename = path;
+    } else {
+        dir_path = path.substr(0, last_slash);
+        filename = path.substr(last_slash + 1);
+        if (dir_path.empty()) dir_path = "/";
+    }
+
+    auto parent = resolve_path(dir_path);
+    if (!parent || !parent->is_directory()) return false;
+
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = parent->children.find(filename);
+    if (it == parent->children.end()) return false;
+    if (it->second->is_directory()) return false; // Cannot remove directory with remove_file
+
+    parent->children.erase(it);
+    return true;
+}
+
+bool DarwinVfs::remove_directory(const std::string& path) {
+    if (path.empty() || path == "/") return false;
+    std::string dir_path;
+    std::string dirname;
+    auto last_slash = path.rfind('/');
+    if (last_slash == std::string::npos) {
+        dir_path = "/";
+        dirname = path;
+    } else {
+        dir_path = path.substr(0, last_slash);
+        dirname = path.substr(last_slash + 1);
+        if (dir_path.empty()) dir_path = "/";
+    }
+
+    auto parent = resolve_path(dir_path);
+    if (!parent || !parent->is_directory()) return false;
+
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = parent->children.find(dirname);
+    if (it == parent->children.end()) return false;
+    if (!it->second->is_directory()) return false;
+    if (!it->second->children.empty()) return false; // Directory not empty
+
+    parent->children.erase(it);
+    return true;
+}
+
+bool DarwinVfs::exists(const std::string& path) const {
+    return resolve_path(path) != nullptr;
+}
+
+bool DarwinVfs::is_directory(const std::string& path) const {
+    auto node = resolve_path(path);
+    return node && node->is_directory();
+}
+
+bool DarwinVfs::is_regular_file(const std::string& path) const {
+    auto node = resolve_path(path);
+    return node && node->type == VfsNodeType::RegularFile;
+}
+
+bool DarwinVfs::stat_path(const std::string& path, VfsNode& out_stat) const {
+    auto node = resolve_path(path);
+    if (!node) return false;
+    std::lock_guard<std::mutex> guard(lock_);
+    out_stat = *node;
+    return true;
+}
+
 // -----------------------------------------------------------------------------
 // DarwinBsdSubsystem Implementation
 // -----------------------------------------------------------------------------
@@ -270,6 +361,9 @@ std::uint32_t DarwinBsdSubsystem::create_process_with_pid(std::uint32_t requeste
     proc->ppid = ppid;
     proc->uid = uid;
     proc->gid = uid;
+    proc->euid = uid;
+    proc->egid = uid;
+    proc->cwd = "/";
     proc->state = ProcessState::Running;
     proc->executable_path = exec_path;
 
@@ -307,6 +401,11 @@ std::uint32_t DarwinBsdSubsystem::fork(std::uint32_t parent_pid) {
     child->ppid = parent_pid;
     child->uid = parent->uid;
     child->gid = parent->gid;
+    child->euid = parent->euid;
+    child->egid = parent->egid;
+    child->cwd = parent->cwd;
+    child->argv = parent->argv;
+    child->envp = parent->envp;
     child->state = ProcessState::Running;
     child->executable_path = parent->executable_path;
     child->fds = parent->fds;
@@ -354,6 +453,8 @@ bool DarwinBsdSubsystem::execve(
 
     // Update process state
     proc->executable_path = binary_path;
+    proc->argv = argv;
+    proc->envp = envp;
     proc->vm_regions.clear();
     for (const auto& s : load_res.segments) {
         if (!s.is_pagezero && s.vmsize > 0) {
@@ -574,6 +675,10 @@ int DarwinBsdSubsystem::open(std::uint32_t pid, const std::string& path, std::ui
     while (proc->fds.find(fd) != proc->fds.end()) {
         fd++;
     }
+    constexpr int kMaxOpenDescriptors = 256;
+    if (fd >= kMaxOpenDescriptors) {
+        return -1; // EMFILE: Too many open files
+    }
     proc->fds[fd] = FileDescriptor{fd, node, nullptr, flags, 0};
     return fd;
 }
@@ -586,11 +691,24 @@ int DarwinBsdSubsystem::close(std::uint32_t pid, int fd) {
     if (it == proc->fds.end()) return -1;
 
     if (it->second.is_pipe()) {
-        std::lock_guard<std::mutex> pguard(it->second.pipe->lock);
-        if (it->second.flags == 1) { // O_WRONLY
-            it->second.pipe->write_closed = true;
-        } else {
-            it->second.pipe->read_closed = true;
+        auto pipe_ptr = it->second.pipe;
+        std::uint32_t flags = it->second.flags;
+
+        // Check if any other FD in this process still holds this pipe end
+        bool other_writer = false;
+        bool other_reader = false;
+        for (const auto& [other_fd, other_desc] : proc->fds) {
+            if (other_fd != fd && other_desc.pipe == pipe_ptr) {
+                if (other_desc.flags == 1) other_writer = true;
+                if (other_desc.flags == 0) other_reader = true;
+            }
+        }
+
+        std::lock_guard<std::mutex> pguard(pipe_ptr->lock);
+        if (flags == 1 && !other_writer) {
+            pipe_ptr->write_closed = true;
+        } else if (flags == 0 && !other_reader) {
+            pipe_ptr->read_closed = true;
         }
     }
 
@@ -626,8 +744,30 @@ std::int64_t DarwinBsdSubsystem::read(std::uint32_t pid, int fd, void* buffer, s
 
     if (!desc.node) return -1;
 
-    if (!desc.is_pipe() && (desc.flags & 0x03u) == 1u) {
+    if ((desc.flags & 0x03u) == 1u) {
         return -1; // O_WRONLY cannot read
+    }
+
+    if (desc.node->type == VfsNodeType::CharacterDevice) {
+        if (desc.node->name == "null") {
+            return 0; // EOF
+        }
+        if (desc.node->name == "zero") {
+            std::memset(buffer, 0, count);
+            return static_cast<std::int64_t>(count);
+        }
+        if (desc.node->name == "random" || desc.node->name == "urandom") {
+            auto* b = static_cast<std::uint8_t*>(buffer);
+            static std::uint64_t rng = 0x853c49e6748fea9bULL;
+            for (std::size_t i = 0; i < count; ++i) {
+                rng ^= rng >> 12;
+                rng ^= rng << 25;
+                rng ^= rng >> 27;
+                b[i] = static_cast<std::uint8_t>(rng * 0x2545F4914F6CDD1DULL);
+            }
+            return static_cast<std::int64_t>(count);
+        }
+        return 0;
     }
 
     auto& content = desc.node->content;
@@ -647,10 +787,33 @@ std::int64_t DarwinBsdSubsystem::pread(std::uint32_t pid, int fd, void* buffer, 
     if (!proc || !buffer || count == 0 || offset < 0) return -1;
 
     auto it = proc->fds.find(fd);
-    if (it == proc->fds.end() || !it->second.node) return -1;
+    if (it == proc->fds.end()) return -1;
 
     auto& desc = it->second;
     if (desc.is_pipe()) return -1; // ESPIPE for pipes
+
+    if (!desc.node) return -1;
+    if ((desc.flags & 0x03u) == 1u) return -1; // O_WRONLY
+
+    if (desc.node->type == VfsNodeType::CharacterDevice) {
+        if (desc.node->name == "null") return 0;
+        if (desc.node->name == "zero") {
+            std::memset(buffer, 0, count);
+            return static_cast<std::int64_t>(count);
+        }
+        if (desc.node->name == "random" || desc.node->name == "urandom") {
+            auto* b = static_cast<std::uint8_t*>(buffer);
+            static std::uint64_t rng = 0x853c49e6748fea9bULL;
+            for (std::size_t i = 0; i < count; ++i) {
+                rng ^= rng >> 12;
+                rng ^= rng << 25;
+                rng ^= rng >> 27;
+                b[i] = static_cast<std::uint8_t>(rng * 0x2545F4914F6CDD1DULL);
+            }
+            return static_cast<std::int64_t>(count);
+        }
+        return 0;
+    }
 
     auto& content = desc.node->content;
     if (static_cast<std::size_t>(offset) >= content.size()) {
@@ -689,11 +852,16 @@ std::int64_t DarwinBsdSubsystem::write(std::uint32_t pid, int fd, const void* bu
     if (!desc.node) return -1;
 
     // Check write permissions: O_RDONLY cannot write
-    if (!desc.is_pipe() && (desc.flags & 0x03u) == 0u) {
+    if ((desc.flags & 0x03u) == 0u) {
         return -1; // O_RDONLY cannot write
     }
 
-    if (!desc.is_pipe() && (desc.flags & 0x0008u) != 0u) {
+    if (desc.node->type == VfsNodeType::CharacterDevice) {
+        // Discard writes to character devices
+        return static_cast<std::int64_t>(count);
+    }
+
+    if ((desc.flags & 0x0008u) != 0u) {
         desc.offset = desc.node->content.size(); // O_APPEND
     }
 
@@ -706,6 +874,36 @@ std::int64_t DarwinBsdSubsystem::write(std::uint32_t pid, int fd, const void* bu
     std::memcpy(content.data() + desc.offset, bytes, count);
     desc.offset += count;
     desc.node->size = content.size();
+    return static_cast<std::int64_t>(count);
+}
+
+std::int64_t DarwinBsdSubsystem::pwrite(std::uint32_t pid, int fd, const void* buffer, std::size_t count, std::int64_t offset) {
+    auto proc = get_process(pid);
+    if (!proc || !buffer || count == 0 || offset < 0) return -1;
+
+    auto it = proc->fds.find(fd);
+    if (it == proc->fds.end()) return -1;
+
+    auto& desc = it->second;
+    if (desc.is_pipe()) return -1; // ESPIPE for pipes
+
+    if (!desc.node) return -1;
+    if ((desc.flags & 0x03u) == 0u) return -1; // O_RDONLY cannot write
+
+    if (desc.node->type == VfsNodeType::CharacterDevice) {
+        return static_cast<std::int64_t>(count);
+    }
+
+    auto& content = desc.node->content;
+    const auto* bytes = static_cast<const std::uint8_t*>(buffer);
+    std::size_t off = static_cast<std::size_t>(offset);
+
+    if (off + count > content.size()) {
+        content.resize(off + count);
+    }
+    std::memcpy(content.data() + off, bytes, count);
+    desc.node->size = content.size();
+    // pwrite does not alter desc.offset
     return static_cast<std::int64_t>(count);
 }
 
@@ -960,9 +1158,19 @@ std::int64_t DarwinBsdSubsystem::lseek(std::uint32_t pid, int fd, std::int64_t o
     if (!proc) return -1;
 
     auto it = proc->fds.find(fd);
-    if (it == proc->fds.end() || !it->second.node) return -1;
+    if (it == proc->fds.end()) return -1;
 
     auto& desc = it->second;
+    if (desc.is_pipe()) {
+        return -1; // ESPIPE for pipes
+    }
+
+    if (!desc.node) return -1;
+
+    if (desc.node->type == VfsNodeType::CharacterDevice) {
+        return 0; // Character devices return 0 on seek
+    }
+
     std::int64_t new_offset = 0;
 
     switch (whence) {
@@ -992,16 +1200,70 @@ int DarwinBsdSubsystem::fstat64(std::uint32_t pid, int fd, DarwinStat64Raw& out_
     if (!proc) return -1;
 
     auto it = proc->fds.find(fd);
-    if (it == proc->fds.end() || !it->second.node) return -1;
+    if (it == proc->fds.end()) return -1;
+
+    std::memset(&out_stat, 0, sizeof(DarwinStat64Raw));
+    out_stat.st_dev = 1;
+    out_stat.st_nlink = 1;
+    out_stat.st_uid = proc->uid;
+    out_stat.st_gid = proc->gid;
+    out_stat.st_blksize = 4096;
+    out_stat.st_atimespec.tv_sec = 1700000000;
+    out_stat.st_mtimespec.tv_sec = 1700000000;
+    out_stat.st_ctimespec.tv_sec = 1700000000;
+    out_stat.st_birthtimespec.tv_sec = 1700000000;
+
+    if (it->second.is_pipe()) {
+        out_stat.st_mode = 0010600; // S_IFIFO | 0600
+        out_stat.st_ino = 0x50495045ULL; // 'PIPE'
+        std::lock_guard<std::mutex> pguard(it->second.pipe->lock);
+        out_stat.st_size = static_cast<std::int64_t>(it->second.pipe->buffer.size());
+        out_stat.st_blocks = 0;
+        return 0;
+    }
+
+    if (!it->second.node) return -1;
 
     const auto& node = it->second.node;
+    out_stat.st_mode = static_cast<std::uint16_t>(node->mode);
+    if (node->type == VfsNodeType::Directory) {
+        out_stat.st_mode |= 0040000; // S_IFDIR
+    } else if (node->type == VfsNodeType::CharacterDevice) {
+        out_stat.st_mode |= 0020000; // S_IFCHR
+    } else if (node->type == VfsNodeType::BlockDevice) {
+        out_stat.st_mode |= 0060000; // S_IFBLK
+    } else if (node->type == VfsNodeType::Symlink) {
+        out_stat.st_mode |= 0120000; // S_IFLNK
+    } else {
+        out_stat.st_mode |= 0100000; // S_IFREG
+    }
+    out_stat.st_ino = node->inode;
+    out_stat.st_size = static_cast<std::int64_t>(node->size);
+    out_stat.st_blocks = (out_stat.st_size + 511) / 512;
+
+    return 0;
+}
+
+int DarwinBsdSubsystem::stat64(std::uint32_t pid, const std::string& path, DarwinStat64Raw& out_stat) {
+    auto proc = get_process(pid);
+    if (!proc) return -1;
+
+    auto node = vfs_.resolve_path(path);
+    if (!node) return -1;
+
     std::memset(&out_stat, 0, sizeof(DarwinStat64Raw));
     out_stat.st_dev = 1;
     out_stat.st_mode = static_cast<std::uint16_t>(node->mode);
-    if (node->is_directory()) {
-        out_stat.st_mode |= 0040000;
+    if (node->type == VfsNodeType::Directory) {
+        out_stat.st_mode |= 0040000; // S_IFDIR
+    } else if (node->type == VfsNodeType::CharacterDevice) {
+        out_stat.st_mode |= 0020000; // S_IFCHR
+    } else if (node->type == VfsNodeType::BlockDevice) {
+        out_stat.st_mode |= 0060000; // S_IFBLK
+    } else if (node->type == VfsNodeType::Symlink) {
+        out_stat.st_mode |= 0120000; // S_IFLNK
     } else {
-        out_stat.st_mode |= 0100000;
+        out_stat.st_mode |= 0100000; // S_IFREG
     }
     out_stat.st_nlink = 1;
     out_stat.st_ino = node->inode;
@@ -1018,34 +1280,43 @@ int DarwinBsdSubsystem::fstat64(std::uint32_t pid, int fd, DarwinStat64Raw& out_
     return 0;
 }
 
-int DarwinBsdSubsystem::stat64(std::uint32_t pid, const std::string& path, DarwinStat64Raw& out_stat) {
+int DarwinBsdSubsystem::fcntl(std::uint32_t pid, int fd, int cmd, std::int64_t arg) {
     auto proc = get_process(pid);
     if (!proc) return -1;
 
-    auto node = vfs_.resolve_path(path);
-    if (!node) return -1;
+    auto it = proc->fds.find(fd);
+    if (it == proc->fds.end()) return -1;
 
-    std::memset(&out_stat, 0, sizeof(DarwinStat64Raw));
-    out_stat.st_dev = 1;
-    out_stat.st_mode = static_cast<std::uint16_t>(node->mode);
-    if (node->is_directory()) {
-        out_stat.st_mode |= 0040000;
-    } else {
-        out_stat.st_mode |= 0100000;
+    auto& desc = it->second;
+
+    switch (cmd) {
+        case 0: { // F_DUPFD
+            int min_fd = static_cast<int>(arg);
+            if (min_fd < 0) return -1;
+            int newfd = min_fd;
+            while (proc->fds.find(newfd) != proc->fds.end()) {
+                newfd++;
+            }
+            FileDescriptor cloned = desc;
+            cloned.fd = newfd;
+            cloned.cloexec = false; // F_DUPFD clears FD_CLOEXEC
+            proc->fds[newfd] = cloned;
+            return newfd;
+        }
+        case 1: // F_GETFD
+            return desc.cloexec ? 1 : 0;
+        case 2: // F_SETFD
+            desc.cloexec = (arg & 1) != 0;
+            return 0;
+        case 3: // F_GETFL
+            return static_cast<int>(desc.flags);
+        case 4: // F_SETFL
+            // Allow setting non-blocking (0x0004) and append (0x0008)
+            desc.flags = (desc.flags & ~0x000Cu) | (static_cast<std::uint32_t>(arg) & 0x000Cu);
+            return 0;
+        default:
+            return -1;
     }
-    out_stat.st_nlink = 1;
-    out_stat.st_ino = node->inode;
-    out_stat.st_uid = proc->uid;
-    out_stat.st_gid = proc->gid;
-    out_stat.st_size = static_cast<std::int64_t>(node->size);
-    out_stat.st_blocks = (out_stat.st_size + 511) / 512;
-    out_stat.st_blksize = 4096;
-    out_stat.st_atimespec.tv_sec = 1700000000;
-    out_stat.st_mtimespec.tv_sec = 1700000000;
-    out_stat.st_ctimespec.tv_sec = 1700000000;
-    out_stat.st_birthtimespec.tv_sec = 1700000000;
-
-    return 0;
 }
 
 bool DarwinBsdSubsystem::mprotect(std::uint32_t pid, std::uint64_t addr, std::size_t length, std::uint32_t new_prot) {
@@ -1085,13 +1356,76 @@ bool DarwinBsdSubsystem::madvise(std::uint32_t pid, std::uint64_t addr, std::siz
     return false;
 }
 
+int DarwinBsdSubsystem::chdir(std::uint32_t pid, const std::string& path) {
+    auto proc = get_process(pid);
+    if (!proc) return -1;
+
+    std::string target_path;
+    if (!path.empty() && path[0] == '/') {
+        target_path = vfs_.canonicalize_path(path);
+    } else {
+        std::string base = proc->cwd;
+        if (base.empty() || base.back() != '/') {
+            base += "/";
+        }
+        target_path = vfs_.canonicalize_path(base + path);
+    }
+
+    auto node = vfs_.resolve_path(target_path);
+    if (!node) {
+        return -2; // ENOENT
+    }
+    if (!node->is_directory()) {
+        return -20; // ENOTDIR
+    }
+
+    proc->cwd = target_path;
+    return 0;
+}
+
+std::string DarwinBsdSubsystem::getcwd(std::uint32_t pid) const {
+    auto proc = const_cast<DarwinBsdSubsystem*>(this)->get_process(pid);
+    return proc ? proc->cwd : "/";
+}
+
+bool DarwinBsdSubsystem::setuid(std::uint32_t pid, std::uint32_t uid) {
+    auto proc = get_process(pid);
+    if (!proc) return false;
+    proc->uid = uid;
+    proc->euid = uid;
+    return true;
+}
+
+bool DarwinBsdSubsystem::seteuid(std::uint32_t pid, std::uint32_t euid) {
+    auto proc = get_process(pid);
+    if (!proc) return false;
+    proc->euid = euid;
+    return true;
+}
+
+bool DarwinBsdSubsystem::setgid(std::uint32_t pid, std::uint32_t gid) {
+    auto proc = get_process(pid);
+    if (!proc) return false;
+    proc->gid = gid;
+    proc->egid = gid;
+    return true;
+}
+
+bool DarwinBsdSubsystem::setegid(std::uint32_t pid, std::uint32_t egid) {
+    auto proc = get_process(pid);
+    if (!proc) return false;
+    proc->egid = egid;
+    return true;
+}
+
 std::uint32_t DarwinBsdSubsystem::getuid(std::uint32_t pid) const noexcept {
     auto proc = const_cast<DarwinBsdSubsystem*>(this)->get_process(pid);
     return proc ? proc->uid : 0;
 }
 
 std::uint32_t DarwinBsdSubsystem::geteuid(std::uint32_t pid) const noexcept {
-    return getuid(pid);
+    auto proc = const_cast<DarwinBsdSubsystem*>(this)->get_process(pid);
+    return proc ? proc->euid : 0;
 }
 
 std::uint32_t DarwinBsdSubsystem::getgid(std::uint32_t pid) const noexcept {
@@ -1100,7 +1434,26 @@ std::uint32_t DarwinBsdSubsystem::getgid(std::uint32_t pid) const noexcept {
 }
 
 std::uint32_t DarwinBsdSubsystem::getegid(std::uint32_t pid) const noexcept {
-    return getgid(pid);
+    auto proc = const_cast<DarwinBsdSubsystem*>(this)->get_process(pid);
+    return proc ? proc->egid : 0;
+}
+
+void DarwinBsdSubsystem::set_process_args(std::uint32_t pid, const std::vector<std::string>& argv, const std::vector<std::string>& envp) {
+    auto proc = get_process(pid);
+    if (proc) {
+        proc->argv = argv;
+        proc->envp = envp;
+    }
+}
+
+std::vector<std::string> DarwinBsdSubsystem::get_process_argv(std::uint32_t pid) const {
+    auto proc = const_cast<DarwinBsdSubsystem*>(this)->get_process(pid);
+    return proc ? proc->argv : std::vector<std::string>{};
+}
+
+std::vector<std::string> DarwinBsdSubsystem::get_process_envp(std::uint32_t pid) const {
+    auto proc = const_cast<DarwinBsdSubsystem*>(this)->get_process(pid);
+    return proc ? proc->envp : std::vector<std::string>{};
 }
 
 int DarwinBsdSubsystem::gettimeofday(DarwinTimeval64& out_tv) const noexcept {

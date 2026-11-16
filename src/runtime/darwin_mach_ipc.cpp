@@ -108,19 +108,22 @@ void MachPortObject::mark_dead() noexcept {
 // -----------------------------------------------------------------------------
 MachPortSpace::MachPortSpace(std::uint32_t task_id)
     : task_id_(task_id) {
-    slots_.resize(1); // slot 0 reserved for null/invalid
+    slots_.resize(0x104); // reserve up to 0x103
 
-    // Initialize bootstrap port (service registry)
-    auto bstrap_obj = std::make_shared<MachPortObject>(500, 1); // launchd task 1
-    bootstrap_port_ = allocate_port(bstrap_obj, kMachPortRightSend);
-
-    // Initialize task-self port (receive right for current task)
+    // Initialize task-self port (0x101)
+    task_self_ = 0x101;
     auto self_obj = std::make_shared<MachPortObject>(1000 + task_id, task_id);
-    task_self_ = allocate_port(self_obj, kMachPortRightReceive);
+    insert_right(task_self_, self_obj, kMachPortRightReceive);
 
-    // Initialize host-self port (send right to host kernel object)
+    // Initialize host-self port (0x102)
+    host_self_ = 0x102;
     auto host_obj = std::make_shared<MachPortObject>(999, 0);
-    host_self_ = allocate_port(host_obj, kMachPortRightSend);
+    insert_right(host_self_, host_obj, kMachPortRightSend);
+
+    // Initialize bootstrap port (service registry - 0x103)
+    bootstrap_port_ = 0x103;
+    auto bstrap_obj = std::make_shared<MachPortObject>(500, 1); // launchd task 1
+    insert_right(bootstrap_port_, bstrap_obj, kMachPortRightSend);
 }
 
 mach_port_t MachPortSpace::allocate_port(std::shared_ptr<MachPortObject> object, std::uint32_t right) {
@@ -160,7 +163,7 @@ bool MachPortSpace::insert_right(mach_port_t name, std::shared_ptr<MachPortObjec
 
     if (idx > 0 && idx < slots_.size()) {
         auto& entry = slots_[idx];
-        if (entry.in_use && entry.generation == gen) {
+        if (entry.in_use && (gen == 0 || entry.generation == gen)) {
             entry.urefs++;
             entry.right_type = right;
             if (object) {
@@ -184,7 +187,7 @@ bool MachPortSpace::deallocate_port(mach_port_t name) {
     if (idx == 0 || idx >= slots_.size()) return false;
 
     auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return false;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return false;
 
     if (--entry.urefs == 0) {
         if (entry.right_type == kMachPortRightPortSet) {
@@ -220,7 +223,7 @@ bool MachPortSpace::mod_refs(mach_port_t name, std::uint32_t right, std::int32_t
     if (idx == 0 || idx >= slots_.size()) return false;
 
     auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return false;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return false;
 
     if (entry.object && entry.object->is_dead()) {
         if (entry.right_type == kMachPortRightSend || entry.right_type == kMachPortRightSendOnce) {
@@ -275,7 +278,7 @@ std::uint32_t MachPortSpace::get_refs(mach_port_t name, std::uint32_t right) con
     if (idx == 0 || idx >= slots_.size()) return 0;
 
     const auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return 0;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return 0;
 
     if (entry.object && entry.object->is_dead()) {
         if (entry.right_type == kMachPortRightSend || entry.right_type == kMachPortRightSendOnce) {
@@ -293,7 +296,7 @@ std::shared_ptr<MachPortObject> MachPortSpace::lookup_port(mach_port_t name) {
     if (idx == 0 || idx >= slots_.size()) return nullptr;
 
     auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return nullptr;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return nullptr;
 
     if (entry.object && entry.object->is_dead()) {
         if (entry.right_type == kMachPortRightSend || entry.right_type == kMachPortRightSendOnce) {
@@ -311,7 +314,7 @@ bool MachPortSpace::has_right(mach_port_t name, std::uint32_t right) {
     if (idx == 0 || idx >= slots_.size()) return false;
 
     auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return false;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return false;
 
     if (entry.object && entry.object->is_dead()) {
         if (entry.right_type == kMachPortRightSend || entry.right_type == kMachPortRightSendOnce) {
@@ -328,7 +331,7 @@ std::uint32_t MachPortSpace::get_right_type(mach_port_t name) {
     if (idx == 0 || idx >= slots_.size()) return ~0u;
 
     auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return ~0u;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return ~0u;
 
     if (entry.object && entry.object->is_dead()) {
         if (entry.right_type == kMachPortRightSend || entry.right_type == kMachPortRightSendOnce) {
@@ -345,7 +348,7 @@ bool MachPortSpace::consume_send_once(mach_port_t name) {
     if (idx == 0 || idx >= slots_.size()) return false;
 
     auto& entry = slots_[idx];
-    if (!entry.in_use || entry.generation != gen) return false;
+    if (!entry.in_use || (gen != 0 && entry.generation != gen)) return false;
 
     if (entry.right_type == kMachPortRightSendOnce) {
         entry.in_use = false;
@@ -362,7 +365,7 @@ bool MachPortSpace::is_port_set(mach_port_t name) const {
     const std::uint16_t gen = handle_generation(name);
     if (idx == 0 || idx >= slots_.size()) return false;
     const auto& entry = slots_[idx];
-    return entry.in_use && entry.generation == gen && entry.right_type == kMachPortRightPortSet;
+    return entry.in_use && (gen == 0 || entry.generation == gen) && entry.right_type == kMachPortRightPortSet;
 }
 
 std::vector<mach_port_t> MachPortSpace::get_set_members(mach_port_t set_name) const {
@@ -379,14 +382,14 @@ bool MachPortSpace::insert_set_member(mach_port_t member, mach_port_t set) {
     const std::uint16_t set_idx = handle_index(set);
     const std::uint16_t set_gen = handle_generation(set);
     if (set_idx == 0 || set_idx >= slots_.size()) return false;
-    if (!slots_[set_idx].in_use || slots_[set_idx].generation != set_gen || slots_[set_idx].right_type != kMachPortRightPortSet) {
+    if (!slots_[set_idx].in_use || (set_gen != 0 && slots_[set_idx].generation != set_gen) || slots_[set_idx].right_type != kMachPortRightPortSet) {
         return false;
     }
 
     const std::uint16_t mem_idx = handle_index(member);
     const std::uint16_t mem_gen = handle_generation(member);
     if (mem_idx == 0 || mem_idx >= slots_.size()) return false;
-    if (!slots_[mem_idx].in_use || slots_[mem_idx].generation != mem_gen || slots_[mem_idx].right_type != kMachPortRightReceive) {
+    if (!slots_[mem_idx].in_use || (mem_gen != 0 && slots_[mem_idx].generation != mem_gen) || slots_[mem_idx].right_type != kMachPortRightReceive) {
         return false;
     }
 

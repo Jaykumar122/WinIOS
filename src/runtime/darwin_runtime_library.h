@@ -53,15 +53,25 @@ public:
     [[nodiscard]] std::uint64_t base_vaddr() const noexcept { return base_vaddr_; }
 
     // Total size occupied by runtime stubs
-    [[nodiscard]] std::size_t total_size() const noexcept { return stubs_.size() * 0x40; }
+    [[nodiscard]] std::size_t total_size() const noexcept { return (stubs_.size() + 2) * 0x40; }
 
     // Export map: symbol name -> virtual address
     [[nodiscard]] const std::map<std::string, std::uint64_t>& exports() const noexcept {
         return exports_;
     }
 
+    // Errno storage address in guest space
+    [[nodiscard]] std::uint64_t errno_address() const noexcept { return errno_address_; }
+
+    // Stack check guard canary address and value
+    [[nodiscard]] std::uint64_t stack_guard_address() const noexcept { return stack_guard_address_; }
+    [[nodiscard]] std::uint64_t stack_guard_value() const noexcept { return stack_guard_value_; }
+
 private:
     std::uint64_t                         base_vaddr_;
+    std::uint64_t                         errno_address_{0};
+    std::uint64_t                         stack_guard_address_{0};
+    std::uint64_t                         stack_guard_value_{0x595E9FBD94FDE6B5ULL};
     std::vector<RuntimeStubDescriptor>    stubs_;
     std::map<std::string, std::uint64_t>  exports_;
 

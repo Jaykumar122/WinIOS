@@ -2,9 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -284,6 +286,8 @@ struct DyldExportedSymbolInfo {
     std::string   reexport_name;
     bool          is_weak_definition{false};
     bool          is_reexport{false};
+    bool          is_stub_and_resolver{false};
+    std::uint64_t resolver_offset{0};
 };
 
 struct DyldSymtabSymbolInfo {
@@ -305,11 +309,24 @@ struct DyldLoadedModule {
     std::uint64_t                  base_address{0};
     std::uint64_t                  slide{0};
     std::map<std::string, std::uint64_t> exports;
+    std::set<std::string>          weak_exports; // Stage 204.7: Weakly exported symbol names
     std::vector<std::string>       reexports; // Re-exported dynamic library dependencies
+    std::vector<std::string>       dependencies; // Stage 204.10: Explicit dependency module names
     std::vector<std::uint64_t>     initializers; // Stage 203.9: __mod_init_func pointers
+    std::vector<std::uint64_t>     terminators; // Stage 204.10: __mod_term_func pointers
     bool                           is_initialized{false};
+    bool                           is_terminated{false};
     std::vector<DyldBindingRecord> binding_records;
     std::vector<DyldRebaseRecord>  rebase_records;
+};
+
+struct DyldPathResolveOptions {
+    std::string executable_dir;
+    std::string loader_dir;
+    std::vector<std::string> rpaths;
+    std::vector<std::string> fallback_paths{"/usr/lib", "/usr/local/lib", "/System/Library/Frameworks"};
+    std::string sandbox_root;
+    std::function<bool(std::string_view)> file_exists_predicate{nullptr};
 };
 
 // -----------------------------------------------------------------------------
@@ -383,7 +400,12 @@ public:
         std::int32_t library_ordinal,
         bool is_weak_import,
         std::optional<std::uint64_t>& out_address,
-        std::string& out_error) const noexcept;
+        std::string& out_error,
+        std::string_view caller_module_name = "") const noexcept;
+
+    // Resolve symbol across all modules with weak definition coalescing (strong overrides weak)
+    [[nodiscard]] std::optional<std::uint64_t> resolve_symbol_coalesced(
+        std::string_view name) const noexcept;
 
     // Parse modern Mach-O Export Trie (LC_DYLD_INFO_ONLY export_info or LC_DYLD_EXPORTS_TRIE)
     [[nodiscard]] static bool parse_export_trie(
@@ -419,15 +441,38 @@ public:
         std::vector<DyldBindingRecord>& out_bindings,
         std::string& out_error);
 
-    // Resolve @rpath, @executable_path, @loader_path references
+    // Resolve @rpath, @executable_path, @loader_path references (legacy wrapper)
     [[nodiscard]] static std::string resolve_rpath_path(
         std::string_view install_name,
         const std::vector<std::string>& rpaths,
         std::string_view executable_dir,
         std::string_view loader_dir);
 
+    // Expand token prefixes (@executable_path, @loader_path) in a path
+    [[nodiscard]] static std::string expand_path_tokens(
+        std::string_view path,
+        std::string_view executable_dir,
+        std::string_view loader_dir);
+
+    // Lexically normalize virtual path (convert backslashes, resolve . and .., collapse //)
+    [[nodiscard]] static std::string normalize_virtual_path(std::string_view path);
+
+    // Verify whether a path stays strictly within the sandbox_root
+    [[nodiscard]] static bool is_path_sandboxed(std::string_view path, std::string_view sandbox_root);
+
+    // Comprehensive dependency path resolution conforming to Apple dyld search order
+    [[nodiscard]] static std::string resolve_dependency_path(
+        std::string_view install_name,
+        const DyldPathResolveOptions& options);
+
     // Set module initializers
     void set_module_initializers(std::string_view module_name, std::vector<std::uint64_t> initializers);
+
+    // Set module terminators (__mod_term_func)
+    void set_module_terminators(std::string_view module_name, std::vector<std::uint64_t> terminators);
+
+    // Set module explicit dependencies
+    void set_module_dependencies(std::string_view module_name, std::vector<std::string> dependencies);
 
     // Validate initializer pointers (must fall within an executable segment of the module)
     [[nodiscard]] bool validate_initializers(
@@ -439,6 +484,15 @@ public:
     [[nodiscard]] std::vector<std::uint64_t> get_initialization_order(
         const std::vector<std::string>& load_order,
         std::vector<std::string>& out_initialized_modules);
+
+    // Compute topological bottom-up initializer execution order starting from root application module
+    [[nodiscard]] std::vector<std::uint64_t> compute_topological_initializers(
+        const std::string& root_module,
+        std::vector<std::string>& out_initialized_modules);
+
+    // Compute reverse topological termination execution order (dependents before dependencies)
+    [[nodiscard]] std::vector<std::uint64_t> compute_topological_terminators(
+        std::vector<std::string>& out_terminated_modules);
 
 private:
     std::vector<DyldLoadedModule> modules_;
