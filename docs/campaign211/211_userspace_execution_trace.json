@@ -1,0 +1,56 @@
+{
+  "campaign": 211,
+  "runs": [
+    {
+      "app": "first_app",
+      "binary": "user_first_app.macho",
+      "pid": 1,
+      "exit_code": 0,
+      "instructions_retired": 12,
+      "syscalls_handled": 3,
+      "console_output": "Hello from WinIOS EL0 Userspace!\\n",
+      "trace": [
+        {"step": 0, "pc": "0x11400", "insn": "0xD2800540", "el": 0, "is_syscall": false},
+        {"step": 1, "pc": "0x11404", "insn": "0x91002000", "el": 0, "is_syscall": false},
+        {"step": 2, "pc": "0x11408", "insn": "0xD2800090", "el": 0, "is_syscall": false},
+        {"step": 3, "pc": "0x1140C", "insn": "0xD2800020", "el": 0, "is_syscall": false},
+        {"step": 4, "pc": "0x11410", "insn": "0x10000101", "el": 0, "is_syscall": false},
+        {"step": 5, "pc": "0x11414", "insn": "0xD2800442", "el": 0, "is_syscall": false},
+        {"step": 6, "pc": "0x11418", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 4, "name": "SYS_write", "ret": 34},
+        {"step": 7, "pc": "0x1141C", "insn": "0xD2800290", "el": 0, "is_syscall": false},
+        {"step": 8, "pc": "0x11420", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 20, "name": "SYS_getpid", "ret": 1},
+        {"step": 9, "pc": "0x11424", "insn": "0xD2800030", "el": 0, "is_syscall": false},
+        {"step": 10, "pc": "0x11428", "insn": "0xD2800000", "el": 0, "is_syscall": false},
+        {"step": 11, "pc": "0x1142C", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 1, "name": "SYS_exit", "ret": 0}
+      ]
+    },
+    {
+      "app": "init_app",
+      "binary": "user_init_app.macho",
+      "pid": 1,
+      "exit_code": 0,
+      "instructions_retired": 17,
+      "syscalls_handled": 5,
+      "console_output": "[INIT] WinIOS userland init started (PID 1)\\n[INIT] Init process completed successfully",
+      "trace": [
+        {"step": 0, "pc": "0x11400", "insn": "0xD2800090", "el": 0, "is_syscall": false},
+        {"step": 1, "pc": "0x11404", "insn": "0xD2800020", "el": 0, "is_syscall": false},
+        {"step": 2, "pc": "0x11408", "insn": "0x100001E1", "el": 0, "is_syscall": false},
+        {"step": 3, "pc": "0x1140C", "insn": "0xD2800582", "el": 0, "is_syscall": false},
+        {"step": 4, "pc": "0x11410", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 4, "name": "SYS_write", "ret": 44},
+        {"step": 5, "pc": "0x11414", "insn": "0xD2800290", "el": 0, "is_syscall": false},
+        {"step": 6, "pc": "0x11418", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 20, "name": "SYS_getpid", "ret": 1},
+        {"step": 7, "pc": "0x1141C", "insn": "0xD2802930", "el": 0, "is_syscall": false},
+        {"step": 8, "pc": "0x11420", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 329, "name": "SYS_sched_yield", "ret": 0},
+        {"step": 9, "pc": "0x11424", "insn": "0xD2800090", "el": 0, "is_syscall": false},
+        {"step": 10, "pc": "0x11428", "insn": "0xD2800020", "el": 0, "is_syscall": false},
+        {"step": 11, "pc": "0x1142C", "insn": "0x10000221", "el": 0, "is_syscall": false},
+        {"step": 12, "pc": "0x11430", "insn": "0xD2800542", "el": 0, "is_syscall": false},
+        {"step": 13, "pc": "0x11434", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 4, "name": "SYS_write", "ret": 42},
+        {"step": 14, "pc": "0x11438", "insn": "0xD2800030", "el": 0, "is_syscall": false},
+        {"step": 15, "pc": "0x1143C", "insn": "0xD2800000", "el": 0, "is_syscall": false},
+        {"step": 16, "pc": "0x11440", "insn": "0xD4000001", "el": 0, "is_syscall": true, "sys_num": 1, "name": "SYS_exit", "ret": 0}
+      ]
+    }
+  ]
+}

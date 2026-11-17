@@ -112,8 +112,13 @@ add_library(winios_core STATIC
     src/memory/kernel_heap_allocator.cpp
     src/memory/xnu_vm_map.cpp
     src/memory/xnu_zone_allocator.cpp
+    src/memory/user_address_space.cpp
     src/kernel/task.cpp
     src/kernel/thread.cpp
+    src/kernel/bsd_process.cpp
+    src/kernel/arm_trap_frame.cpp
+    src/kernel/user_stack.cpp
+    src/kernel/user_syscall_dispatcher.cpp
     src/kernel/context_switch.cpp
     src/kernel/scheduler.cpp
     src/kernel/preemption_timer.cpp
@@ -121,6 +126,8 @@ add_library(winios_core STATIC
     src/kernel/sync.cpp
     src/kernel/syscall_dispatcher.cpp
     src/kernel/ipc.cpp
+    src/loader/macho_user_loader.cpp
+    src/runtime/userspace_coordinator.cpp
     src/kernel/handle_table.cpp
     src/kernel/driver_manager.cpp
     src/kernel/panic.cpp
@@ -4042,6 +4049,76 @@ add_executable(stage210_23_userspace_handoff_readiness_tests tests/unit/stage210
 target_link_libraries(stage210_23_userspace_handoff_readiness_tests PRIVATE winios_core)
 winios_set_warnings(stage210_23_userspace_handoff_readiness_tests)
 add_test(NAME stage210_23_userspace_handoff_readiness_tests COMMAND stage210_23_userspace_handoff_readiness_tests)
+
+# -----------------------------------------------------------------------------
+# Campaign 211: BSD Process Initialization, Mach IPC & Userspace Mach-O Execution
+# -----------------------------------------------------------------------------
+
+add_executable(stage211_2_context_preservation_tests tests/unit/stage211_2_context_preservation_tests.cpp)
+target_link_libraries(stage211_2_context_preservation_tests PRIVATE winios_core)
+winios_set_warnings(stage211_2_context_preservation_tests)
+add_test(NAME stage211_2_context_preservation_tests COMMAND stage211_2_context_preservation_tests)
+
+add_executable(stage211_3_el0_privilege_tests tests/unit/stage211_3_el0_privilege_tests.cpp)
+target_link_libraries(stage211_3_el0_privilege_tests PRIVATE winios_core)
+winios_set_warnings(stage211_3_el0_privilege_tests)
+add_test(NAME stage211_3_el0_privilege_tests COMMAND stage211_3_el0_privilege_tests)
+
+add_executable(stage211_5_bsd_process_tests tests/unit/stage211_5_bsd_process_tests.cpp)
+target_link_libraries(stage211_5_bsd_process_tests PRIVATE winios_core)
+winios_set_warnings(stage211_5_bsd_process_tests)
+add_test(NAME stage211_5_bsd_process_tests COMMAND stage211_5_bsd_process_tests)
+
+add_executable(stage211_7_user_address_space_tests tests/unit/stage211_7_user_address_space_tests.cpp)
+target_link_libraries(stage211_7_user_address_space_tests PRIVATE winios_core)
+winios_set_warnings(stage211_7_user_address_space_tests)
+add_test(NAME stage211_7_user_address_space_tests COMMAND stage211_7_user_address_space_tests)
+
+add_executable(stage211_9_macho_user_loader_tests tests/unit/stage211_9_macho_user_loader_tests.cpp)
+target_link_libraries(stage211_9_macho_user_loader_tests PRIVATE winios_core)
+winios_set_warnings(stage211_9_macho_user_loader_tests)
+add_test(NAME stage211_9_macho_user_loader_tests COMMAND stage211_9_macho_user_loader_tests)
+
+add_executable(stage211_11_user_stack_tests tests/unit/stage211_11_user_stack_tests.cpp)
+target_link_libraries(stage211_11_user_stack_tests PRIVATE winios_core)
+winios_set_warnings(stage211_11_user_stack_tests)
+add_test(NAME stage211_11_user_stack_tests COMMAND stage211_11_user_stack_tests)
+
+add_executable(stage211_13_first_el0_execution_tests tests/unit/stage211_13_first_el0_execution_tests.cpp)
+target_link_libraries(stage211_13_first_el0_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage211_13_first_el0_execution_tests)
+add_test(NAME stage211_13_first_el0_execution_tests COMMAND stage211_13_first_el0_execution_tests)
+
+add_executable(stage211_15_essential_syscalls_tests tests/unit/stage211_15_essential_syscalls_tests.cpp)
+target_link_libraries(stage211_15_essential_syscalls_tests PRIVATE winios_core)
+winios_set_warnings(stage211_15_essential_syscalls_tests)
+add_test(NAME stage211_15_essential_syscalls_tests COMMAND stage211_15_essential_syscalls_tests)
+
+add_executable(stage211_17_mach_ipc_expansion_tests tests/unit/stage211_17_mach_ipc_expansion_tests.cpp)
+target_link_libraries(stage211_17_mach_ipc_expansion_tests PRIVATE winios_core)
+winios_set_warnings(stage211_17_mach_ipc_expansion_tests)
+add_test(NAME stage211_17_mach_ipc_expansion_tests COMMAND stage211_17_mach_ipc_expansion_tests)
+
+add_executable(stage211_20_minimal_init_process_tests tests/unit/stage211_20_minimal_init_process_tests.cpp)
+target_link_libraries(stage211_20_minimal_init_process_tests PRIVATE winios_core)
+winios_set_warnings(stage211_20_minimal_init_process_tests)
+add_test(NAME stage211_20_minimal_init_process_tests COMMAND stage211_20_minimal_init_process_tests)
+
+add_executable(stage211_21_first_userspace_integration_tests tests/unit/stage211_21_first_userspace_integration_tests.cpp)
+target_link_libraries(stage211_21_first_userspace_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage211_21_first_userspace_integration_tests)
+add_test(NAME stage211_21_first_userspace_integration_tests COMMAND stage211_21_first_userspace_integration_tests)
+
+add_executable(stage211_22_adversarial_userspace_security_tests tests/unit/stage211_22_adversarial_userspace_security_tests.cpp)
+target_link_libraries(stage211_22_adversarial_userspace_security_tests PRIVATE winios_core)
+winios_set_warnings(stage211_22_adversarial_userspace_security_tests)
+add_test(NAME stage211_22_adversarial_userspace_security_tests COMMAND stage211_22_adversarial_userspace_security_tests)
+
+add_executable(stage211_23_snapshot_replay_tests tests/unit/stage211_23_snapshot_replay_tests.cpp)
+target_link_libraries(stage211_23_snapshot_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage211_23_snapshot_replay_tests)
+add_test(NAME stage211_23_snapshot_replay_tests COMMAND stage211_23_snapshot_replay_tests)
+
 
 
 

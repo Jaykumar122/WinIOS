@@ -1,0 +1,74 @@
+{
+  "campaign": 211,
+  "abi_conventions": {
+    "darwin_xnu": {
+      "syscall_register": "X16",
+      "argument_registers": ["X0", "X1", "X2", "X3", "X4", "X5"],
+      "return_register": "X0",
+      "status": "OPERATIONAL"
+    },
+    "winios_fast": {
+      "syscall_register": "X0",
+      "argument_registers": ["X1", "X2", "X3", "X4", "X5"],
+      "return_register": "X0",
+      "status": "OPERATIONAL"
+    }
+  },
+  "syscalls": [
+    {
+      "number": 1,
+      "name": "SYS_exit",
+      "args": ["int rval (X0)"],
+      "behavior": "Transitions calling process to SZOMB, records exit status, wakes parent or reaps",
+      "return": "Does not return to user (X0 = 0)",
+      "validation": "PASSED"
+    },
+    {
+      "number": 4,
+      "name": "SYS_write",
+      "args": ["int fd (X0)", "user_addr_t cbuf (X1)", "user_size_t nbyte (X2)"],
+      "behavior": "Validates fd table, validates user buffer memory via validate_user_buffer, copies out to virtual console/pipe, returns bytes written",
+      "error_codes": {"EBADF": -9, "EFAULT": -14},
+      "validation": "PASSED"
+    },
+    {
+      "number": 20,
+      "name": "SYS_getpid",
+      "args": [],
+      "behavior": "Returns current process PID in X0",
+      "return": "PID (int32 in X0)",
+      "validation": "PASSED"
+    },
+    {
+      "number": 31,
+      "name": "SYS_mach_msg_trap",
+      "args": ["mach_msg_header_t* msg (X0)", "mach_msg_option_t option (X1)", "mach_msg_size_t send_size (X2)", "mach_msg_size_t rcv_size (X3)", "mach_port_name_t rcv_name (X4)", "mach_msg_timeout_t timeout (X5)", "mach_port_name_t notify (X6)"],
+      "behavior": "Validates message header, delivers message to target port in process IPC space or queues for reception",
+      "return": "MACH_MSG_SUCCESS (0) or Mach IPC error code",
+      "validation": "PASSED"
+    },
+    {
+      "number": 39,
+      "name": "SYS_getppid",
+      "args": [],
+      "behavior": "Returns parent process PID in X0",
+      "return": "PPID (int32 in X0)",
+      "validation": "PASSED"
+    },
+    {
+      "number": 329,
+      "name": "SYS_sched_yield",
+      "args": [],
+      "behavior": "Voluntarily yields remaining thread quantum in scheduler and picks next thread",
+      "return": "0 in X0",
+      "validation": "PASSED"
+    }
+  ],
+  "error_handling_tests": {
+    "invalid_fd_negative": "EBADF (-9) returned",
+    "invalid_fd_out_of_bounds": "EBADF (-9) returned",
+    "unmapped_buffer_pointer": "EFAULT (-14) returned",
+    "kernel_space_pointer_probe": "EFAULT (-14) returned",
+    "unsupported_syscall_number": "ENOSYS (-38) returned"
+  }
+}

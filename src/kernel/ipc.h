@@ -19,6 +19,56 @@ namespace winios::kernel {
 inline constexpr std::size_t kMaxIpcPayloadSize = 32;
 inline constexpr std::size_t kDefaultPortCapacity = 16;
 
+enum class MachPortRight : std::uint32_t {
+    None = 0,
+    Receive = 1,
+    Send = 2,
+    SendOnce = 3
+};
+
+class ProcessIpcSpace {
+public:
+    ProcessIpcSpace() = default;
+    ~ProcessIpcSpace() = default;
+
+    bool grant_right(std::uint32_t port_id, MachPortRight right) {
+        rights_[port_id] = right;
+        return true;
+    }
+
+    [[nodiscard]] MachPortRight get_right(std::uint32_t port_id) const {
+        auto it = rights_.find(port_id);
+        return (it != rights_.end()) ? it->second : MachPortRight::None;
+    }
+
+    [[nodiscard]] bool has_send_right(std::uint32_t port_id) const {
+        const auto r = get_right(port_id);
+        return r == MachPortRight::Send || r == MachPortRight::SendOnce;
+    }
+
+    [[nodiscard]] bool has_recv_right(std::uint32_t port_id) const {
+        return get_right(port_id) == MachPortRight::Receive;
+    }
+
+    bool consume_send_once(std::uint32_t port_id) {
+        auto it = rights_.find(port_id);
+        if (it != rights_.end() && it->second == MachPortRight::SendOnce) {
+            rights_.erase(it);
+            return true;
+        }
+        return false;
+    }
+
+    bool revoke_right(std::uint32_t port_id) {
+        return rights_.erase(port_id) > 0;
+    }
+
+    [[nodiscard]] std::size_t rights_count() const noexcept { return rights_.size(); }
+
+private:
+    std::unordered_map<std::uint32_t, MachPortRight> rights_;
+};
+
 #pragma pack(push, 1)
 struct KernelMessage {
     std::uint64_t sender_tid{0};

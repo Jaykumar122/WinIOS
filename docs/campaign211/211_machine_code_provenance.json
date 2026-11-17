@@ -1,0 +1,71 @@
+{
+  "campaign": 211,
+  "compiler": "Zig 0.17.0-dev.258+bf65d83a1",
+  "compiler_path": "C:\\Users\\singh\\AppData\\Local\\Microsoft\\WinGet\\Links\\zig.exe",
+  "target_triple": "aarch64-macos",
+  "link_flags": ["-nostdlib", "-Wl,-e,_main", "-Wl,-pagezero_size,0x10000"],
+  "binaries": [
+    {
+      "name": "user_first_app.macho",
+      "path": "artifacts/campaign-211/user_first_app.macho",
+      "size_bytes": 50008,
+      "sha256": "577a677b413c84e5c21c388a8cfa8d18da5aedb39bf14aa7ea95e56d0053d60e",
+      "magic": "0xFEEDFACF (MH_MAGIC_64)",
+      "cputype": "0x0100000C (CPU_TYPE_ARM64)",
+      "entry_point": "0x11400",
+      "entry_offset": "0x1400",
+      "text_vmaddr": "0x10000",
+      "text_vmsize": "0x1454",
+      "instructions": [
+        {"pc": "0x11400", "hex": "0xD2800540", "disasm": "mov x0, #42"},
+        {"pc": "0x11404", "hex": "0x91002000", "disasm": "add x0, x0, #8"},
+        {"pc": "0x11408", "hex": "0xD2800090", "disasm": "mov x16, #4 (SYS_write)"},
+        {"pc": "0x1140C", "hex": "0xD2800020", "disasm": "mov x0, #1 (stdout)"},
+        {"pc": "0x11410", "hex": "0x10000101", "disasm": "adr x1, #0x20 (0x11430 message)"},
+        {"pc": "0x11414", "hex": "0xD2800442", "disasm": "mov x2, #34 (length)"},
+        {"pc": "0x11418", "hex": "0xD4000001", "disasm": "svc #0"},
+        {"pc": "0x1141C", "hex": "0xD2800290", "disasm": "mov x16, #20 (SYS_getpid)"},
+        {"pc": "0x11420", "hex": "0xD4000001", "disasm": "svc #0"},
+        {"pc": "0x11424", "hex": "0xD2800030", "disasm": "mov x16, #1 (SYS_exit)"},
+        {"pc": "0x11428", "hex": "0xD2800000", "disasm": "mov x0, #0"},
+        {"pc": "0x1142C", "hex": "0xD4000001", "disasm": "svc #0"}
+      ],
+      "embedded_string": "Hello from WinIOS EL0 Userspace!\\n"
+    },
+    {
+      "name": "user_init_app.macho",
+      "path": "artifacts/campaign-211/user_init_app.macho",
+      "size_bytes": 50008,
+      "sha256": "29bee7f1de04f619d6bb82b5e8e39be055f68748b3c45cc1075da6956dc94cc9",
+      "magic": "0xFEEDFACF (MH_MAGIC_64)",
+      "cputype": "0x0100000C (CPU_TYPE_ARM64)",
+      "entry_point": "0x11400",
+      "entry_offset": "0x1400",
+      "text_vmaddr": "0x10000",
+      "text_vmsize": "0x1490",
+      "instructions": [
+        {"pc": "0x11400", "hex": "0xD2800090", "disasm": "mov x16, #4 (SYS_write)"},
+        {"pc": "0x11404", "hex": "0xD2800020", "disasm": "mov x0, #1 (stdout)"},
+        {"pc": "0x11408", "hex": "0x100001E1", "disasm": "adr x1, #0x3C (0x11444 start banner)"},
+        {"pc": "0x1140C", "hex": "0xD2800582", "disasm": "mov x2, #44"},
+        {"pc": "0x11410", "hex": "0xD4000001", "disasm": "svc #0"},
+        {"pc": "0x11414", "hex": "0xD2800290", "disasm": "mov x16, #20 (SYS_getpid)"},
+        {"pc": "0x11418", "hex": "0xD4000001", "disasm": "svc #0"},
+        {"pc": "0x1141C", "hex": "0xD2802930", "disasm": "mov x16, #329 (SYS_sched_yield)"},
+        {"pc": "0x11420", "hex": "0xD4000001", "disasm": "svc #0"},
+        {"pc": "0x11424", "hex": "0xD2800090", "disasm": "mov x16, #4 (SYS_write)"},
+        {"pc": "0x11428", "hex": "0xD2800020", "disasm": "mov x0, #1 (stdout)"},
+        {"pc": "0x1142C", "hex": "0x10000221", "disasm": "adr x1, #0x44 (0x11470 done banner)"},
+        {"pc": "0x11430", "hex": "0xD2800542", "disasm": "mov x2, #42"},
+        {"pc": "0x11434", "hex": "0xD4000001", "disasm": "svc #0"},
+        {"pc": "0x11438", "hex": "0xD2800030", "disasm": "mov x16, #1 (SYS_exit)"},
+        {"pc": "0x1143C", "hex": "0xD2800000", "disasm": "mov x0, #0"},
+        {"pc": "0x11440", "hex": "0xD4000001", "disasm": "svc #0"}
+      ],
+      "embedded_strings": [
+        "[INIT] WinIOS userland init started (PID 1)\\n",
+        "[INIT] Init process completed successfully"
+      ]
+    }
+  ]
+}

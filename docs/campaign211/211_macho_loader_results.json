@@ -1,0 +1,47 @@
+{
+  "campaign": 211,
+  "macho_user_loader_results": {
+    "header_validation": {
+      "valid_arm64_header": "ACCEPTED",
+      "truncated_header_less_than_32_bytes": "REJECTED (Proper bounds check)",
+      "invalid_magic": "REJECTED (Requires 0xFEEDFACF)",
+      "unsupported_cpu_type": "REJECTED (Requires CPU_TYPE_ARM64 / 0x0100000C)"
+    },
+    "segments_handled": [
+      {
+        "segment": "__PAGEZERO",
+        "policy": "Unmapped NULL pointer trap region",
+        "permissions": "VM_PROT_NONE (0)",
+        "result": "Enforced unmapped guard page"
+      },
+      {
+        "segment": "__TEXT",
+        "policy": "Read and Execute only (RX)",
+        "permissions": "VM_PROT_READ | VM_PROT_EXECUTE (5)",
+        "result": "Mapped as UserExecute (AP=0b11, UXN=0, PXN=1)"
+      },
+      {
+        "segment": "__DATA_CONST",
+        "policy": "Read-only after relocation",
+        "permissions": "VM_PROT_READ (1)",
+        "result": "Mapped as UserRead (AP=0b11, UXN=1, PXN=1)"
+      },
+      {
+        "segment": "__DATA",
+        "policy": "Read and Write only (RW)",
+        "permissions": "VM_PROT_READ | VM_PROT_WRITE (3)",
+        "result": "Mapped as UserReadWrite (AP=0b01, UXN=1, PXN=1)"
+      }
+    ],
+    "security_enforcements": {
+      "wx_policy": "Strict W^X enforced: initprot with write + execute rejected immediately",
+      "null_guard": "PAGEZERO zero protection enforced",
+      "load_command_bounds": "Total command size and stream lengths checked against binary buffer limits"
+    },
+    "entry_point_resolution": {
+      "lc_main_handling": "Resolved entry_point = text_vmaddr + entryoff",
+      "lc_unixthread_handling": "ARM_THREAD_STATE64 PC extraction verified",
+      "stack_size_bounding": "Bounded initial committed stack size to 64 KiB (4 x 16KB pages)"
+    }
+  }
+}

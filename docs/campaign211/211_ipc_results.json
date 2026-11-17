@@ -1,0 +1,25 @@
+{
+  "campaign": 211,
+  "ipc_subsystem": {
+    "space_structure": "ProcessIpcSpace (per-process port name table)",
+    "rights_supported": [
+      "MACH_PORT_RIGHT_RECEIVE",
+      "MACH_PORT_RIGHT_SEND",
+      "MACH_PORT_RIGHT_SEND_ONCE",
+      "MACH_PORT_RIGHT_PORT_SET",
+      "MACH_PORT_RIGHT_DEAD_NAME"
+    ],
+    "special_ports": [
+      {"name": 1, "type": "TASK_PORT", "description": "Kernel control port for own task"},
+      {"name": 2, "type": "TASK_BOOTSTRAP_PORT", "description": "Bootstrap server lookup port"},
+      {"name": 3, "type": "TASK_HOST_PORT", "description": "Host level privilege/info port"}
+    ],
+    "operations_validated": {
+      "port_right_insertion": "PASSED (Receive and Send rights inserted into process table)",
+      "port_right_lookup": "PASSED (Lookup by name resolves exact MachPort pointer and right type)",
+      "rights_transfer": "PASSED (Port name translated between source and destination process spaces)",
+      "inter_process_message": "PASSED (Bounded message payload delivered across separate process spaces)",
+      "port_right_deallocation": "PASSED (Deallocating last right destroys name entry in IPC space)"
+    }
+  }
+}

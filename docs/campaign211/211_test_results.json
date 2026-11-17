@@ -1,0 +1,37 @@
+{
+  "campaign": 211,
+  "test_execution_date": "2026-11-17",
+  "host": "Windows 11 x64",
+  "configuration": "Release",
+  "toolchain": "Visual Studio 2026 / MSVC C++20 (/W4 /WX /permissive-)",
+  "stage211_suite": {
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0,
+    "tests": [
+      {"name": "stage211_2_context_preservation_tests", "stage": "211.2", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_3_el0_privilege_tests", "stage": "211.3", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_5_bsd_process_tests", "stage": "211.5", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_7_user_address_space_tests", "stage": "211.7", "status": "PASSED", "duration_sec": 0.02},
+      {"name": "stage211_9_macho_user_loader_tests", "stage": "211.9", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_11_user_stack_tests", "stage": "211.11", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_13_first_el0_execution_tests", "stage": "211.13", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_15_essential_syscalls_tests", "stage": "211.15", "status": "PASSED", "duration_sec": 0.02},
+      {"name": "stage211_17_mach_ipc_expansion_tests", "stage": "211.17", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_20_minimal_init_process_tests", "stage": "211.20", "status": "PASSED", "duration_sec": 0.04},
+      {"name": "stage211_21_first_userspace_integration_tests", "stage": "211.21", "status": "PASSED", "duration_sec": 0.02},
+      {"name": "stage211_22_adversarial_userspace_security_tests", "stage": "211.22", "status": "PASSED", "duration_sec": 0.01},
+      {"name": "stage211_23_snapshot_replay_tests", "stage": "211.23", "status": "PASSED", "duration_sec": 0.01}
+    ]
+  },
+  "full_regression_suite": {
+    "total": 650,
+    "passed": 649,
+    "failed": 0,
+    "skipped": 1,
+    "skipped_tests": ["inferno_integration_tests (Skipped as expected)"],
+    "total_execution_time_sec": 90.97,
+    "regression_count": 0
+  }
+}

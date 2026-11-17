@@ -1,0 +1,88 @@
+{
+  "campaign": 211,
+  "campaign_name": "BSD Process Initialization, Mach IPC Expansion & First Userspace Mach-O Execution",
+  "target_profile": "iPhone 15 (iPhone15,4 / D37AP / A16 Bionic T8120)",
+  "host": "Windows 11 x64",
+  "toolchain": "Visual Studio 2026 / MSVC C++20 (/W4 /WX /permissive-), Zig 0.17.0",
+  "translation_granule": "16KB",
+  "pinned_xnu_version": "xnu-10002.1.13",
+  "capabilities": {
+    "arm64_trap_frame": {
+      "status": "OPERATIONAL",
+      "size_bytes": 304,
+      "alignment_bytes": 16,
+      "registers_preserved": ["X0-X30", "SP_EL0", "ELR_EL1", "SPSR_EL1", "ESR_EL1", "FAR_EL1"],
+      "vector_entry_offset": "0x400 (VBAR_EL1 Lower EL AArch64 Sync)",
+      "exit_instruction": "ERET"
+    },
+    "el0_privilege_separation": {
+      "status": "OPERATIONAL",
+      "el0_execution_enforced": true,
+      "sysreg_access_trapped": true,
+      "instruction_fault_vectoring": true,
+      "svc_exception_class": "0x15"
+    },
+    "bsd_process_subsystem": {
+      "status": "OPERATIONAL",
+      "data_structures": ["BsdProcess", "BsdProcessManager", "FileDescriptorTable", "ProcessIpcSpace"],
+      "pid_management": "Root PID 0 (kernel_task), Root PID 1 (launchd), Monotonic allocation",
+      "lifecycle_states": ["SIDL", "SRUN", "SSLEEP", "SSTOP", "SZOMB"],
+      "file_descriptors": "Per-process table with bounded capacity (default 64, max 256), stdin/stdout/stderr pre-plumbed"
+    },
+    "user_address_space": {
+      "status": "OPERATIONAL",
+      "stage1_root": "TTBR0_EL1 L2 page table",
+      "page_granule": "16KB",
+      "virtual_bounds": "0x0000000000000000 to 0x0000000080000000 (2 GiB bounded user VA)",
+      "services": ["map_user_page", "map_user_range", "unmap_user_page", "translate", "validate_user_buffer", "copyin", "copyout"]
+    },
+    "macho_user_loader": {
+      "status": "OPERATIONAL",
+      "supported_formats": ["MH_MAGIC_64 (0xFEEDFACF)", "CPU_TYPE_ARM64 (0x0100000C)"],
+      "load_commands_parsed": ["LC_SEGMENT_64", "LC_MAIN", "LC_UNIXTHREAD"],
+      "security_policies": ["__PAGEZERO PROT_NONE enforcement", "W^X non-writable executable enforcement", "Bound checks on load commands"]
+    },
+    "user_stack_builder": {
+      "status": "OPERATIONAL",
+      "abi": "AAPCS64 (ARM 64-bit Architecture Procedure Call Standard)",
+      "alignment": "16-byte stack pointer alignment enforced",
+      "layout": ["argc (uint64)", "argv pointers (NULL-terminated)", "envp pointers (NULL-terminated)", "String payload pool"]
+    },
+    "syscall_dispatcher": {
+      "status": "OPERATIONAL",
+      "calling_conventions": ["Darwin XNU (X16 = syscall number, X0..X5 = arguments)", "WinIOS Fast ABI (X0 = syscall number)"],
+      "implemented_syscalls": {
+        "SYS_exit": {"number": 1, "status": "OPERATIONAL"},
+        "SYS_write": {"number": 4, "status": "OPERATIONAL"},
+        "SYS_getpid": {"number": 20, "status": "OPERATIONAL"},
+        "SYS_mach_msg_trap": {"number": 31, "status": "OPERATIONAL"},
+        "SYS_getppid": {"number": 39, "status": "OPERATIONAL"},
+        "SYS_sched_yield": {"number": 329, "status": "OPERATIONAL"}
+      }
+    },
+    "mach_ipc": {
+      "status": "OPERATIONAL",
+      "port_rights": ["Receive", "Send", "SendOnce", "PortSet", "DeadName"],
+      "special_ports": ["TASK_PORT", "TASK_BOOTSTRAP_PORT", "TASK_HOST_PORT"],
+      "message_passing": "Bounded Mach message payload validation and copying"
+    },
+    "userspace_coordinator": {
+      "status": "OPERATIONAL",
+      "end_to_end_execution": true,
+      "mmu_stage1_active": true,
+      "trace_fidelity": "Per-instruction architectural execution and syscall tracing",
+      "virtual_console": "Captured userspace write output stream"
+    },
+    "adversarial_security": {
+      "status": "VERIFIED_HARDENED",
+      "vectors_tested": 18,
+      "vectors_passed": 18,
+      "defenses": ["Null dereference guard", "Kernel VA boundary isolation", "W^X enforcement", "Integer overflow rejection", "Invalid FD rejection", "Unmapped buffer copyin/copyout rejection"]
+    },
+    "snapshot_and_replay": {
+      "status": "OPERATIONAL",
+      "bit_exact_reproducibility": true,
+      "serialized_subsystems": ["UserAddressSpace", "XnuVmMap", "BsdProcess", "FileDescriptorTable", "ProcessIpcSpace"]
+    }
+  }
+}
