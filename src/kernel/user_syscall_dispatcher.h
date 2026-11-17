@@ -53,9 +53,10 @@ inline constexpr std::uint64_t kSysWiniosSurfacePresent  = 503;
 inline constexpr std::uint64_t kSysWiniosPollEvent       = 504;
 inline constexpr std::uint64_t kSysWiniosSurfaceFill     = 505;
 inline constexpr std::uint64_t kSysWiniosSetWindowTitle  = 506;
+inline constexpr std::uint64_t kSysWiniosGetAbiVersion   = 507;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
-    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosSetWindowTitle;
+    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosGetAbiVersion;
 }
 
 // Pinned Darwin/XNU Errno Numbers (xnu-10002.1.13 bsd/sys/errno.h)

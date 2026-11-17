@@ -50,7 +50,8 @@ void test_abi_boundaries() {
     ABI_CHECK(!is_category_c_extension(440), "Standard Darwin max is not Category C");
     ABI_CHECK(is_category_c_extension(500), "SYS_winios_window_create (500) is Category C");
     ABI_CHECK(is_category_c_extension(506), "SYS_winios_set_window_title (506) is Category C");
-    ABI_CHECK(!is_category_c_extension(507), "507 is not Category C");
+    ABI_CHECK(is_category_c_extension(507), "SYS_winios_get_abi_version (507) is Category C");
+    ABI_CHECK(!is_category_c_extension(508), "508 is not Category C");
 
     // 2. Setup mock environment
     Memory mem(0x1000000);

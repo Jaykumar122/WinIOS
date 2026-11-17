@@ -25,6 +25,31 @@ struct DisplayWindowConfig {
 };
 
 // -----------------------------------------------------------------------------
+// Display Lifecycle State
+// -----------------------------------------------------------------------------
+enum class DisplayLifecycleState : std::uint32_t {
+    Uninitialized = 0,
+    Created       = 1,
+    Visible       = 2,
+    Hidden        = 3,
+    Minimized     = 4,
+    Closed        = 5
+};
+
+// -----------------------------------------------------------------------------
+// Presentation Statistics
+// -----------------------------------------------------------------------------
+struct PresentationStats {
+    std::uint64_t total_frames_presented{0};
+    std::uint64_t total_frames_dropped{0};
+    std::uint64_t last_presentation_time_ns{0};
+    double average_frame_interval_ms{0.0};
+    std::uint32_t client_width{0};
+    std::uint32_t client_height{0};
+    DisplayLifecycleState lifecycle_state{DisplayLifecycleState::Uninitialized};
+};
+
+// -----------------------------------------------------------------------------
 // TouchEvent: Input coordinates mapped to native iPhone 15 panel
 // -----------------------------------------------------------------------------
 struct TouchEvent {
@@ -39,6 +64,8 @@ struct TouchEvent {
 class DisplayWindow {
 public:
     using TouchCallback = std::function<void(const TouchEvent& event)>;
+    using KeyCallback = std::function<void(std::uint32_t key_code, bool is_down)>;
+    using CharCallback = std::function<void(char32_t ch)>;
 
     explicit DisplayWindow(const DisplayWindowConfig& config = {});
     ~DisplayWindow();
@@ -49,8 +76,13 @@ public:
     // Window Lifecycle
     bool create();
     void close();
+    void show();
+    void hide();
+    void set_minimized(bool min);
+    void handle_resize(std::uint32_t new_width, std::uint32_t new_height);
     [[nodiscard]] bool is_open() const noexcept { return is_open_; }
     [[nodiscard]] bool is_headless() const noexcept { return config_.headless; }
+    [[nodiscard]] DisplayLifecycleState lifecycle_state() const noexcept;
 
     // Message Loop Processing
     bool pump_events();
@@ -64,14 +96,21 @@ public:
     [[nodiscard]] std::uint32_t window_width() const noexcept { return window_width_; }
     [[nodiscard]] std::uint32_t window_height() const noexcept { return window_height_; }
     [[nodiscard]] const DisplayWindowConfig& config() const noexcept { return config_; }
+    [[nodiscard]] PresentationStats presentation_stats() const noexcept;
 
     // Touch & Input
     void set_touch_callback(TouchCallback cb) { touch_callback_ = std::move(cb); }
+    void set_key_callback(KeyCallback cb) { key_callback_ = std::move(cb); }
+    void set_char_callback(CharCallback cb) { char_callback_ = std::move(cb); }
     [[nodiscard]] TouchEvent last_touch() const noexcept;
     void inject_touch(std::uint32_t x, std::uint32_t y, bool is_down);
+    void inject_key(std::uint32_t key_code, bool is_down);
+    void inject_char(char32_t ch);
 
     // Screenshot Capture
     [[nodiscard]] bool save_screenshot_bmp(const std::string& path) const;
+    [[nodiscard]] bool capture_framebuffer_bmp(const std::string& path) const { return save_screenshot_bmp(path); }
+    [[nodiscard]] bool capture_client_area_bmp(const std::string& path) const;
     [[nodiscard]] const std::vector<std::uint8_t>& backbuffer() const noexcept { return backbuffer_; }
 
     void blit_to_dc(void* hdc);
@@ -81,14 +120,20 @@ private:
 
     DisplayWindowConfig config_;
     bool is_open_{false};
+    DisplayLifecycleState lifecycle_state_{DisplayLifecycleState::Uninitialized};
     std::uint32_t window_width_{412};
     std::uint32_t window_height_{894};
     std::uint64_t total_frames_{0};
+    std::uint64_t total_dropped_frames_{0};
+    std::uint64_t last_presentation_time_ns_{0};
+    double average_frame_interval_ms_{0.0};
 
     mutable std::mutex lock_;
     std::vector<std::uint8_t> backbuffer_;
     TouchEvent last_touch_{};
     TouchCallback touch_callback_;
+    KeyCallback key_callback_;
+    CharCallback char_callback_;
 
     // Windows native handles (stored as opaque pointers to avoid leaking Windows.h)
     void* hwnd_{nullptr};

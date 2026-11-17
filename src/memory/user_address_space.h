@@ -26,6 +26,8 @@ public:
 
     [[nodiscard]] std::uint64_t root_table_pa() const noexcept { return root_l2_table_pa_; }
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
+    [[nodiscard]] Memory& memory() noexcept { return mem_; }
+    [[nodiscard]] const Memory& memory() const noexcept { return mem_; }
     [[nodiscard]] XnuVmMap& vm_map() noexcept { return vm_map_; }
     [[nodiscard]] const XnuVmMap& vm_map() const noexcept { return vm_map_; }
 

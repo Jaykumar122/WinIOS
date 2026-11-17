@@ -6,6 +6,7 @@
 #include "graphics/compositor.h"
 #include "input/input_router.h"
 #include "runtime/guest_ui_runtime.h"
+#include "memory/guest_memory_validator.h"
 
 #include <algorithm>
 #include <cstring>
@@ -496,11 +497,12 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         std::string title;
-        if (arg0 != 0 && arg1 > 0) {
-            std::size_t read_len = std::min<std::size_t>(static_cast<std::size_t>(arg1), 256u);
-            std::vector<char> str_buf(read_len + 1, 0);
-            if (uas.copyout(reinterpret_cast<const void*>(arg0), str_buf.data(), read_len)) {
-                title = str_buf.data();
+        if (arg0 != 0) {
+            std::size_t max_len = (arg1 > 0) ? std::min<std::size_t>(static_cast<std::size_t>(arg1), 256u) : 256u;
+            auto vres = memory::GuestMemoryValidator::copy_string(uas, arg0, max_len, title);
+            if (vres != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
             }
         }
         if (title.empty()) {
@@ -592,7 +594,8 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         std::vector<std::uint8_t> temp_buf(win->surface->size_bytes());
-        if (!uas.copyout(reinterpret_cast<const void*>(buf_va), temp_buf.data(), temp_buf.size())) {
+        auto vres = memory::GuestMemoryValidator::copyin(uas, buf_va, temp_buf.data(), temp_buf.size(), 4);
+        if (vres != memory::ValidationResult::Success) {
             ++stats_.total_invalid_pointers;
             return record_error(kErrnoEFAULT);
         }
@@ -631,6 +634,13 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoEINVAL);
         }
 
+        auto vres = memory::GuestMemoryValidator::validate_buffer(
+            uas, evt_va, sizeof(runtime::GuestInputEvent), true /* require_writable */, 8 /* 8-byte aligned */);
+        if (vres != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
         input::InputEvent raw_evt{};
         if (!input_router_->poll_event(proc.pid(), raw_evt)) {
             // No event available: return 0
@@ -653,7 +663,8 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         guest_evt.window_id = raw_evt.target_window_id;
         guest_evt.timestamp_us = raw_evt.timestamp_us;
 
-        if (!uas.copyin(evt_va, &guest_evt, sizeof(guest_evt))) {
+        auto out_res = memory::GuestMemoryValidator::copyout(uas, &guest_evt, evt_va, sizeof(guest_evt), 8);
+        if (out_res != memory::ValidationResult::Success) {
             ++stats_.total_invalid_pointers;
             return record_error(kErrnoEFAULT);
         }
@@ -705,12 +716,20 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
         std::uint64_t t_va = arg1;
         std::size_t t_len = static_cast<std::size_t>(arg2);
-        std::size_t read_len = std::min<std::size_t>(t_len, 256u);
-        std::vector<char> tb(read_len + 1, 0);
-        if (uas.copyout(reinterpret_cast<const void*>(t_va), tb.data(), read_len)) {
-            win->title = tb.data();
+        std::size_t read_len = (t_len > 0) ? std::min<std::size_t>(t_len, 256u) : 256u;
+
+        std::string new_title;
+        auto vres = memory::GuestMemoryValidator::copy_string(uas, t_va, read_len, new_title);
+        if (vres != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
         }
+        win->title = new_title;
         return record_success(0);
+    }
+
+    case kSysWiniosGetAbiVersion: {
+        return record_success(static_cast<std::uint64_t>(kWiniosCategoryCAbiVersion));
     }
 
     default: {

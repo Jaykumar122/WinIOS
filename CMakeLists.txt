@@ -113,6 +113,7 @@ add_library(winios_core STATIC
     src/memory/xnu_vm_map.cpp
     src/memory/xnu_zone_allocator.cpp
     src/memory/user_address_space.cpp
+    src/memory/guest_memory_validator.cpp
     src/kernel/task.cpp
     src/kernel/thread.cpp
     src/kernel/bsd_process.cpp
@@ -136,6 +137,14 @@ add_library(winios_core STATIC
     src/loader/macho_dependency_graph.cpp
     src/loader/guest_dynamic_loader.cpp
     src/vfs/vfs.cpp
+    src/crypto/sha256.cpp
+    src/storage/isolated_storage.cpp
+    src/packaging/app_package.cpp
+    src/packaging/app_registry.cpp
+    src/packaging/package_installer.cpp
+    src/security/capability_manager.cpp
+    src/runtime/system_clipboard.cpp
+    src/apps/sample_apps.cpp
     src/runtime/userspace_coordinator.cpp
     src/kernel/handle_table.cpp
     src/kernel/driver_manager.cpp
@@ -187,6 +196,9 @@ add_library(winios_core STATIC
     src/graphics/frame_accounting.cpp
     src/input/virtual_input_device.cpp
     src/input/touch_event_queue.cpp
+    src/input/host_input_queue.cpp
+    src/input/coordinate_normalizer.cpp
+    src/input/gesture_recognizer.cpp
     src/input/input_router.cpp
     src/runtime/guest_ui_runtime.cpp
     src/runtime/ui/theme.cpp
@@ -4465,6 +4477,67 @@ add_executable(stage214_23_desktop_e2e_tests tests/unit/stage214_23_desktop_e2e_
 target_link_libraries(stage214_23_desktop_e2e_tests PRIVATE winios_core)
 winios_set_warnings(stage214_23_desktop_e2e_tests)
 add_test(NAME stage214_23_desktop_e2e_tests COMMAND stage214_23_desktop_e2e_tests)
+
+add_executable(stage215_2_execution_provenance_tests tests/unit/stage215_2_execution_provenance_tests.cpp)
+target_link_libraries(stage215_2_execution_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage215_2_execution_provenance_tests)
+add_test(NAME stage215_2_execution_provenance_tests COMMAND stage215_2_execution_provenance_tests)
+
+add_executable(stage215_3_abi_hardening_tests tests/unit/stage215_3_abi_hardening_tests.cpp)
+target_link_libraries(stage215_3_abi_hardening_tests PRIVATE winios_core)
+winios_set_warnings(stage215_3_abi_hardening_tests)
+add_test(NAME stage215_3_abi_hardening_tests COMMAND stage215_3_abi_hardening_tests)
+
+add_executable(stage215_4_memory_validator_tests tests/unit/stage215_4_memory_validator_tests.cpp)
+target_link_libraries(stage215_4_memory_validator_tests PRIVATE winios_core)
+winios_set_warnings(stage215_4_memory_validator_tests)
+add_test(NAME stage215_4_memory_validator_tests COMMAND stage215_4_memory_validator_tests)
+
+add_executable(stage215_5_desktop_capture_tests tests/unit/stage215_5_desktop_capture_tests.cpp)
+target_link_libraries(stage215_5_desktop_capture_tests PRIVATE winios_core)
+winios_set_warnings(stage215_5_desktop_capture_tests)
+add_test(NAME stage215_5_desktop_capture_tests COMMAND stage215_5_desktop_capture_tests)
+
+add_executable(stage215_6_display_lifecycle_tests tests/unit/stage215_6_display_lifecycle_tests.cpp)
+target_link_libraries(stage215_6_display_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage215_6_display_lifecycle_tests)
+add_test(NAME stage215_6_display_lifecycle_tests COMMAND stage215_6_display_lifecycle_tests)
+
+add_executable(stage215_11_touch_gesture_tests tests/unit/stage215_11_touch_gesture_tests.cpp)
+target_link_libraries(stage215_11_touch_gesture_tests PRIVATE winios_core)
+winios_set_warnings(stage215_11_touch_gesture_tests)
+add_test(NAME stage215_11_touch_gesture_tests COMMAND stage215_11_touch_gesture_tests)
+
+add_executable(stage215_12_isolated_storage_tests tests/unit/stage215_12_isolated_storage_tests.cpp)
+target_link_libraries(stage215_12_isolated_storage_tests PRIVATE winios_core)
+winios_set_warnings(stage215_12_isolated_storage_tests)
+add_test(NAME stage215_12_isolated_storage_tests COMMAND stage215_12_isolated_storage_tests)
+
+add_executable(stage215_15_package_installer_tests tests/unit/stage215_15_package_installer_tests.cpp)
+target_link_libraries(stage215_15_package_installer_tests PRIVATE winios_core)
+winios_set_warnings(stage215_15_package_installer_tests)
+add_test(NAME stage215_15_package_installer_tests COMMAND stage215_15_package_installer_tests)
+
+add_executable(stage215_17_capability_clipboard_tests tests/unit/stage215_17_capability_clipboard_tests.cpp)
+target_link_libraries(stage215_17_capability_clipboard_tests PRIVATE winios_core)
+winios_set_warnings(stage215_17_capability_clipboard_tests)
+add_test(NAME stage215_17_capability_clipboard_tests COMMAND stage215_17_capability_clipboard_tests)
+
+add_executable(stage215_21_sample_apps_tests tests/unit/stage215_21_sample_apps_tests.cpp)
+target_link_libraries(stage215_21_sample_apps_tests PRIVATE winios_core)
+winios_set_warnings(stage215_21_sample_apps_tests)
+add_test(NAME stage215_21_sample_apps_tests COMMAND stage215_21_sample_apps_tests)
+
+add_executable(stage215_22_security_fuzzing_tests tests/unit/stage215_22_security_fuzzing_tests.cpp)
+target_link_libraries(stage215_22_security_fuzzing_tests PRIVATE winios_core)
+winios_set_warnings(stage215_22_security_fuzzing_tests)
+add_test(NAME stage215_22_security_fuzzing_tests COMMAND stage215_22_security_fuzzing_tests)
+
+add_executable(stage215_23_desktop_e2e_tests tests/unit/stage215_23_desktop_e2e_tests.cpp)
+target_link_libraries(stage215_23_desktop_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage215_23_desktop_e2e_tests)
+add_test(NAME stage215_23_desktop_e2e_tests COMMAND stage215_23_desktop_e2e_tests)
+
 
 
 

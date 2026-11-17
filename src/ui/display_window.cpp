@@ -41,7 +41,32 @@ LRESULT CALLBACK DisplayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
     case WM_SIZE: {
         if (win) {
+            if (wParam == SIZE_MINIMIZED) {
+                win->set_minimized(true);
+            } else if (wParam == SIZE_RESTORED || wParam == SIZE_MAXIMIZED) {
+                win->set_minimized(false);
+                RECT rc;
+                GetClientRect(hwnd, &rc);
+                win->handle_resize(static_cast<std::uint32_t>(rc.right - rc.left),
+                                   static_cast<std::uint32_t>(rc.bottom - rc.top));
+            }
             InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return 0;
+    }
+
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+        if (win) {
+            const bool is_down = (msg == WM_KEYDOWN);
+            win->inject_key(static_cast<std::uint32_t>(wParam), is_down);
+        }
+        return 0;
+    }
+
+    case WM_CHAR: {
+        if (win) {
+            win->inject_char(static_cast<char32_t>(wParam));
         }
         return 0;
     }
@@ -115,6 +140,7 @@ bool DisplayWindow::create() {
 
     if (config_.headless) {
         is_open_ = true;
+        lifecycle_state_ = DisplayLifecycleState::Visible;
         return true;
     }
 
@@ -158,6 +184,7 @@ bool DisplayWindow::create() {
         // Fall back to headless if GUI creation is unavailable (e.g. CI / non-interactive session)
         config_.headless = true;
         is_open_ = true;
+        lifecycle_state_ = DisplayLifecycleState::Visible;
         return true;
     }
 
@@ -168,10 +195,12 @@ bool DisplayWindow::create() {
     hwnd_ = hwnd;
     hdc_ = GetDC(hwnd);
     is_open_ = true;
+    lifecycle_state_ = DisplayLifecycleState::Visible;
     return true;
 #else
     config_.headless = true;
     is_open_ = true;
+    lifecycle_state_ = DisplayLifecycleState::Visible;
     return true;
 #endif
 }
@@ -192,6 +221,60 @@ void DisplayWindow::close() {
 #endif
 
     is_open_ = false;
+    lifecycle_state_ = DisplayLifecycleState::Closed;
+}
+
+void DisplayWindow::show() {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (!is_open_) return;
+#ifdef _WIN32
+    if (hwnd_) {
+        ShowWindow(reinterpret_cast<HWND>(hwnd_), SW_SHOW);
+    }
+#endif
+    lifecycle_state_ = DisplayLifecycleState::Visible;
+}
+
+void DisplayWindow::hide() {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (!is_open_) return;
+#ifdef _WIN32
+    if (hwnd_) {
+        ShowWindow(reinterpret_cast<HWND>(hwnd_), SW_HIDE);
+    }
+#endif
+    lifecycle_state_ = DisplayLifecycleState::Hidden;
+}
+
+void DisplayWindow::set_minimized(bool min) {
+    std::lock_guard<std::mutex> lock(lock_);
+    lifecycle_state_ = min ? DisplayLifecycleState::Minimized : DisplayLifecycleState::Visible;
+}
+
+void DisplayWindow::handle_resize(std::uint32_t new_width, std::uint32_t new_height) {
+    std::lock_guard<std::mutex> lock(lock_);
+    if (new_width > 0 && new_height > 0) {
+        window_width_ = new_width;
+        window_height_ = new_height;
+    }
+}
+
+DisplayLifecycleState DisplayWindow::lifecycle_state() const noexcept {
+    std::lock_guard<std::mutex> lock(lock_);
+    return lifecycle_state_;
+}
+
+PresentationStats DisplayWindow::presentation_stats() const noexcept {
+    std::lock_guard<std::mutex> lock(lock_);
+    PresentationStats stats{};
+    stats.total_frames_presented = total_frames_;
+    stats.total_frames_dropped = total_dropped_frames_;
+    stats.last_presentation_time_ns = last_presentation_time_ns_;
+    stats.average_frame_interval_ms = average_frame_interval_ms_;
+    stats.client_width = window_width_;
+    stats.client_height = window_height_;
+    stats.lifecycle_state = lifecycle_state_;
+    return stats;
 }
 
 bool DisplayWindow::pump_events() {
@@ -257,10 +340,18 @@ bool DisplayWindow::present_frame(const device::AppleDisplay& display) {
 }
 
 bool DisplayWindow::present_frame(const std::uint8_t* raw_argb, std::uint32_t width, std::uint32_t height) {
-    if (!raw_argb || width == 0 || height == 0) return false;
+    if (!raw_argb || width == 0 || height == 0) {
+        std::lock_guard<std::mutex> lock(lock_);
+        total_dropped_frames_++;
+        return false;
+    }
     if (!is_open_) {
         if (!create()) return false;
     }
+
+    const auto now_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
 
     {
         std::lock_guard<std::mutex> lock(lock_);
@@ -270,6 +361,16 @@ bool DisplayWindow::present_frame(const std::uint8_t* raw_argb, std::uint32_t wi
         }
         std::memcpy(backbuffer_.data(), raw_argb, incoming_bytes);
         total_frames_++;
+
+        if (last_presentation_time_ns_ > 0 && now_ns > last_presentation_time_ns_) {
+            const double delta_ms = static_cast<double>(now_ns - last_presentation_time_ns_) / 1'000'000.0;
+            if (average_frame_interval_ms_ == 0.0) {
+                average_frame_interval_ms_ = delta_ms;
+            } else {
+                average_frame_interval_ms_ = (average_frame_interval_ms_ * 0.9) + (delta_ms * 0.1);
+            }
+        }
+        last_presentation_time_ns_ = now_ns;
     }
 
 #ifdef _WIN32
@@ -303,6 +404,163 @@ void DisplayWindow::inject_touch(std::uint32_t x, std::uint32_t y, bool is_down)
     if (cb) {
         cb(ev);
     }
+}
+
+void DisplayWindow::inject_key(std::uint32_t key_code, bool is_down) {
+    KeyCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        cb = key_callback_;
+    }
+    if (cb) {
+        cb(key_code, is_down);
+    }
+}
+
+void DisplayWindow::inject_char(char32_t ch) {
+    CharCallback cb;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        cb = char_callback_;
+    }
+    if (cb) {
+        cb(ch);
+    }
+}
+
+bool DisplayWindow::capture_client_area_bmp(const std::string& path) const {
+#ifdef _WIN32
+    if (!config_.headless && hwnd_) {
+        HWND hwnd = reinterpret_cast<HWND>(hwnd_);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        int client_w = rc.right - rc.left;
+        int client_h = rc.bottom - rc.top;
+        if (client_w > 0 && client_h > 0) {
+            HDC window_dc = GetDC(hwnd);
+            if (window_dc) {
+                HDC mem_dc = CreateCompatibleDC(window_dc);
+                if (mem_dc) {
+                    HBITMAP mem_bmp = CreateCompatibleBitmap(window_dc, client_w, client_h);
+                    if (mem_bmp) {
+                        HGDIOBJ old_bmp = SelectObject(mem_dc, mem_bmp);
+                        BitBlt(mem_dc, 0, 0, client_w, client_h, window_dc, 0, 0, SRCCOPY);
+
+                        BITMAPINFO bi{};
+                        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                        bi.bmiHeader.biWidth = client_w;
+                        bi.bmiHeader.biHeight = client_h; // bottom-up
+                        bi.bmiHeader.biPlanes = 1;
+                        bi.bmiHeader.biBitCount = 32;
+                        bi.bmiHeader.biCompression = BI_RGB;
+
+                        const std::uint32_t row_stride = static_cast<std::uint32_t>(client_w * 4);
+                        const std::uint32_t img_size = row_stride * static_cast<std::uint32_t>(client_h);
+                        std::vector<std::uint8_t> pixels(img_size, 0);
+
+                        GetDIBits(mem_dc, mem_bmp, 0, client_h, pixels.data(), &bi, DIB_RGB_COLORS);
+
+                        SelectObject(mem_dc, old_bmp);
+                        DeleteObject(mem_bmp);
+                        DeleteDC(mem_dc);
+                        ReleaseDC(hwnd, window_dc);
+
+                        std::ofstream out(path, std::ios::binary);
+                        if (out) {
+                            const std::uint32_t file_size = 14 + 40 + img_size;
+                            std::uint8_t file_header[14] = {0};
+                            file_header[0] = 'B';
+                            file_header[1] = 'M';
+                            std::memcpy(&file_header[2], &file_size, 4);
+                            std::uint32_t offset = 54;
+                            std::memcpy(&file_header[10], &offset, 4);
+                            out.write(reinterpret_cast<const char*>(file_header), 14);
+
+                            std::uint8_t info_header[40] = {0};
+                            std::uint32_t bi_size = 40;
+                            std::memcpy(&info_header[0], &bi_size, 4);
+                            std::memcpy(&info_header[4], &client_w, 4);
+                            std::memcpy(&info_header[8], &client_h, 4);
+                            std::uint16_t planes = 1;
+                            std::memcpy(&info_header[12], &planes, 2);
+                            std::uint16_t bpp = 32;
+                            std::memcpy(&info_header[14], &bpp, 2);
+                            std::memcpy(&info_header[20], &img_size, 4);
+                            out.write(reinterpret_cast<const char*>(info_header), 40);
+
+                            out.write(reinterpret_cast<const char*>(pixels.data()), img_size);
+                            return true;
+                        }
+                    } else {
+                        DeleteDC(mem_dc);
+                        ReleaseDC(hwnd, window_dc);
+                    }
+                } else {
+                    ReleaseDC(hwnd, window_dc);
+                }
+            }
+        }
+    }
+#endif
+
+    // Headless fallback: produce scaled client-area BMP from backbuffer
+    std::lock_guard<std::mutex> lock(lock_);
+    if (backbuffer_.empty()) return false;
+
+    const std::uint32_t cw = window_width_;
+    const std::uint32_t ch = window_height_;
+    if (cw == 0 || ch == 0) return false;
+
+    const std::uint32_t row_stride = cw * 4;
+    const std::uint32_t img_size = row_stride * ch;
+    std::vector<std::uint8_t> scaled_pixels(img_size, 0);
+
+    const std::uint32_t nw = config_.native_width;
+    const std::uint32_t nh = config_.native_height;
+
+    for (std::uint32_t cy = 0; cy < ch; ++cy) {
+        std::uint32_t sy = ((ch - 1 - cy) * nh) / ch;
+        if (sy >= nh) sy = nh - 1;
+        for (std::uint32_t cx = 0; cx < cw; ++cx) {
+            std::uint32_t sx = (cx * nw) / cw;
+            if (sx >= nw) sx = nw - 1;
+
+            const std::size_t src_idx = (static_cast<std::size_t>(sy) * nw + sx) * 4;
+            const std::size_t dst_idx = (static_cast<std::size_t>(cy) * cw + cx) * 4;
+
+            scaled_pixels[dst_idx + 0] = backbuffer_[src_idx + 0];
+            scaled_pixels[dst_idx + 1] = backbuffer_[src_idx + 1];
+            scaled_pixels[dst_idx + 2] = backbuffer_[src_idx + 2];
+            scaled_pixels[dst_idx + 3] = backbuffer_[src_idx + 3];
+        }
+    }
+
+    std::ofstream out(path, std::ios::binary);
+    if (!out) return false;
+
+    const std::uint32_t file_size = 14 + 40 + img_size;
+    std::uint8_t file_header[14] = {0};
+    file_header[0] = 'B';
+    file_header[1] = 'M';
+    std::memcpy(&file_header[2], &file_size, 4);
+    std::uint32_t offset = 54;
+    std::memcpy(&file_header[10], &offset, 4);
+    out.write(reinterpret_cast<const char*>(file_header), 14);
+
+    std::uint8_t info_header[40] = {0};
+    std::uint32_t bi_size = 40;
+    std::memcpy(&info_header[0], &bi_size, 4);
+    std::memcpy(&info_header[4], &cw, 4);
+    std::memcpy(&info_header[8], &ch, 4);
+    std::uint16_t planes = 1;
+    std::memcpy(&info_header[12], &planes, 2);
+    std::uint16_t bpp = 32;
+    std::memcpy(&info_header[14], &bpp, 2);
+    std::memcpy(&info_header[20], &img_size, 4);
+    out.write(reinterpret_cast<const char*>(info_header), 40);
+
+    out.write(reinterpret_cast<const char*>(scaled_pixels.data()), img_size);
+    return true;
 }
 
 bool DisplayWindow::save_screenshot_bmp(const std::string& path) const {
