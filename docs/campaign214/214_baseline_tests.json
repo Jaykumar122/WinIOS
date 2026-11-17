@@ -1,0 +1,40 @@
+{
+  "campaign": 214,
+  "stage": "214.0",
+  "timestamp": "2026-11-17T22:44:00+05:30",
+  "baseline_commit": "b7e0d93f8661fed8949449d3f6739b867e00a331",
+  "total_baseline_tests": 20,
+  "passed_tests": 20,
+  "failed_tests": 0,
+  "pass_rate_percent": 100.0,
+  "execution_time_seconds": 1.07,
+  "test_results": {
+    "stage213_2_virtual_display_tests": "PASSED (0.03s)",
+    "stage213_3_framebuffer_memory_tests": "PASSED (0.02s)",
+    "stage213_4_raster_primitives_tests": "PASSED (0.02s)",
+    "stage213_5_display_surface_tests": "PASSED (0.03s)",
+    "stage213_6_resource_accounting_tests": "PASSED (0.07s)",
+    "stage213_7_window_manager_tests": "PASSED (0.04s)",
+    "stage213_8_compositor_tests": "PASSED (0.03s)",
+    "stage213_9_damage_tracking_tests": "PASSED (0.02s)",
+    "stage213_10_frame_scheduler_tests": "PASSED (0.02s)",
+    "stage213_11_host_presentation_tests": "PASSED (0.04s)",
+    "stage213_13_input_device_tests": "PASSED (0.02s)",
+    "stage213_14_touch_queue_tests": "PASSED (0.02s)",
+    "stage213_15_input_translation_tests": "PASSED (0.02s)",
+    "stage213_16_guest_input_api_tests": "PASSED (0.02s)",
+    "stage213_18_display_syscalls_tests": "PASSED (0.04s)",
+    "stage213_19_guest_ui_lib_tests": "PASSED (0.02s)",
+    "stage213_20_guest_shell_tests": "PASSED (0.07s)",
+    "stage213_21_interactive_apps_tests": "PASSED (0.13s)",
+    "stage213_22_adversarial_security_tests": "PASSED (0.07s)",
+    "stage213_23_interactive_e2e_tests": "PASSED (0.26s)"
+  },
+  "prior_campaigns_regression_summary": {
+    "campaign_211_tests_total": 13,
+    "campaign_211_tests_passed": 13,
+    "campaign_212_tests_total": 20,
+    "campaign_212_tests_passed": 20,
+    "regressions_detected": 0
+  }
+}

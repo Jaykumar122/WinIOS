@@ -72,10 +72,12 @@ public:
 
     // Screenshot Capture
     [[nodiscard]] bool save_screenshot_bmp(const std::string& path) const;
+    [[nodiscard]] const std::vector<std::uint8_t>& backbuffer() const noexcept { return backbuffer_; }
+
+    void blit_to_dc(void* hdc);
 
 private:
     void update_window_geometry();
-    void blit_to_dc(void* hdc);
 
     DisplayWindowConfig config_;
     bool is_open_{false};

@@ -1,0 +1,644 @@
+<USER_REQUEST>
+# WINIOS CAMPAIGN 214 — GUEST UI FRAMEWORK, APPLICATION LIFECYCLE, RENDERING RELIABILITY & INTERACTIVE WINDOW VALIDATION
+
+## Mission
+
+Execute **25 sequential engineering stages: Campaign 214.0 through 214.24** in the existing WinIOS repository.
+
+Repository: `D:\WinISO26\WinIOS\`
+
+Required baseline: Campaign 213 closeout commit `b7e0d93` (resolve and record its complete commit hash before making changes).
+
+Branch: `campaign-191r`
+
+Target research profile: iPhone 15 (`iPhone15,4` / `D37AP` / A16 Bionic `T8120`).
+
+Host: Windows 11 x64, Visual Studio 2026, MSVC C++20.
+
+Compiler requirements: `/W4 /WX /permissive-`.
+
+Cross-assembler: Zig 0.17.0 where required.
+
+**Primary objective:** Independently verify and harden Campaign 213's guest-generated display and input pipeline, then build a reusable guest-side UI framework and application lifecycle capable of supporting multiple interactive ARM64 Mach-O applications.
+
+This is a Windows-hosted research environment. Do not claim production iOS, XNU, UIKit, SwiftUI, SpringBoard, CoreAnimation, Metal, or physical A16 compatibility.
+
+---
+
+# NON-NEGOTIABLE ENGINEERING RULES
+
+## 1. Repository safety
+
+Before any modification:
+
+- Verify repository root, current branch, full HEAD hash, working-tree state, staged changes, and untracked files.
+- Confirm Campaign 213 baseline is an ancestor of the current HEAD.
+- Preserve all pre-existing user changes.
+- Never use `git reset --hard`, `git clean`, destructive `git restore`, forced checkout, stash, amend, history rewriting, or remote push.
+- Do not overwrite unrelated files or discard existing work.
+- Create local commits only after validating the complete diff and confirming that the changes belong to this campaign.
+
+## 2. Protected paths
+
+Do not modify these files or directories:
+
+- `D:\WinISO26\WinIOS_README.md`
+- `D:\WinISO26\WinIOS\docs\progress.md`
+- `D:\WinISO26\WinISO26_README.md`
+- `D:\WinISO26\Inferno-Research\`
+
+Record whether each exists. Calculate SHA-256 hashes for existing protected files before and after the campaign. Verify the Inferno research checkout's status and HEAD without changing it.
+
+Never assume a missing file exists or silently create it.
+
+## 3. Evidence integrity
+
+- Never fabricate test results, screenshots, traces, benchmarks, or artifact hashes.
+- Distinguish host-side behavior from guest ARM64 execution.
+- Distinguish compiled Mach-O format from genuine Darwin compatibility.
+- Distinguish injected input from physical Windows input.
+- Distinguish compositor passes from host presentation frames.
+- Every important behavior must have a reproducible test and traceable evidence.
+- Record unsupported features honestly.
+- Preserve source provenance for all guest workloads.
+- Do not label adapted or newly written code as unmodified Apple/XNU source.
+
+## 4. Parallel workers
+
+Use parallel workers only for isolated work packages.
+
+Suggested allocation:
+
+- Worker A: Campaign 213 forensic audit, screenshot analysis, and trace correlation.
+- Worker B: guest UI primitives, layout, and rendering.
+- Worker C: application lifecycle, event loop, and input gestures.
+- Worker D: tests, security analysis, and snapshot/replay.
+
+The main agent owns architecture, shared interfaces, integration, build configuration, cross-subsystem testing, final validation, and Git operations.
+
+Workers must not independently modify shared architectural interfaces without coordination.
+
+---
+
+# PHASE I — CAMPAIGN 213 INDEPENDENT AUDIT AND CORRECTIONS
+
+## Stage 214.0 — Baseline and Repository Integrity
+
+- Verify complete Campaign 213 commit hash and parent relationship.
+- Inspect the complete repository state.
+- Inventory Campaign 213 source, tests, binaries, screenshots, manifests, and reports.
+- Verify all artifact hashes against `213_sha256_manifest.txt`.
+- Capture protected-file hashes.
+- Establish clean baseline build and test results without overwriting user work.
+- Produce a machine-readable baseline report.
+
+Acceptance: exact baseline identity, preserved working tree, and reproducible inventory.
+
+## Stage 214.1 — Screenshot and Framebuffer Forensic Audit
+
+Investigate the identical hashes reported for:
+
+- `screenshot_02_counter_app_launched.bmp`
+- `screenshot_03_counter_app_incremented.bmp`
+- `screenshot_04_return_to_shell.bmp`
+- `screenshot_06_notes_app_checked.bmp`
+- `screenshot_07_shell_closeout.bmp`
+
+For every screenshot:
+
+- Recompute SHA-256.
+- Parse BMP headers and validate dimensions, row stride, pixel format, and payload length.
+- Compare pixel buffers and report changed-pixel counts and bounding boxes.
+- Determine whether identical files are expected or indicate missing guest updates.
+- Compare screenshot content with guest application state and surface state.
+- Verify that screenshots are captured after the relevant present operation.
+
+Acceptance: every screenshot has a documented explanation and every claimed UI state is backed by pixel-level evidence.
+
+## Stage 214.2 — Guest Instruction and Syscall Trace Correlation
+
+Build a reproducible trace for the 13-step demonstration.
+
+Record:
+
+- Guest PID and process identity.
+- Guest PC, instruction bytes, and retired instruction count.
+- SVC instruction and immediate.
+- Syscall number and argument registers.
+- Validated guest virtual addresses and buffer lengths.
+- Surface/window identity and ownership.
+- Input event identity and delivery.
+- Framebuffer mutation and present sequence.
+- Compositor pass and host presentation sequence.
+- Screenshot artifact hash.
+
+Acceptance: trace evidence connects guest actions to the resulting displayed pixels without relying solely on host-side test assertions.
+
+## Stage 214.3 — Headless and Actual Windows Presentation Modes
+
+Audit the existing `DisplayWindow` implementation.
+
+Implement or complete two explicit modes:
+
+1. Headless deterministic presentation for automated tests.
+2. Actual Windows desktop window presentation for interactive use.
+
+For desktop mode:
+
+- Create a real Windows top-level window.
+- Display the composed guest framebuffer.
+- Handle resizing, DPI scaling, window close, and orderly shutdown.
+- Ensure the displayed content originates from the guest-owned surfaces.
+- Avoid substituting a host-drawn mock interface for guest output.
+
+Acceptance: automated headless tests still pass, and a real Windows window can display the guest shell and its applications.
+
+## Stage 214.4 — Frame and Presentation Accounting
+
+Define precise counters for:
+
+- Guest surface presents.
+- Damage-triggered compositor passes.
+- Composed frames.
+- Host presentation attempts.
+- Successfully presented host frames.
+- Repeated frames.
+- Dropped frames.
+- Vsync/deadline events.
+
+Investigate the Campaign 213 difference between five compositor passes and seven host frames.
+
+Acceptance: counters have unambiguous definitions and deterministic tests cover repeated, dropped, and newly composed frames.
+
+## Stage 214.5 — Darwin ABI and Custom Extension Boundary
+
+Audit the Category C syscall IDs 500–506.
+
+- Preserve DarwinStrict syscall handling.
+- Keep WinIOS-specific extension IDs in a clearly versioned namespace.
+- Document register arguments, return values, errors, pointer validation, and ABI version.
+- Verify SVC immediate handling against the existing DarwinStrict implementation.
+- Prevent extension calls from being misidentified as standard Darwin syscalls.
+- Add unknown-ID and wrong-ABI negative tests.
+
+Acceptance: no ABI ambiguity or accidental collision with existing Darwin syscall behavior.
+
+---
+
+# PHASE II — GUEST UI FRAMEWORK
+
+## Stage 214.6 — Guest UI Runtime Architecture
+
+Design a reusable guest-side UI runtime.
+
+Define:
+
+- Application context.
+- UI event loop.
+- View base abstraction.
+- View identifiers and ownership.
+- Parent/child hierarchy.
+- Layout invalidation.
+- Rendering invalidation.
+- Event dispatch.
+- Resource lifecycle.
+
+Keep guest UI logic separate from the Windows host presentation implementation.
+
+Acceptance: architecture document, interfaces, ownership rules, and unit tests.
+
+## Stage 214.7 — View Hierarchy and Containers
+
+Implement:
+
+- Base `View`.
+- `ViewGroup` or equivalent container.
+- Root view.
+- Child insertion/removal.
+- Visibility.
+- Enabled/disabled state.
+- Z-order within a view hierarchy.
+- Bounds and clipping.
+- Recursive lifecycle handling.
+
+Enforce hierarchy ownership and reject cycles or invalid parent relationships.
+
+Acceptance: nested view trees can be created, rendered, updated, and safely destroyed.
+
+## Stage 214.8 — Layout Engine
+
+Implement deterministic layout primitives:
+
+- Absolute positioning.
+- Horizontal layout.
+- Vertical layout.
+- Padding.
+- Margins.
+- Alignment.
+- Fixed dimensions.
+- Fill-available dimensions.
+- Minimum and maximum constraints.
+- Safe clipping and overflow handling.
+
+Use integer or fixed-point layout arithmetic where possible to preserve deterministic rendering.
+
+Acceptance: layout tests cover nested containers, edge cases, resizing, and invalid dimensions.
+
+## Stage 214.9 — Text Rendering and Font Infrastructure
+
+Implement a bounded guest text-rendering subsystem.
+
+Requirements:
+
+- Deterministic bitmap-font rendering initially.
+- Glyph metrics and baseline handling.
+- Text measurement.
+- Horizontal alignment.
+- Vertical alignment.
+- Clipping.
+- Wrapping.
+- Newline handling.
+- Basic ASCII and documented supported character set.
+- Safe handling of malformed or unsupported character data.
+
+Do not claim complete Unicode, shaping, or iOS system-font compatibility unless implemented and tested.
+
+Acceptance: text-rendering tests include pixel-level golden images and boundary conditions.
+
+## Stage 214.10 — Reusable UI Controls
+
+Implement reusable controls:
+
+- Label.
+- Button.
+- Checkbox.
+- Toggle.
+- Text input foundation.
+- Progress indicator.
+- Scroll container.
+- Image/view placeholder backed by a guest surface or documented bitmap resource.
+
+Controls must expose state, geometry, rendering, and event callbacks through a consistent API.
+
+Acceptance: controls can be assembled by guest applications without application-specific drawing code for every interaction.
+
+## Stage 214.11 — Rendering and Invalidation Optimization
+
+Implement:
+
+- View-level invalidation.
+- Dirty-region propagation.
+- Parent clipping.
+- Partial redraw.
+- Coalesced invalidations.
+- Stable drawing order.
+- Bounded temporary allocations.
+- Correct surface synchronization.
+
+Ensure that a control state change actually changes the guest-owned rendered pixels.
+
+Acceptance: incremental rendering produces the same final framebuffer as a full redraw for equivalent UI state.
+
+## Stage 214.12 — Guest UI Resource and Theme Management
+
+Add:
+
+- Color palette.
+- Basic theme configuration.
+- Spacing constants.
+- Corner and border rendering primitives.
+- Resource identifiers.
+- Resource lifetime tracking.
+- Per-process resource accounting.
+- Safe resource release after app termination.
+
+Do not imitate proprietary iOS assets or bundle copyrighted Apple resources.
+
+Acceptance: two applications can use different themes without cross-process resource leakage.
+
+---
+
+# PHASE III — INPUT, GESTURES, AND APPLICATION LIFECYCLE
+
+## Stage 214.13 — Unified UI Event Loop
+
+Implement a guest-side event loop that handles:
+
+- Touch events.
+- Button activation.
+- Window focus.
+- Application lifecycle notifications.
+- Timer events.
+- UI invalidation.
+- Shutdown requests.
+
+Define event ordering and prevent unbounded event processing from starving the guest scheduler.
+
+Acceptance: deterministic event ordering and bounded queue behavior.
+
+## Stage 214.14 — Gesture Recognition
+
+Implement a bounded gesture foundation:
+
+- Tap.
+- Double tap.
+- Long press.
+- Drag.
+- Swipe.
+- Scroll.
+- Touch cancellation.
+- Multi-contact tracking.
+
+Use deterministic virtual timestamps and document gesture thresholds.
+
+Acceptance: synthetic event sequences produce repeatable gesture results, including cancellation and interrupted gestures.
+
+## Stage 214.15 — Focus, Capture, and Event Propagation
+
+Implement:
+
+- Focus acquisition and release.
+- Pointer/touch capture.
+- Child-first hit testing.
+- Event propagation.
+- Optional event consumption.
+- Disabled-view filtering.
+- Focus recovery after view removal.
+- Cancellation when an owning window or process exits.
+
+Acceptance: overlapping controls and nested containers receive events according to documented rules.
+
+## Stage 214.16 — Application Lifecycle Manager
+
+Implement explicit application states:
+
+- Created.
+- Starting.
+- Foreground.
+- Background.
+- Suspended.
+- Resuming.
+- Terminating.
+- Terminated.
+
+Define legal transitions and reject invalid transitions.
+
+Integrate lifecycle notifications with the process manager, scheduler, window manager, and guest UI runtime.
+
+Acceptance: lifecycle transitions are observable, deterministic, and covered by negative tests.
+
+## Stage 214.17 — Application Launch and Termination Reliability
+
+Harden:
+
+- Application creation.
+- Process launch rollback.
+- Initial window creation.
+- Foreground assignment.
+- Background transition.
+- Exit and termination.
+- Surface reclamation.
+- Window destruction.
+- Input queue cleanup.
+- Resource reclamation.
+- Focus restoration.
+
+Acceptance: repeated launch/exit cycles do not leak processes, surfaces, windows, memory, or event registrations.
+
+## Stage 214.18 — Application Manifest and Package Format
+
+Define a versioned WinIOS research application manifest.
+
+Include:
+
+- Application identifier.
+- Display name.
+- Entry-point binary.
+- Binary SHA-256.
+- Minimum runtime version.
+- Required capabilities.
+- Requested display configuration.
+- Resource limits.
+- ABI declaration.
+- Package version.
+
+Validate all metadata before execution.
+
+Do not describe this package format as an Apple IPA or App Store-compatible package.
+
+Acceptance: valid packages launch and malformed, mismatched, or tampered packages are rejected.
+
+## Stage 214.19 — Application Preferences and Persistent State
+
+Implement bounded application preferences:
+
+- Per-application namespace.
+- Typed key/value records.
+- Versioned serialization.
+- Atomic update semantics.
+- Size limits.
+- Ownership isolation.
+- Corruption handling.
+- Snapshot/replay integration.
+
+Acceptance: the counter and notes applications can save and restore their own state without reading another application's preferences.
+
+---
+
+# PHASE IV — INTEGRATION AND USER EXPERIENCE
+
+## Stage 214.20 — Interactive Counter Application Migration
+
+Rebuild the counter application using the guest UI framework.
+
+Requirements:
+
+- Label displaying the current count.
+- Increment button.
+- Reset button.
+- Persistent count.
+- Correct touch and gesture handling.
+- Foreground/background lifecycle handling.
+- Correct window and surface cleanup.
+
+Verify that guest state changes produce different framebuffer pixels and distinct screenshot hashes whenever the visible state differs.
+
+Acceptance: the counter app uses reusable controls rather than bespoke application-specific rasterization.
+
+## Stage 214.21 — Interactive Notes Application Migration
+
+Rebuild the notes application using the guest UI framework.
+
+Requirements:
+
+- Text display/input foundation.
+- Multiple checklist entries.
+- Toggleable checkboxes.
+- Scrollable content.
+- Persistent checklist state.
+- Correct lifecycle behavior.
+- Safe window closure.
+
+Acceptance: notes state survives the documented lifecycle and persistence scenarios, and visible changes are reflected in guest-generated pixels.
+
+## Stage 214.22 — Multi-Application Shell and Security
+
+Integrate the shell, counter, and notes applications with the application lifecycle manager.
+
+Test:
+
+- Repeated application launches.
+- Switching foreground applications.
+- Backgrounding and resuming.
+- Window focus.
+- Touch isolation.
+- Surface ownership.
+- Preferences isolation.
+- Malformed packages.
+- Process termination during active input.
+- Snapshot restoration.
+- Resource exhaustion.
+- Invalid guest pointers and lengths.
+
+Add at least 30 focused adversarial vectors.
+
+Acceptance: no cross-process UI, surface, input, or preference access is possible through unprivileged interfaces.
+
+## Stage 214.23 — End-to-End Desktop Demonstration and Evidence
+
+Create a reproducible end-to-end demonstration.
+
+Required sequence:
+
+1. Start WinIOS in headless mode.
+2. Start WinIOS in actual Windows desktop mode.
+3. Launch the guest shell at EL0.
+4. Display the home screen generated by guest code.
+5. Launch the counter application.
+6. Increment and reset the counter.
+7. Background and resume the application.
+8. Close the counter application.
+9. Launch the notes application.
+10. Toggle checklist entries.
+11. Scroll through notes content.
+12. Close and relaunch notes.
+13. Verify persisted state.
+14. Return to the shell.
+15. Shut down cleanly.
+
+Capture screenshots and evidence at every meaningful UI state.
+
+For each screenshot, record:
+
+- Filename.
+- Dimensions.
+- SHA-256.
+- Guest PID.
+- Guest PC/trace range.
+- Relevant syscall sequence.
+- Surface identifier.
+- Compositor sequence.
+- Host presentation sequence.
+
+For expected visual changes, assert changed-pixel regions and semantic state. If two screenshots are intentionally identical, document why.
+
+Acceptance: a reproducible demonstration works in headless mode and in an actual Windows desktop window.
+
+## Stage 214.24 — Final Verification, Documentation, and Closeout
+
+Perform:
+
+- Full Debug build.
+- Full Release build.
+- Full Debug CTest suite.
+- Full Release CTest suite.
+- Focused Campaign 214 tests.
+- Campaign 211–213 regression tests.
+- Existing repository-wide test coverage.
+- Repeated end-to-end runs.
+- Determinism comparison.
+- Artifact hash verification.
+- Protected-file hash verification.
+- Git diff and status audit.
+
+Generate:
+
+`artifacts/campaign-214/WINIOS_CAMPAIGN_214_FINAL_REPORT.md`
+
+`artifacts/campaign-214/214_sha256_manifest.txt`
+
+`artifacts/campaign-214/214_capability_matrix.md`
+
+`artifacts/campaign-214/214_test_results.md`
+
+`artifacts/campaign-214/214_guest_execution_trace.md`
+
+`artifacts/campaign-214/214_screenshot_comparison.md`
+
+The final report must clearly separate:
+
+- Guest ARM64 execution.
+- Host-side runtime services.
+- Headless presentation.
+- Actual Windows desktop presentation.
+- Implemented behavior.
+- Simulated behavior.
+- Unsupported behavior.
+
+Commit locally on `campaign-191r` only after all checks pass and the final diff is reviewed. Do not push remotely.
+
+---
+
+# REQUIRED ACCEPTANCE CRITERIA
+
+Campaign 214 is complete only if all applicable criteria are satisfied:
+
+1. Campaign 213 baseline and artifact provenance are independently verified.
+2. Identical screenshot hashes are explained with pixel-level evidence.
+3. Guest instruction and syscall traces correlate with framebuffer changes.
+4. A real Windows desktop window displays guest-generated content.
+5. Headless testing remains deterministic.
+6. Frame accounting distinguishes composition from host presentation.
+7. Custom display syscalls are explicitly separated from standard Darwin ABI calls.
+8. A reusable guest-side view hierarchy and layout engine work.
+9. Text and basic UI controls render deterministically.
+10. Gesture and event propagation tests pass.
+11. Application lifecycle transitions are enforced.
+12. Repeated application launch and exit do not leak resources.
+13. Application manifests are validated.
+14. Per-application preferences are isolated and persistent.
+15. Counter and notes applications use the reusable UI framework.
+16. Snapshot/replay covers the newly introduced UI and lifecycle state.
+17. At least 30 adversarial tests pass.
+18. Full Debug and Release regressions pass, except for individually documented existing environmental skips.
+19. Protected assets remain unchanged.
+20. All evidence artifacts have verified SHA-256 entries.
+21. Git history and working-tree safety requirements are satisfied.
+
+If any criterion cannot be achieved, mark it BLOCKED or PARTIAL with exact evidence. Do not weaken tests or redefine acceptance criteria to obtain a green result.
+
+# FINAL CAPABILITY LANGUAGE
+
+Even after Campaign 214, do not claim:
+
+- Production iOS boot.
+- Full Darwin or XNU compatibility.
+- UIKit or SwiftUI compatibility.
+- Native iOS application or IPA compatibility.
+- React Native iOS runtime compatibility.
+- Expo iOS runtime compatibility.
+- Metal or CoreAnimation compatibility.
+- Physical A16 hardware equivalence.
+- Full Unicode shaping or Apple system-font equivalence unless separately demonstrated.
+
+The correct description is:
+
+**WinIOS is a Windows-hosted ARM64/Darwin-inspired research runtime with a guest-executed application model, virtual display/input services, and a developing guest UI framework.**
+
+Prioritize correctness, traceability, deterministic execution, and a genuinely usable Windows-hosted development experience over unsupported compatibility claims.
+
+Begin with Stage 214.0. Complete each stage in sequence and do not skip ahead.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-17T22:43:41+05:30.
+</ADDITIONAL_METADATA>

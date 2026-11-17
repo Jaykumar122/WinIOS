@@ -564,6 +564,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         window_mgr_->destroy_window(proc.pid(), wid);
+        if (compositor_) {
+            compositor_->composite(false);
+        }
         return record_success(0);
     }
 

@@ -120,6 +120,7 @@ add_library(winios_core STATIC
     src/kernel/arm_trap_frame.cpp
     src/kernel/user_stack.cpp
     src/kernel/user_syscall_dispatcher.cpp
+    src/kernel/guest_trace_logger.cpp
     src/kernel/context_switch.cpp
     src/kernel/scheduler.cpp
     src/kernel/preemption_timer.cpp
@@ -183,10 +184,26 @@ add_library(winios_core STATIC
     src/graphics/compositor.cpp
     src/graphics/frame_scheduler.cpp
     src/graphics/display_snapshot.cpp
+    src/graphics/frame_accounting.cpp
     src/input/virtual_input_device.cpp
     src/input/touch_event_queue.cpp
     src/input/input_router.cpp
     src/runtime/guest_ui_runtime.cpp
+    src/runtime/ui/theme.cpp
+    src/runtime/ui/render_context.cpp
+    src/runtime/ui/text_renderer.cpp
+    src/runtime/ui/view.cpp
+    src/runtime/ui/view_group.cpp
+    src/runtime/ui/layout_engine.cpp
+    src/runtime/ui/controls.cpp
+    src/runtime/ui/event_loop.cpp
+    src/runtime/ui/gesture_recognizer.cpp
+    src/runtime/ui/event_dispatcher.cpp
+    src/kernel/app_lifecycle_manager.cpp
+    src/loader/app_package.cpp
+    src/kernel/app_preferences.cpp
+    src/runtime/ui/counter_app_view.cpp
+    src/runtime/ui/notes_app_view.cpp
     src/app/elf_session_cli.cpp
     src/app/linux_boot_cli.cpp
     src/app/darwin_boot_cli.cpp
@@ -4340,6 +4357,116 @@ add_executable(stage213_23_interactive_e2e_tests tests/unit/stage213_23_interact
 target_link_libraries(stage213_23_interactive_e2e_tests PRIVATE winios_core)
 winios_set_warnings(stage213_23_interactive_e2e_tests)
 add_test(NAME stage213_23_interactive_e2e_tests COMMAND stage213_23_interactive_e2e_tests)
+
+# ==============================================================================
+# Campaign 214 Tests
+# ==============================================================================
+add_executable(stage214_2_trace_correlation_tests tests/unit/stage214_2_trace_correlation_tests.cpp)
+target_link_libraries(stage214_2_trace_correlation_tests PRIVATE winios_core)
+winios_set_warnings(stage214_2_trace_correlation_tests)
+add_test(NAME stage214_2_trace_correlation_tests COMMAND stage214_2_trace_correlation_tests)
+
+add_executable(stage214_3_presentation_modes_tests tests/unit/stage214_3_presentation_modes_tests.cpp)
+target_link_libraries(stage214_3_presentation_modes_tests PRIVATE winios_core)
+winios_set_warnings(stage214_3_presentation_modes_tests)
+add_test(NAME stage214_3_presentation_modes_tests COMMAND stage214_3_presentation_modes_tests)
+
+add_executable(stage214_4_frame_accounting_tests tests/unit/stage214_4_frame_accounting_tests.cpp)
+target_link_libraries(stage214_4_frame_accounting_tests PRIVATE winios_core)
+winios_set_warnings(stage214_4_frame_accounting_tests)
+add_test(NAME stage214_4_frame_accounting_tests COMMAND stage214_4_frame_accounting_tests)
+
+add_executable(stage214_5_abi_boundary_tests tests/unit/stage214_5_abi_boundary_tests.cpp)
+target_link_libraries(stage214_5_abi_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage214_5_abi_boundary_tests)
+add_test(NAME stage214_5_abi_boundary_tests COMMAND stage214_5_abi_boundary_tests)
+
+add_executable(stage214_7_view_hierarchy_tests tests/unit/stage214_7_view_hierarchy_tests.cpp)
+target_link_libraries(stage214_7_view_hierarchy_tests PRIVATE winios_core)
+winios_set_warnings(stage214_7_view_hierarchy_tests)
+add_test(NAME stage214_7_view_hierarchy_tests COMMAND stage214_7_view_hierarchy_tests)
+
+add_executable(stage214_8_layout_engine_tests tests/unit/stage214_8_layout_engine_tests.cpp)
+target_link_libraries(stage214_8_layout_engine_tests PRIVATE winios_core)
+winios_set_warnings(stage214_8_layout_engine_tests)
+add_test(NAME stage214_8_layout_engine_tests COMMAND stage214_8_layout_engine_tests)
+
+add_executable(stage214_9_text_rendering_tests tests/unit/stage214_9_text_rendering_tests.cpp)
+target_link_libraries(stage214_9_text_rendering_tests PRIVATE winios_core)
+winios_set_warnings(stage214_9_text_rendering_tests)
+add_test(NAME stage214_9_text_rendering_tests COMMAND stage214_9_text_rendering_tests)
+
+add_executable(stage214_10_controls_tests tests/unit/stage214_10_controls_tests.cpp)
+target_link_libraries(stage214_10_controls_tests PRIVATE winios_core)
+winios_set_warnings(stage214_10_controls_tests)
+add_test(NAME stage214_10_controls_tests COMMAND stage214_10_controls_tests)
+
+add_executable(stage214_11_rendering_invalidation_tests tests/unit/stage214_11_rendering_invalidation_tests.cpp)
+target_link_libraries(stage214_11_rendering_invalidation_tests PRIVATE winios_core)
+winios_set_warnings(stage214_11_rendering_invalidation_tests)
+add_test(NAME stage214_11_rendering_invalidation_tests COMMAND stage214_11_rendering_invalidation_tests)
+
+add_executable(stage214_12_theme_resource_tests tests/unit/stage214_12_theme_resource_tests.cpp)
+target_link_libraries(stage214_12_theme_resource_tests PRIVATE winios_core)
+winios_set_warnings(stage214_12_theme_resource_tests)
+add_test(NAME stage214_12_theme_resource_tests COMMAND stage214_12_theme_resource_tests)
+
+add_executable(stage214_13_event_loop_tests tests/unit/stage214_13_event_loop_tests.cpp)
+target_link_libraries(stage214_13_event_loop_tests PRIVATE winios_core)
+winios_set_warnings(stage214_13_event_loop_tests)
+add_test(NAME stage214_13_event_loop_tests COMMAND stage214_13_event_loop_tests)
+
+add_executable(stage214_14_gesture_tests tests/unit/stage214_14_gesture_tests.cpp)
+target_link_libraries(stage214_14_gesture_tests PRIVATE winios_core)
+winios_set_warnings(stage214_14_gesture_tests)
+add_test(NAME stage214_14_gesture_tests COMMAND stage214_14_gesture_tests)
+
+add_executable(stage214_15_focus_capture_tests tests/unit/stage214_15_focus_capture_tests.cpp)
+target_link_libraries(stage214_15_focus_capture_tests PRIVATE winios_core)
+winios_set_warnings(stage214_15_focus_capture_tests)
+add_test(NAME stage214_15_focus_capture_tests COMMAND stage214_15_focus_capture_tests)
+
+add_executable(stage214_16_lifecycle_tests tests/unit/stage214_16_lifecycle_tests.cpp)
+target_link_libraries(stage214_16_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage214_16_lifecycle_tests)
+add_test(NAME stage214_16_lifecycle_tests COMMAND stage214_16_lifecycle_tests)
+
+add_executable(stage214_17_launch_reliability_tests tests/unit/stage214_17_launch_reliability_tests.cpp)
+target_link_libraries(stage214_17_launch_reliability_tests PRIVATE winios_core)
+winios_set_warnings(stage214_17_launch_reliability_tests)
+add_test(NAME stage214_17_launch_reliability_tests COMMAND stage214_17_launch_reliability_tests)
+
+add_executable(stage214_18_package_manifest_tests tests/unit/stage214_18_package_manifest_tests.cpp)
+target_link_libraries(stage214_18_package_manifest_tests PRIVATE winios_core)
+winios_set_warnings(stage214_18_package_manifest_tests)
+add_test(NAME stage214_18_package_manifest_tests COMMAND stage214_18_package_manifest_tests)
+
+add_executable(stage214_19_app_preferences_tests tests/unit/stage214_19_app_preferences_tests.cpp)
+target_link_libraries(stage214_19_app_preferences_tests PRIVATE winios_core)
+winios_set_warnings(stage214_19_app_preferences_tests)
+add_test(NAME stage214_19_app_preferences_tests COMMAND stage214_19_app_preferences_tests)
+
+add_executable(stage214_20_counter_app_tests tests/unit/stage214_20_counter_app_tests.cpp)
+target_link_libraries(stage214_20_counter_app_tests PRIVATE winios_core)
+winios_set_warnings(stage214_20_counter_app_tests)
+add_test(NAME stage214_20_counter_app_tests COMMAND stage214_20_counter_app_tests)
+
+add_executable(stage214_21_notes_app_tests tests/unit/stage214_21_notes_app_tests.cpp)
+target_link_libraries(stage214_21_notes_app_tests PRIVATE winios_core)
+winios_set_warnings(stage214_21_notes_app_tests)
+add_test(NAME stage214_21_notes_app_tests COMMAND stage214_21_notes_app_tests)
+
+add_executable(stage214_22_adversarial_security_tests tests/unit/stage214_22_adversarial_security_tests.cpp)
+target_link_libraries(stage214_22_adversarial_security_tests PRIVATE winios_core)
+winios_set_warnings(stage214_22_adversarial_security_tests)
+add_test(NAME stage214_22_adversarial_security_tests COMMAND stage214_22_adversarial_security_tests)
+
+add_executable(stage214_23_desktop_e2e_tests tests/unit/stage214_23_desktop_e2e_tests.cpp)
+target_link_libraries(stage214_23_desktop_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage214_23_desktop_e2e_tests)
+add_test(NAME stage214_23_desktop_e2e_tests COMMAND stage214_23_desktop_e2e_tests)
+
+
 
 
 

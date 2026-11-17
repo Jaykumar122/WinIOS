@@ -1,0 +1,44 @@
+{
+  "campaign": 214,
+  "stage": "214.0",
+  "timestamp": "2026-11-17T22:44:00+05:30",
+  "repository": "D:\\WinISO26\\WinIOS",
+  "branch": "campaign-191r",
+  "baseline_commit_full": "b7e0d93f8661fed8949449d3f6739b867e00a331",
+  "baseline_commit_short": "b7e0d93",
+  "parent_commit": "d065badb7fe4fb1bbc8e80939bfb842db8ee50a7",
+  "commit_subject": "WinIOS Campaign 213: Virtual Display, Window Server, Compositor, Touch Input & First Interactive iOS-Like Shell",
+  "working_tree_clean": true,
+  "protected_files": [
+    {
+      "path": "D:\\WinISO26\\WinIOS_README.md",
+      "exists": true,
+      "sha256": "61F4D078D5071B5AB16093EB5418ED15AFB7ED41CD3C84F080CE44E196EA7FEF",
+      "expected_sha256": "61F4D078D5071B5AB16093EB5418ED15AFB7ED41CD3C84F080CE44E196EA7FEF",
+      "status": "VALID_MATCH"
+    },
+    {
+      "path": "D:\\WinISO26\\WinIOS\\docs\\progress.md",
+      "exists": true,
+      "sha256": "447E7B5AB74B9331CBE618BEA6561ABA83C4D291DC5CCC16DF1D72023C462212",
+      "expected_sha256": "447E7B5AB74B9331CBE618BEA6561ABA83C4D291DC5CCC16DF1D72023C462212",
+      "status": "VALID_MATCH"
+    },
+    {
+      "path": "D:\\WinISO26\\WinISO26_README.md",
+      "exists": false,
+      "status": "VALID_DOES_NOT_EXIST"
+    },
+    {
+      "path": "D:\\WinISO26\\Inferno-Research",
+      "exists": true,
+      "status": "UNTOUCHED_ISOLATED"
+    }
+  ],
+  "toolchain": {
+    "host_os": "Windows 11 x64",
+    "compiler": "Visual Studio 2026 MSVC C++20 (/W4 /WX /permissive-)",
+    "cmake_version": "3.31.6",
+    "cross_assembler": "Zig 0.17.0 (C:\\Users\\singh\\AppData\\Local\\Microsoft\\WinGet\\Links\\zig.exe)"
+  }
+}

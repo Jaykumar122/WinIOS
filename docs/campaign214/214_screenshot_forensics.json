@@ -1,0 +1,153 @@
+{
+  "screenshots": [
+    {
+      "index": 1,
+      "name": "screenshot_01_shell_homescreen.bmp",
+      "path": "artifacts/campaign-213/screenshot_01_shell_homescreen.bmp",
+      "sha256": "86ce3bd84bdbb27412615eb9a6e2e85fc1f75700c9d653bba8f9fed636d7d96b",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    },
+    {
+      "index": 2,
+      "name": "screenshot_02_counter_app_launched.bmp",
+      "path": "artifacts/campaign-213/screenshot_02_counter_app_launched.bmp",
+      "sha256": "89f9bd9e0fe0dffa6eadc934c68adb9ecb918c788845073d122623a202a56e7a",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    },
+    {
+      "index": 3,
+      "name": "screenshot_03_counter_app_incremented.bmp",
+      "path": "artifacts/campaign-213/screenshot_03_counter_app_incremented.bmp",
+      "sha256": "89f9bd9e0fe0dffa6eadc934c68adb9ecb918c788845073d122623a202a56e7a",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    },
+    {
+      "index": 4,
+      "name": "screenshot_04_return_to_shell.bmp",
+      "path": "artifacts/campaign-213/screenshot_04_return_to_shell.bmp",
+      "sha256": "89f9bd9e0fe0dffa6eadc934c68adb9ecb918c788845073d122623a202a56e7a",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    },
+    {
+      "index": 5,
+      "name": "screenshot_05_notes_app_launched.bmp",
+      "path": "artifacts/campaign-213/screenshot_05_notes_app_launched.bmp",
+      "sha256": "bc3d697ae85869a0aa62d5e713500c300bb128df59b2ea9f8ddbe5e4edb892cf",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    },
+    {
+      "index": 6,
+      "name": "screenshot_06_notes_app_checked.bmp",
+      "path": "artifacts/campaign-213/screenshot_06_notes_app_checked.bmp",
+      "sha256": "1610a8668d538f82575435b092f1b40e16701fc6b5a1b043677712d300643eaf",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    },
+    {
+      "index": 7,
+      "name": "screenshot_07_shell_closeout.bmp",
+      "path": "artifacts/campaign-213/screenshot_07_shell_closeout.bmp",
+      "sha256": "1610a8668d538f82575435b092f1b40e16701fc6b5a1b043677712d300643eaf",
+      "magic": "BM",
+      "file_size": 3840054,
+      "offset": 54,
+      "width": 800,
+      "height": 1200,
+      "bpp": 32
+    }
+  ],
+  "comparisons": [
+    {
+      "from": "screenshot_01_shell_homescreen.bmp",
+      "to": "screenshot_02_counter_app_launched.bmp",
+      "identical_sha256": false,
+      "changed_pixels": 630000,
+      "bounding_box": {
+        "min_x": 50,
+        "min_y": 150,
+        "max_x": 749,
+        "max_y": 1049,
+        "width": 700,
+        "height": 900
+      }
+    },
+    {
+      "from": "screenshot_02_counter_app_launched.bmp",
+      "to": "screenshot_03_counter_app_incremented.bmp",
+      "identical_sha256": true,
+      "changed_pixels": 0,
+      "bounding_box": null
+    },
+    {
+      "from": "screenshot_03_counter_app_incremented.bmp",
+      "to": "screenshot_04_return_to_shell.bmp",
+      "identical_sha256": true,
+      "changed_pixels": 0,
+      "bounding_box": null
+    },
+    {
+      "from": "screenshot_04_return_to_shell.bmp",
+      "to": "screenshot_05_notes_app_launched.bmp",
+      "identical_sha256": false,
+      "changed_pixels": 630000,
+      "bounding_box": {
+        "min_x": 50,
+        "min_y": 150,
+        "max_x": 749,
+        "max_y": 1049,
+        "width": 700,
+        "height": 900
+      }
+    },
+    {
+      "from": "screenshot_05_notes_app_launched.bmp",
+      "to": "screenshot_06_notes_app_checked.bmp",
+      "identical_sha256": false,
+      "changed_pixels": 2500,
+      "bounding_box": {
+        "min_x": 100,
+        "min_y": 800,
+        "max_x": 149,
+        "max_y": 849,
+        "width": 50,
+        "height": 50
+      }
+    },
+    {
+      "from": "screenshot_06_notes_app_checked.bmp",
+      "to": "screenshot_07_shell_closeout.bmp",
+      "identical_sha256": true,
+      "changed_pixels": 0,
+      "bounding_box": null
+    }
+  ]
+}

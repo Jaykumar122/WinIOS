@@ -33,25 +33,16 @@ LRESULT CALLBACK DisplayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         PAINTSTRUCT ps;
         HDC hdc = BeginPaint(hwnd, &ps);
         if (win) {
-            // Forward to blit
-            RECT rc;
-            GetClientRect(hwnd, &rc);
-            BITMAPINFO bi{};
-            bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-            bi.bmiHeader.biWidth = static_cast<LONG>(win->config().native_width);
-            bi.bmiHeader.biHeight = -static_cast<LONG>(win->config().native_height); // Top-down
-            bi.bmiHeader.biPlanes = 1;
-            bi.bmiHeader.biBitCount = 32;
-            bi.bmiHeader.biCompression = BI_RGB;
-
-            SetStretchBltMode(hdc, HALFTONE);
-            StretchDIBits(hdc,
-                          0, 0, rc.right - rc.left, rc.bottom - rc.top,
-                          0, 0, win->config().native_width, win->config().native_height,
-                          win->last_touch().is_down ? win->config().title.data() : nullptr, // checked in lock
-                          &bi, DIB_RGB_COLORS, SRCCOPY);
+            win->blit_to_dc(hdc);
         }
         EndPaint(hwnd, &ps);
+        return 0;
+    }
+
+    case WM_SIZE: {
+        if (win) {
+            InvalidateRect(hwnd, nullptr, FALSE);
+        }
         return 0;
     }
 
@@ -226,6 +217,41 @@ bool DisplayWindow::pump_events() {
 #endif
 }
 
+void DisplayWindow::blit_to_dc(void* hdc_ptr) {
+#ifdef _WIN32
+    if (!hdc_ptr || !hwnd_) return;
+    HDC hdc = reinterpret_cast<HDC>(hdc_ptr);
+    HWND hwnd = reinterpret_cast<HWND>(hwnd_);
+
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int client_w = rc.right - rc.left;
+    int client_h = rc.bottom - rc.top;
+    if (client_w <= 0 || client_h <= 0) return;
+
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = static_cast<LONG>(config_.native_width);
+    bi.bmiHeader.biHeight = -static_cast<LONG>(config_.native_height); // Top-down
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+
+    SetStretchBltMode(hdc, HALFTONE);
+
+    std::lock_guard<std::mutex> lock(lock_);
+    if (!backbuffer_.empty()) {
+        StretchDIBits(hdc,
+                      0, 0, client_w, client_h,
+                      0, 0, config_.native_width, config_.native_height,
+                      backbuffer_.data(),
+                      &bi, DIB_RGB_COLORS, SRCCOPY);
+    }
+#else
+    (void)hdc_ptr;
+#endif
+}
+
 bool DisplayWindow::present_frame(const device::AppleDisplay& display) {
     return present_frame(display.raw_framebuffer_data(), display.width(), display.height());
 }
@@ -248,27 +274,7 @@ bool DisplayWindow::present_frame(const std::uint8_t* raw_argb, std::uint32_t wi
 
 #ifdef _WIN32
     if (!config_.headless && hwnd_ && hdc_) {
-        HWND hwnd = reinterpret_cast<HWND>(hwnd_);
-        HDC hdc = reinterpret_cast<HDC>(hdc_);
-
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-        BITMAPINFO bi{};
-        bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        bi.bmiHeader.biWidth = static_cast<LONG>(width);
-        bi.bmiHeader.biHeight = -static_cast<LONG>(height); // Top-down DIB
-        bi.bmiHeader.biPlanes = 1;
-        bi.bmiHeader.biBitCount = 32;
-        bi.bmiHeader.biCompression = BI_RGB;
-
-        SetStretchBltMode(hdc, HALFTONE);
-        std::lock_guard<std::mutex> lock(lock_);
-        StretchDIBits(hdc,
-                      0, 0, rc.right - rc.left, rc.bottom - rc.top,
-                      0, 0, width, height,
-                      backbuffer_.data(),
-                      &bi, DIB_RGB_COLORS, SRCCOPY);
-
+        blit_to_dc(hdc_);
         pump_events();
     }
 #endif
