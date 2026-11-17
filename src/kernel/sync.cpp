@@ -47,9 +47,14 @@ bool KernelSpinlock::try_acquire_host(std::uint64_t tid, bool* out_deadlock) {
 }
 
 bool KernelSpinlock::release_host(std::uint64_t tid) {
+    const std::uint32_t current_lock = mem_.read_u32(static_cast<std::size_t>(guest_addr_));
     const std::uint32_t current_owner = mem_.read_u32(static_cast<std::size_t>(guest_addr_ + 4));
 
-    if (current_owner != static_cast<std::uint32_t>(tid) && current_owner != 0) {
+    if (current_lock == 0) {
+        return false;
+    }
+
+    if (current_owner != static_cast<std::uint32_t>(tid)) {
         return false;
     }
 

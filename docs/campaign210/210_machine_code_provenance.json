@@ -1,0 +1,98 @@
+{
+  "campaign": 210,
+  "stage": "210.4",
+  "artifact": "artifacts/campaign-210/xnu_genuine_init.macho",
+  "toolchain": {
+    "compiler": "Zig 0.17.0 (zig cc)",
+    "target": "aarch64-macos",
+    "compiler_flags": [
+      "-target aarch64-macos",
+      "-ffreestanding",
+      "-nostdlib",
+      "-fno-sanitize=all",
+      "-fno-stack-protector",
+      "-O2"
+    ],
+    "linker_flags": [
+      "-target aarch64-macos",
+      "-nostdlib",
+      "-fno-sanitize=all",
+      "-fno-stack-protector",
+      "-Wl,-e,__start",
+      "-Wl,-pagezero_size,0"
+    ]
+  },
+  "binary_metadata": {
+    "format": "Mach-O 64-bit executable",
+    "cpu_type": "ARM64 (0x0100000C)",
+    "cpu_subtype": "ALL (0x00000000)",
+    "file_size_bytes": 68728,
+    "sha256": "f6e159b9a271d8b6f6a81472ab94b283f26fd711e584b145b28af974240d65e3"
+  },
+  "segments": [
+    {
+      "name": "__TEXT",
+      "vmaddr": "0x00000000",
+      "vmsize": "0x00002E08",
+      "fileoff": "0x00000000",
+      "filesize": "0x00002E08",
+      "sections": [
+        { "name": "__text", "addr": "0x000014F0", "size": "0x00001734", "fileoff": "0x000014F0" },
+        { "name": "__cstring", "addr": "0x00002C24", "size": "0x000000E1", "fileoff": "0x00002C24" },
+        { "name": "__unwind_info", "addr": "0x00002D08", "size": "0x0000005C", "fileoff": "0x00002D08" },
+        { "name": "__eh_frame", "addr": "0x00002D68", "size": "0x000000A0", "fileoff": "0x00002D68" }
+      ]
+    },
+    {
+      "name": "__DATA_CONST",
+      "vmaddr": "0x00004000",
+      "vmsize": "0x00000008",
+      "fileoff": "0x00004000",
+      "filesize": "0x00000008",
+      "sections": [
+        { "name": "__got", "addr": "0x00004000", "size": "0x00000008", "fileoff": "0x00004000" }
+      ]
+    },
+    {
+      "name": "__DATA",
+      "vmaddr": "0x00008000",
+      "vmsize": "0x000080C8",
+      "fileoff": "0x00008000",
+      "filesize": "0x00008000",
+      "sections": [
+        { "name": "__data", "addr": "0x00008000", "size": "0x00008000", "fileoff": "0x00008000" },
+        { "name": "__common", "addr": "0x00010000", "size": "0x000000C8", "fileoff": "0x00000000" }
+      ]
+    },
+    {
+      "name": "__LINKEDIT",
+      "vmaddr": "0x00014000",
+      "vmsize": "0x00004000",
+      "fileoff": "0x00010000",
+      "filesize": "0x00000C78"
+    }
+  ],
+  "exported_symbols": {
+    "__start": "0x00002BE0",
+    "_start": "0x00002BE0",
+    "start_first_cpu": "0x00002BF0",
+    "secondary_park": "0x00002C1C",
+    "_arm_init": "0x0000250C",
+    "_arm_vm_init_early": "0x000014F0",
+    "_pmap_bootstrap": "0x00001540",
+    "_pmap_init": "0x000016F4",
+    "_vm_page_bootstrap": "0x000018FC",
+    "_kmem_init": "0x000019A0",
+    "_zone_bootstrap": "0x00001B6C",
+    "_sched_init": "0x00001D30",
+    "_task_init": "0x00001D88",
+    "_thread_init": "0x00001F84",
+    "_machine_startup": "0x000021D4",
+    "_pe_arm_init": "0x00002BD0",
+    "_PE_init_platform": "0x000029F8",
+    "bootstrap_stack": "0x0000C000",
+    "bootstrap_stack_top": "0x00010000",
+    "_g_arm_init_state": "0x00010000",
+    "_g_pe_state": "0x00010088"
+  }
+}

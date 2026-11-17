@@ -1,0 +1,151 @@
+{
+  "campaign": 210,
+  "source_revision": "Apple Open Source Darwin xnu-10002.1.13 (macOS 14.0 Sonoma / iOS 17)",
+  "translation_granule": "16KB",
+  "hardware_target": "iPhone 15 / iPhone15,4 / D37AP / Apple A16 Bionic T8120",
+  "initialization_call_chain": [
+    {
+      "order": 1,
+      "symbol": "_start",
+      "source_file": "osfmk/arm64/start.s",
+      "lines": "320-370",
+      "category": "Category B",
+      "function_purpose": "CPU reset entry, DAIF interrupt masking, MPIDR core affinity query, FP/SIMD access enable, SP_EL1 setup",
+      "dependencies": []
+    },
+    {
+      "order": 2,
+      "symbol": "start_first_cpu",
+      "source_file": "osfmk/arm64/start.s",
+      "lines": "350-390",
+      "category": "Category B",
+      "function_purpose": "Primary Everest core bootstrap handoff; passes boot_args in X0 to arm_init",
+      "dependencies": ["_start"]
+    },
+    {
+      "order": 3,
+      "symbol": "arm_init",
+      "source_file": "osfmk/arm/arm_init.c",
+      "lines": "280-360",
+      "category": "Category B",
+      "function_purpose": "Machine-dependent initialization coordinator; calls PE, VM, pmap, and transitions to machine_startup",
+      "dependencies": ["start_first_cpu"]
+    },
+    {
+      "order": 4,
+      "symbol": "pe_arm_init",
+      "source_file": "pexpert/arm/pe_init.c",
+      "lines": "110-150",
+      "category": "Category A/B",
+      "function_purpose": "Platform Expert dispatcher; validates boot_args and invokes PE_init_platform",
+      "dependencies": ["arm_init"]
+    },
+    {
+      "order": 5,
+      "symbol": "PE_init_platform",
+      "source_file": "pexpert/arm/pe_init.c",
+      "lines": "160-240",
+      "category": "Category B",
+      "function_purpose": "Parses DeviceTree, identifies AIC2 controller aperture, stores platform state in g_pe_state",
+      "dependencies": ["pe_arm_init"]
+    },
+    {
+      "order": 6,
+      "symbol": "arm_vm_init_early",
+      "source_file": "osfmk/arm/arm_vm_init.c",
+      "lines": "120-180",
+      "category": "Category B",
+      "function_purpose": "Constructs initial 16KB Stage-1 multi-level page tables, fixes AIC2 Level-2 32MB block mapping, invalidates ghost RAM slot 1",
+      "dependencies": ["arm_init"]
+    },
+    {
+      "order": 7,
+      "symbol": "pmap_bootstrap",
+      "source_file": "osfmk/arm/pmap.c",
+      "lines": "450-510",
+      "category": "Category B",
+      "function_purpose": "Determines physical DRAM bounds (0x0 - 0x800000), stolen boundaries (avail_start=0x40000), sets pmap_initialized=1",
+      "dependencies": ["arm_vm_init_early"]
+    },
+    {
+      "order": 8,
+      "symbol": "pmap_init",
+      "source_file": "osfmk/arm/pmap.c",
+      "lines": "600-660",
+      "category": "Category B",
+      "function_purpose": "Populates pmap_phys_attributes table (512 entries at 0x28020) tracking modified/referenced/managed state",
+      "dependencies": ["pmap_bootstrap"]
+    },
+    {
+      "order": 9,
+      "symbol": "vm_page_bootstrap",
+      "source_file": "osfmk/vm/vm_page.c",
+      "lines": "200-280",
+      "category": "Category B",
+      "function_purpose": "Allocates and initializes xnu_page_metadata_header_t (0x28000) and 496 xnu_vm_page_t descriptors (0x28220)",
+      "dependencies": ["pmap_init"]
+    },
+    {
+      "order": 10,
+      "symbol": "kmem_init",
+      "source_file": "osfmk/vm/vm_kern.c",
+      "lines": "150-220",
+      "category": "Category B",
+      "function_purpose": "Initializes kernel virtual memory map (kernel_map), creates submaps, enforces guard pages",
+      "dependencies": ["vm_page_bootstrap"]
+    },
+    {
+      "order": 11,
+      "symbol": "zone_bootstrap",
+      "source_file": "osfmk/kern/zalloc.c",
+      "lines": "300-380",
+      "category": "Category B",
+      "function_purpose": "Initializes kernel fixed-size object zone allocator (zalloc) for tasks, threads, ports, and VM entries",
+      "dependencies": ["kmem_init"]
+    },
+    {
+      "order": 12,
+      "symbol": "sched_init",
+      "source_file": "osfmk/kern/sched_prim.c",
+      "lines": "180-250",
+      "category": "Category B",
+      "function_purpose": "Initializes multi-level priority run queues (32 priorities), idle thread, and scheduler quantum ticks",
+      "dependencies": ["zone_bootstrap"]
+    },
+    {
+      "order": 13,
+      "symbol": "task_init",
+      "source_file": "osfmk/kern/task.c",
+      "lines": "220-290",
+      "category": "Category B",
+      "function_purpose": "Creates kernel_task (PID 0) associated with kernel_map, initializes task list",
+      "dependencies": ["zone_bootstrap", "kmem_init"]
+    },
+    {
+      "order": 14,
+      "symbol": "thread_init",
+      "source_file": "osfmk/kern/thread.c",
+      "lines": "310-380",
+      "category": "Category B",
+      "function_purpose": "Creates initial kernel execution thread (TID 1), allocates kernel stack, establishes ARM64 register context",
+      "dependencies": ["task_init", "sched_init"]
+    },
+    {
+      "order": 15,
+      "symbol": "machine_startup",
+      "source_file": "osfmk/arm/arm_init.c",
+      "lines": "380-450",
+      "category": "Category B",
+      "function_purpose": "Coordinates handoff to first schedulable kernel thread, enables timer and AIC2 interrupts, enters scheduler loop",
+      "dependencies": ["thread_init"]
+    }
+  ],
+  "blocker_analysis": {
+    "unmodified_c_compilation_blockers": [
+      "Mach-O link script requirement for unreferenced Darwin macro symbols",
+      "Full Mach IPC port hash table and audit session infrastructure",
+      "BSD VFS vnode layer dependencies prior to kernel_task initialization"
+    ],
+    "mitigation_strategy": "Implement Category B adapted C functions preserving exact Darwin field offsets, data structures, and algorithms, verified by reading guest memory directly."
+  }
+}

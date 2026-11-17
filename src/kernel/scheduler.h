@@ -41,6 +41,9 @@ public:
     // Pick next thread to run based on highest priority
     [[nodiscard]] KernelThread* pick_next_thread();
 
+    // Dispatch next ready thread to CPU immediately
+    bool dispatch_next(CPU& cpu);
+
     // Advance scheduler timer tick, manage quantum, preempt if expired
     bool tick(CPU& cpu);
 

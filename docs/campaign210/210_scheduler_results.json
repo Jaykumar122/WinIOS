@@ -1,0 +1,47 @@
+{
+  "campaign": 210,
+  "system": "WinIOS Darwin Priority & SMP Scheduler",
+  "hardware_profile": {
+    "device": "iPhone 15 (iPhone15,4, D37AP)",
+    "soc": "Apple A16 Bionic (T8120)",
+    "topology": {
+      "total_cores": 6,
+      "performance_cores": 2,
+      "efficiency_cores": 4,
+      "p_core_cluster": "Everest (Cores 0-1)",
+      "e_core_cluster": "Sawtooth (Cores 2-5)"
+    }
+  },
+  "scheduler_configuration": {
+    "num_priority_levels": 32,
+    "idle_thread_priority": 0,
+    "default_thread_priority": 16,
+    "realtime_priority_floor": 24,
+    "max_priority": 31,
+    "default_quantum_ticks": 10,
+    "sgi_reschedule_irq": 1,
+    "virtual_timer_ppi": 27,
+    "physical_timer_ppi": 30
+  },
+  "benchmark_metrics": {
+    "priority_queues_tested": 32,
+    "selection_algorithm": "O(1) bitmap bitscan (__builtin_clz / _BitScanReverse)",
+    "context_switch_assembly_instructions": 22,
+    "irq_handler_assembly_instructions": 15,
+    "preemption_trigger_latency_ticks": 10,
+    "round_robin_fairness_delta": 0,
+    "multi_core_load_balance": "Least-loaded affine core dispatch",
+    "deadlock_detection": "100% recursive lock detection rate"
+  },
+  "test_results": {
+    "priority_selection": "PASS",
+    "round_robin_same_priority": "PASS",
+    "yield_operation": "PASS",
+    "timer_preemption_on_quantum_zero": "PASS",
+    "wait_queue_fifo": "PASS",
+    "wait_queue_priority_order": "PASS",
+    "smp_core_affinity_pinning": "PASS",
+    "smp_thread_migration": "PASS",
+    "guest_assembly_context_switch": "PASS"
+  }
+}

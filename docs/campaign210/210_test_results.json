@@ -1,0 +1,134 @@
+{
+  "campaign": 210,
+  "milestone": "Genuine XNU Kernel Initialization, Thread Scheduling & Darwin Kernel Services",
+  "total_project_tests": 637,
+  "project_tests_passed": 636,
+  "project_tests_skipped": 1,
+  "project_tests_failed": 0,
+  "campaign_tests_count": 20,
+  "campaign_tests_passed": 20,
+  "campaign_tests_failed": 0,
+  "campaign_pass_rate_percent": 100.0,
+  "tests": [
+    {
+      "test_name": "stage210_3_execution_boundary_tests",
+      "stage": "210.3",
+      "description": "Verifies boundary execution advancement beyond Campaign 209 WFI checkpoint, confirming kmem_init, zone_bootstrap, sched_init, task_init, thread_init, and mailbox 0xCAFEBABE210.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_5_physical_page_metadata_tests",
+      "stage": "210.5",
+      "description": "Verifies physical page metadata structures in guest memory, validating 496 available pages starting at 0x40000, attributes table, and metadata header.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_6_page_allocator_integration_tests",
+      "stage": "210.6",
+      "description": "Tests PhysicalPageManager integration with guest memory, page allocation/deallocation, exhaustion limits, and double-free rejection.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_7_kernel_heap_tests",
+      "stage": "210.7",
+      "description": "Validates bounded kernel heap allocator, boundary protections, multi-block allocation, alignment, and state serialization.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_8_kernel_va_map_tests",
+      "stage": "210.8",
+      "description": "Validates VirtualPageTable mapping, dynamic L3 table allocation, translation walk, and in-memory guest kernel_map header.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_9_xnu_vm_map_tests",
+      "stage": "210.9",
+      "description": "Tests XnuVmMap core operations: vm_map_enter, vm_map_lookup, vm_map_protect, vm_map_wire, vm_map_find_space, and vm_map_remove.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_10_zone_allocator_tests",
+      "stage": "210.10",
+      "description": "Tests XnuZoneAllocator fixed-size zone creation, element allocation/free, bitmap management, exhaustion, and serialization.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_11_kernel_task_tests",
+      "stage": "210.11",
+      "description": "Validates KernelTaskManager and KernelTask lifecycle, PID 0 kernel_task creation, task suspension/resumption, and memory limit accounting.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_12_arm64_thread_context_tests",
+      "stage": "210.12",
+      "description": "Validates ARM64 thread context register layout, GuestTcb serialization, GPR/SP/PC preservation, and architectural register restoration.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_13_kernel_thread_lifecycle_tests",
+      "stage": "210.13",
+      "description": "Tests KernelThread lifecycle states (Ready, Running, Blocked, Terminated), quantum accounting, thread priority, and state transitions.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_14_deterministic_scheduler_tests",
+      "stage": "210.14",
+      "description": "Validates PriorityScheduler 32-tier priority run queues, highest-priority thread selection, round-robin at same priority, and yield operations.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_15_context_switch_tests",
+      "stage": "210.15",
+      "description": "Validates authentic 22-instruction ARM64 guest context switch routine emission, register preservation, and CPU execution.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_16_timer_preemption_tests",
+      "stage": "210.16",
+      "description": "Tests timer-driven preemption, quantum expiration after 10 ticks, dispatching, and 15-instruction guest IRQ handler emission.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_17_exception_interrupt_tests",
+      "stage": "210.17",
+      "description": "Validates exception vector table setup, AIC2 interrupt delivery, ESR_EL1/FAR_EL1 syndrome decoding, and VBAR_EL1 registration.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_18_smp_kernel_init_tests",
+      "stage": "210.18",
+      "description": "Validates SMP kernel initialization for 2 and 6 cores, per-core CPU structures, boot synchronization mailboxes, and core affinity.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_19_kernel_sync_tests",
+      "stage": "210.19",
+      "description": "Tests KernelSpinlock acquire/release, deadlock detection, IRQ-safe spinlock guard (DAIF masking), and WaitQueue FIFO/priority wake ordering.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_20_kernel_ipc_tests",
+      "stage": "210.20",
+      "description": "Tests MachPort and MachMessageQueue IPC foundations, port rights (Receive, Send, SendOnce), bounded message queuing, and blocking semantics.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_21_snapshot_replay_tests",
+      "stage": "210.21",
+      "description": "Validates snapshot serialization and bit-exact state restoration across VM maps, zone allocators, tasks, threads, and schedulers.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_22_adversarial_security_tests",
+      "stage": "210.22",
+      "description": "Adversarial security validation across 16 hostile attack vectors including privilege escalation, null pointer dereference, UAF, and buffer overflow.",
+      "outcome": "PASSED"
+    },
+    {
+      "test_name": "stage210_23_userspace_handoff_readiness_tests",
+      "stage": "210.23",
+      "description": "Validates EL0 user thread context, SPSR_EL1 target mode EL0t, minimal EL0 instruction execution, and UserExecute/KernelExecute boundary protection.",
+      "outcome": "PASSED"
+    }
+  ]
+}

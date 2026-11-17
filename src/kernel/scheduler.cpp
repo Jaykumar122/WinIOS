@@ -81,6 +81,15 @@ KernelThread* PriorityScheduler::pick_next_thread() {
     return idle_thread_;
 }
 
+bool PriorityScheduler::dispatch_next(CPU& cpu) {
+    if (ready_bitmap_ == 0 && current_thread_ == idle_thread_) {
+        return false;
+    }
+    KernelThread* next = pick_next_thread();
+    switch_to(next, cpu);
+    return true;
+}
+
 void PriorityScheduler::switch_to(KernelThread* next_thread, CPU& cpu) {
     if (next_thread == current_thread_) {
         return;
