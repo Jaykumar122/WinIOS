@@ -11,7 +11,13 @@
 #include "kernel/thread.h"
 #include "kernel/ipc.h"
 
+namespace winios::vfs {
+struct VfsDescriptor;
+}
+
 namespace winios::kernel {
+
+class Pipe;
 
 using pid_t = std::int32_t;
 
@@ -37,6 +43,10 @@ struct FileDescriptor {
     bool writable{true};
     std::uint64_t offset{0};
     std::string path;
+    std::shared_ptr<winios::vfs::VfsDescriptor> vfs_desc{nullptr};
+    std::shared_ptr<Pipe> pipe{nullptr};
+    bool is_pipe_reader{false};
+    bool is_pipe_writer{false};
 };
 
 class FileDescriptorTable {
@@ -68,6 +78,7 @@ public:
 
     [[nodiscard]] pid_t pid() const noexcept { return pid_; }
     [[nodiscard]] pid_t ppid() const noexcept { return ppid_; }
+    void set_ppid(pid_t new_ppid) noexcept { ppid_ = new_ppid; }
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
     [[nodiscard]] ProcessState state() const noexcept { return state_; }
     [[nodiscard]] int exit_code() const noexcept { return exit_code_; }
@@ -77,6 +88,14 @@ public:
     [[nodiscard]] const FileDescriptorTable& fd_table() const noexcept { return fd_table_; }
     [[nodiscard]] ProcessIpcSpace& ipc_space() noexcept { return ipc_space_; }
     [[nodiscard]] const ProcessIpcSpace& ipc_space() const noexcept { return ipc_space_; }
+
+    [[nodiscard]] const std::vector<pid_t>& children() const noexcept { return children_; }
+    void add_child(pid_t child_pid);
+    bool remove_child(pid_t child_pid);
+    void clear_children() noexcept { children_.clear(); }
+
+    void notify_parent() noexcept { parent_notified_ = true; }
+    [[nodiscard]] bool is_parent_notified() const noexcept { return parent_notified_; }
 
     void set_state(ProcessState new_state) noexcept { state_ = new_state; }
     void set_task(KernelTask* task) noexcept { task_ = task; }
@@ -99,10 +118,14 @@ private:
     std::vector<KernelThread*> threads_{};
     FileDescriptorTable fd_table_{};
     ProcessIpcSpace ipc_space_{};
+    std::vector<pid_t> children_{};
+    bool parent_notified_{false};
 };
 
 class BsdProcessManager {
 public:
+    static constexpr pid_t kMaxPids = 32768;
+
     BsdProcessManager();
     ~BsdProcessManager() = default;
 
@@ -112,7 +135,7 @@ public:
     // Create a new process with allocated PID
     BsdProcess* create_process(const std::string& name, pid_t ppid = 0, KernelTask* task = nullptr);
 
-    // Terminate process with exit code
+    // Terminate process with exit code and handle orphan reparenting
     bool terminate_process(pid_t pid, int exit_code);
 
     // Lookup process by PID
@@ -122,10 +145,15 @@ public:
     // Reap zombie process
     bool reap_process(pid_t pid);
 
+    // Wait for child process termination (SYS_wait4 semantics)
+    int wait_process(pid_t parent_pid, pid_t wpid, int* out_status, int options = 0);
+
     [[nodiscard]] std::size_t process_count() const noexcept { return processes_.size(); }
+
 
     void serialize(std::vector<std::uint8_t>& dst) const;
     bool deserialize(const std::uint8_t* src, std::size_t size);
+    bool deserialize_stream(const std::uint8_t*& src, std::size_t& remaining);
 
 private:
     pid_t next_pid_{1};

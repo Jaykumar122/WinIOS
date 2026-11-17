@@ -1,0 +1,21 @@
+{
+  "campaign": 212,
+  "start_timestamp": "2026-11-17T19:38:00+05:30",
+  "branch": "campaign-191r",
+  "head_commit": "9ee8978b54e743945a0b6b547cd1ff5ae2bdc315",
+  "expected_baseline": "9ee8978b54e743945a0b6b547cd1ff5ae2bdc315",
+  "baseline_match": true,
+  "protected_assets": {
+    "D:\\WinISO26\\WinIOS_README.md": {
+      "sha256": "61F4D078D5071B5AB16093EB5418ED15AFB7ED41CD3C84F080CE44E196EA7FEF",
+      "status": "VERIFIED_EXACT"
+    },
+    "D:\\WinISO26\\WinIOS\\docs\\progress.md": {
+      "sha256": "447E7B5AB74B9331CBE618BEA6561ABA83C4D291DC5CCC16DF1D72023C462212",
+      "status": "VERIFIED_EXACT"
+    },
+    "D:\\WinISO26\\Inferno-Research\\": {
+      "status": "VERIFIED_UNTOUCHED"
+    }
+  }
+}

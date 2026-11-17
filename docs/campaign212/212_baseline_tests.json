@@ -1,0 +1,29 @@
+{
+  "campaign": 212,
+  "baseline_commit": "9ee8978b54e743945a0b6b547cd1ff5ae2bdc315",
+  "branch": "campaign-191r",
+  "ctest_summary": {
+    "total_registered_tests": 650,
+    "passed": 649,
+    "failed": 0,
+    "skipped": 1,
+    "skipped_tests": ["383 - inferno_integration_tests (Skipped)"],
+    "execution_time_seconds": 90.97,
+    "pass_rate_percentage": 100.0
+  },
+  "stage211_userspace_baseline": {
+    "stage211_2_context_preservation_tests": "PASSED (304-byte ArmTrapFrame, GPRs, SP_EL0, ELR_EL1, SPSR_EL1, ESR_EL1, FAR_EL1)",
+    "stage211_3_el0_privilege_tests": "PASSED (VBAR_EL1 + 0x400 vectoring, Lower EL AArch64 Sync)",
+    "stage211_5_bsd_process_tests": "PASSED (BsdProcess lifecycle, monotonic PID, fd table)",
+    "stage211_7_user_address_space_tests": "PASSED (UserAddressSpace TTBR0 Stage-1 16KB mappings, copyin/copyout)",
+    "stage211_9_macho_user_loader_tests": "PASSED (MachoUserLoader 64-bit Mach-O parsing, __PAGEZERO, W^X)",
+    "stage211_11_user_stack_tests": "PASSED (AAPCS64 user stack, argc, argv, envp, 16-byte alignment)",
+    "stage211_13_first_el0_execution_tests": "PASSED (Genuine first_app execution at EL0, 12 insns, 3 syscalls)",
+    "stage211_15_essential_syscalls_tests": "PASSED (SYS_exit, SYS_write, SYS_getpid, SYS_getppid, SYS_sched_yield)",
+    "stage211_17_mach_ipc_expansion_tests": "PASSED (ProcessIpcSpace, port rights, rights transfer)",
+    "stage211_20_minimal_init_process_tests": "PASSED (init_app PID 1 launchd simulation, 17 insns, 5 syscalls)",
+    "stage211_21_first_userspace_integration_tests": "PASSED (End-to-end launch pipeline)",
+    "stage211_22_adversarial_userspace_security_tests": "PASSED (18 attack vectors verified with 0 escapes)",
+    "stage211_23_snapshot_replay_tests": "PASSED (Bit-exact serialization of UAS, process, and IPC state)"
+  }
+}

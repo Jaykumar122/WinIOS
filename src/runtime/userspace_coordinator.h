@@ -49,6 +49,16 @@ public:
         const std::vector<std::string>& argv = {"app"},
         const std::vector<std::string>& envp = {"PATH=/bin"},
         std::size_t max_steps = 10000);
+
+    // Launches and executes a dynamically linked ARM64 Mach-O process
+    static UserspaceLaunchResult launch_and_run_dynamic(
+        const std::vector<std::uint8_t>& macho_binary,
+        const std::unordered_map<std::string, std::vector<std::uint8_t>>& dylib_registry,
+        const std::string& process_name,
+        const std::vector<std::string>& argv = {"app"},
+        const std::vector<std::string>& envp = {"PATH=/bin"},
+        std::size_t max_steps = 10000);
+
 };
 
 } // namespace winios::runtime

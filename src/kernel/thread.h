@@ -78,6 +78,8 @@ public:
     [[nodiscard]] std::int32_t exit_code() const noexcept { return tcb_.exit_code; }
     [[nodiscard]] std::uint64_t cpu_affinity() const noexcept { return tcb_.cpu_affinity; }
     [[nodiscard]] std::uint64_t total_runtime_ticks() const noexcept { return tcb_.total_runtime_ticks; }
+    [[nodiscard]] std::int32_t owner_pid() const noexcept { return owner_pid_; }
+    void set_owner_pid(std::int32_t pid) noexcept { owner_pid_ = pid; }
     [[nodiscard]] const GuestTcb& tcb() const noexcept { return tcb_; }
     [[nodiscard]] GuestTcb& tcb() noexcept { return tcb_; }
 
@@ -120,6 +122,7 @@ public:
 private:
     GuestTcb tcb_;
     std::vector<ThreadState> state_history_{ThreadState::Ready};
+    std::int32_t owner_pid_{0};
 };
 
 class KernelThreadManager {

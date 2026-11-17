@@ -116,6 +116,7 @@ add_library(winios_core STATIC
     src/kernel/task.cpp
     src/kernel/thread.cpp
     src/kernel/bsd_process.cpp
+    src/kernel/process_spawner.cpp
     src/kernel/arm_trap_frame.cpp
     src/kernel/user_stack.cpp
     src/kernel/user_syscall_dispatcher.cpp
@@ -126,7 +127,14 @@ add_library(winios_core STATIC
     src/kernel/sync.cpp
     src/kernel/syscall_dispatcher.cpp
     src/kernel/ipc.cpp
+    src/kernel/pipe.cpp
+    src/kernel/bootstrap_registry.cpp
+    src/kernel/init_coordinator.cpp
+    src/kernel/multi_process_scheduler.cpp
     src/loader/macho_user_loader.cpp
+    src/loader/macho_dependency_graph.cpp
+    src/loader/guest_dynamic_loader.cpp
+    src/vfs/vfs.cpp
     src/runtime/userspace_coordinator.cpp
     src/kernel/handle_table.cpp
     src/kernel/driver_manager.cpp
@@ -4118,6 +4126,114 @@ add_executable(stage211_23_snapshot_replay_tests tests/unit/stage211_23_snapshot
 target_link_libraries(stage211_23_snapshot_replay_tests PRIVATE winios_core)
 winios_set_warnings(stage211_23_snapshot_replay_tests)
 add_test(NAME stage211_23_snapshot_replay_tests COMMAND stage211_23_snapshot_replay_tests)
+
+# Campaign 212 Tests
+add_executable(stage212_2_syscall_abi_conformance_tests tests/unit/stage212_2_syscall_abi_conformance_tests.cpp)
+target_link_libraries(stage212_2_syscall_abi_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage212_2_syscall_abi_conformance_tests)
+add_test(NAME stage212_2_syscall_abi_conformance_tests COMMAND stage212_2_syscall_abi_conformance_tests)
+
+add_executable(stage212_3_process_lifecycle_tests tests/unit/stage212_3_process_lifecycle_tests.cpp)
+target_link_libraries(stage212_3_process_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage212_3_process_lifecycle_tests)
+add_test(NAME stage212_3_process_lifecycle_tests COMMAND stage212_3_process_lifecycle_tests)
+
+add_executable(stage212_4_process_spawn_tests tests/unit/stage212_4_process_spawn_tests.cpp)
+target_link_libraries(stage212_4_process_spawn_tests PRIVATE winios_core)
+winios_set_warnings(stage212_4_process_spawn_tests)
+add_test(NAME stage212_4_process_spawn_tests COMMAND stage212_4_process_spawn_tests)
+
+add_executable(stage212_5_wait_reap_tests tests/unit/stage212_5_wait_reap_tests.cpp)
+target_link_libraries(stage212_5_wait_reap_tests PRIVATE winios_core)
+winios_set_warnings(stage212_5_wait_reap_tests)
+add_test(NAME stage212_5_wait_reap_tests COMMAND stage212_5_wait_reap_tests)
+
+add_executable(stage212_7_dependency_graph_tests tests/unit/stage212_7_dependency_graph_tests.cpp)
+target_link_libraries(stage212_7_dependency_graph_tests PRIVATE winios_core)
+winios_set_warnings(stage212_7_dependency_graph_tests)
+add_test(NAME stage212_7_dependency_graph_tests COMMAND stage212_7_dependency_graph_tests)
+
+add_executable(stage212_8_dynamic_loader_tests tests/unit/stage212_8_dynamic_loader_tests.cpp)
+target_link_libraries(stage212_8_dynamic_loader_tests PRIVATE winios_core)
+winios_set_warnings(stage212_8_dynamic_loader_tests)
+add_test(NAME stage212_8_dynamic_loader_tests COMMAND stage212_8_dynamic_loader_tests)
+
+add_executable(stage212_9_relocation_tests tests/unit/stage212_9_relocation_tests.cpp)
+target_link_libraries(stage212_9_relocation_tests PRIVATE winios_core)
+winios_set_warnings(stage212_9_relocation_tests)
+add_test(NAME stage212_9_relocation_tests COMMAND stage212_9_relocation_tests)
+
+add_executable(stage212_10_runtime_library_tests tests/unit/stage212_10_runtime_library_tests.cpp)
+target_link_libraries(stage212_10_runtime_library_tests PRIVATE winios_core)
+winios_set_warnings(stage212_10_runtime_library_tests)
+add_test(NAME stage212_10_runtime_library_tests COMMAND stage212_10_runtime_library_tests)
+
+add_executable(stage212_11_dynamic_startup_tests tests/unit/stage212_11_dynamic_startup_tests.cpp)
+target_link_libraries(stage212_11_dynamic_startup_tests PRIVATE winios_core)
+winios_set_warnings(stage212_11_dynamic_startup_tests)
+add_test(NAME stage212_11_dynamic_startup_tests COMMAND stage212_11_dynamic_startup_tests)
+
+add_executable(stage212_12_vfs_tests tests/unit/stage212_12_vfs_tests.cpp)
+target_link_libraries(stage212_12_vfs_tests PRIVATE winios_core)
+winios_set_warnings(stage212_12_vfs_tests)
+add_test(NAME stage212_12_vfs_tests COMMAND stage212_12_vfs_tests)
+
+add_executable(stage212_13_file_ops_tests tests/unit/stage212_13_file_ops_tests.cpp)
+target_link_libraries(stage212_13_file_ops_tests PRIVATE winios_core)
+winios_set_warnings(stage212_13_file_ops_tests)
+add_test(NAME stage212_13_file_ops_tests COMMAND stage212_13_file_ops_tests)
+
+add_executable(stage212_14_pipe_tests tests/unit/stage212_14_pipe_tests.cpp)
+target_link_libraries(stage212_14_pipe_tests PRIVATE winios_core)
+winios_set_warnings(stage212_14_pipe_tests)
+add_test(NAME stage212_14_pipe_tests COMMAND stage212_14_pipe_tests)
+
+add_executable(stage212_15_bootstrap_registry_tests tests/unit/stage212_15_bootstrap_registry_tests.cpp)
+target_link_libraries(stage212_15_bootstrap_registry_tests PRIVATE winios_core)
+winios_set_warnings(stage212_15_bootstrap_registry_tests)
+add_test(NAME stage212_15_bootstrap_registry_tests COMMAND stage212_15_bootstrap_registry_tests)
+
+add_executable(stage212_16_mach_ipc_tests tests/unit/stage212_16_mach_ipc_tests.cpp)
+target_link_libraries(stage212_16_mach_ipc_tests PRIVATE winios_core)
+winios_set_warnings(stage212_16_mach_ipc_tests)
+add_test(NAME stage212_16_mach_ipc_tests COMMAND stage212_16_mach_ipc_tests)
+
+add_executable(stage212_17_init_coordinator_tests tests/unit/stage212_17_init_coordinator_tests.cpp)
+target_link_libraries(stage212_17_init_coordinator_tests PRIVATE winios_core)
+winios_set_warnings(stage212_17_init_coordinator_tests)
+add_test(NAME stage212_17_init_coordinator_tests COMMAND stage212_17_init_coordinator_tests)
+
+add_executable(stage212_18_multi_process_scheduler_tests tests/unit/stage212_18_multi_process_scheduler_tests.cpp)
+target_link_libraries(stage212_18_multi_process_scheduler_tests PRIVATE winios_core)
+winios_set_warnings(stage212_18_multi_process_scheduler_tests)
+add_test(NAME stage212_18_multi_process_scheduler_tests COMMAND stage212_18_multi_process_scheduler_tests)
+
+add_executable(stage212_19_workload_assembly_tests tests/unit/stage212_19_workload_assembly_tests.cpp)
+target_link_libraries(stage212_19_workload_assembly_tests PRIVATE winios_core)
+winios_set_warnings(stage212_19_workload_assembly_tests)
+add_test(NAME stage212_19_workload_assembly_tests COMMAND stage212_19_workload_assembly_tests)
+
+add_executable(stage212_20_multi_process_e2e_tests tests/unit/stage212_20_multi_process_e2e_tests.cpp)
+target_link_libraries(stage212_20_multi_process_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage212_20_multi_process_e2e_tests)
+add_test(NAME stage212_20_multi_process_e2e_tests COMMAND stage212_20_multi_process_e2e_tests)
+
+add_executable(stage212_21_snapshot_replay_tests tests/unit/stage212_21_snapshot_replay_tests.cpp)
+target_link_libraries(stage212_21_snapshot_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage212_21_snapshot_replay_tests)
+add_test(NAME stage212_21_snapshot_replay_tests COMMAND stage212_21_snapshot_replay_tests)
+
+add_executable(stage212_22_adversarial_security_tests tests/unit/stage212_22_adversarial_security_tests.cpp)
+target_link_libraries(stage212_22_adversarial_security_tests PRIVATE winios_core)
+winios_set_warnings(stage212_22_adversarial_security_tests)
+add_test(NAME stage212_22_adversarial_security_tests COMMAND stage212_22_adversarial_security_tests)
+
+
+
+
+
+
+
 
 
 

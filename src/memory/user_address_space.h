@@ -57,6 +57,11 @@ public:
                              std::size_t stack_size,
                              std::uint64_t& out_stack_bottom_va);
 
+    // Track a physical page owned by this address space
+    void record_allocated_page(std::uint64_t pa);
+    [[nodiscard]] const std::vector<std::uint64_t>& allocated_pages() const noexcept { return allocated_physical_pages_; }
+
+
     // Copy user data into address space
     bool copyin(std::uint64_t dst_user_va, const void* src_host, std::size_t len);
 

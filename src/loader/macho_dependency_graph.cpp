@@ -1,4 +1,5 @@
 #include "loader/macho_dependency_graph.h"
+#include "loader/macho_user_loader.h"
 
 #include <algorithm>
 #include <cstring>
@@ -392,6 +393,229 @@ DependencyResolutionResult MachODependencyGraph::resolve_dependencies(
     }
 
     return result;
+}
+
+// =============================================================================
+// MachoDependencyGraph (Campaign 212 Implementation)
+// =============================================================================
+
+inline constexpr std::uint32_t kLcLoadDylib212     = 0x0000000Cu;
+inline constexpr std::uint32_t kLcIdDylib212       = 0x0000000Du;
+inline constexpr std::uint32_t kLcLoadWeakDylib212 = 0x80000018u;
+inline constexpr std::uint32_t kLcReexportDylib212 = 0x8000001Fu;
+
+bool MachoDependencyGraph::parse_dependencies(
+    const std::vector<std::uint8_t>& binary,
+    std::vector<DylibDependency>& out_deps,
+    std::string* out_id,
+    std::string* out_err) {
+    out_deps.clear();
+    if (out_id) out_id->clear();
+
+    if (!MachoUserLoader::validate_header(binary.data(), binary.size(), out_err)) {
+        return false;
+    }
+
+    std::uint32_t ncmds = 0;
+    std::uint32_t sizeofcmds = 0;
+    std::memcpy(&ncmds, binary.data() + 16, sizeof(ncmds));
+    std::memcpy(&sizeofcmds, binary.data() + 20, sizeof(sizeofcmds));
+
+    if (32 + sizeofcmds > binary.size()) {
+        if (out_err) *out_err = "Mach-O load command block exceeds binary size";
+        return false;
+    }
+
+    std::size_t offset = 32;
+
+    for (std::uint32_t i = 0; i < ncmds; ++i) {
+        if (offset + 8 > binary.size()) {
+            if (out_err) *out_err = "Truncated load command header";
+            return false;
+        }
+
+        std::uint32_t cmd = 0;
+        std::uint32_t cmdsize = 0;
+        std::memcpy(&cmd, binary.data() + offset, sizeof(cmd));
+        std::memcpy(&cmdsize, binary.data() + offset + 4, sizeof(cmdsize));
+
+        if (cmdsize < 8 || offset + cmdsize > binary.size()) {
+            if (out_err) *out_err = "Invalid load command size";
+            return false;
+        }
+
+        if (cmd == kLcIdDylib212) {
+            if (cmdsize >= 24) {
+                std::uint32_t name_offset = 0;
+                std::memcpy(&name_offset, binary.data() + offset + 8, sizeof(name_offset));
+                if (name_offset < cmdsize && offset + name_offset < binary.size()) {
+                    const char* str_start = reinterpret_cast<const char*>(binary.data() + offset + name_offset);
+                    std::size_t max_len = cmdsize - name_offset;
+                    std::size_t len = 0;
+                    while (len < max_len && str_start[len] != '\0') ++len;
+                    if (out_id) *out_id = std::string(str_start, len);
+                }
+            }
+        } else if (cmd == kLcLoadDylib212 || cmd == kLcLoadWeakDylib212 || cmd == kLcReexportDylib212) {
+            if (cmdsize >= 24) {
+                std::uint32_t name_offset = 0;
+                std::uint32_t cur_ver = 0;
+                std::uint32_t compat_ver = 0;
+                std::memcpy(&name_offset, binary.data() + offset + 8, sizeof(name_offset));
+                std::memcpy(&cur_ver, binary.data() + offset + 16, sizeof(cur_ver));
+                std::memcpy(&compat_ver, binary.data() + offset + 20, sizeof(compat_ver));
+
+                if (name_offset < cmdsize && offset + name_offset < binary.size()) {
+                    const char* str_start = reinterpret_cast<const char*>(binary.data() + offset + name_offset);
+                    std::size_t max_len = cmdsize - name_offset;
+                    std::size_t len = 0;
+                    while (len < max_len && str_start[len] != '\0') ++len;
+
+                    DylibDependency dep;
+                    dep.raw_path = std::string(str_start, len);
+                    dep.current_version = cur_ver;
+                    dep.compatibility_version = compat_ver;
+                    dep.is_weak = (cmd == kLcLoadWeakDylib212);
+                    dep.is_reexport = (cmd == kLcReexportDylib212);
+
+                    auto slash = dep.raw_path.find_last_of('/');
+                    if (slash != std::string::npos) {
+                        dep.resolved_name = dep.raw_path.substr(slash + 1);
+                    } else {
+                        dep.resolved_name = dep.raw_path;
+                    }
+
+                    out_deps.push_back(std::move(dep));
+                }
+            }
+        }
+
+        offset += cmdsize;
+    }
+
+    return true;
+}
+
+bool MachoDependencyGraph::add_image(
+    const std::string& name,
+    const std::vector<std::uint8_t>& binary,
+    std::string* out_err) {
+    if (nodes_.size() >= kMaxDependencies) {
+        if (out_err) *out_err = "Maximum dependency count exceeded (" + std::to_string(kMaxDependencies) + ")";
+        return false;
+    }
+
+    if (nodes_.find(name) != nodes_.end()) {
+        if (out_err) *out_err = "Duplicate image name: " + name;
+        return false;
+    }
+
+    std::vector<DylibDependency> deps;
+    std::string dylib_id;
+    if (!parse_dependencies(binary, deps, &dylib_id, out_err)) {
+        return false;
+    }
+
+    DependencyNode node;
+    node.name = name;
+    node.dylib_id = dylib_id;
+    node.binary_data = binary;
+    node.dependencies = std::move(deps);
+
+    nodes_[name] = std::move(node);
+    return true;
+}
+
+bool MachoDependencyGraph::resolve_load_order(
+    const std::string& root_name,
+    std::vector<std::string>& out_load_order,
+    std::string* out_err) const {
+    out_load_order.clear();
+
+    auto it = nodes_.find(root_name);
+    if (it == nodes_.end()) {
+        if (out_err) *out_err = "Root binary '" + root_name + "' not found in dependency graph";
+        return false;
+    }
+
+    std::vector<std::string> visiting;
+    std::vector<std::string> visited;
+    std::vector<std::string> order;
+
+    if (!dfs_resolve(root_name, 0, visiting, visited, order, out_err)) {
+        return false;
+    }
+
+    out_load_order = std::move(order);
+    return true;
+}
+
+bool MachoDependencyGraph::dfs_resolve(
+    const std::string& current,
+    std::size_t depth,
+    std::vector<std::string>& visiting,
+    std::vector<std::string>& visited,
+    std::vector<std::string>& order,
+    std::string* out_err) const {
+    if (depth >= kMaxDepth) {
+        if (out_err) *out_err = "Dependency traversal depth exceeded (" + std::to_string(kMaxDepth) + ")";
+        return false;
+    }
+
+    if (std::find(visiting.begin(), visiting.end(), current) != visiting.end()) {
+        if (out_err) *out_err = "Dependency cycle detected involving '" + current + "'";
+        return false;
+    }
+
+    visiting.push_back(current);
+
+    auto node_it = nodes_.find(current);
+    if (node_it == nodes_.end()) {
+        if (out_err) *out_err = "Node '" + current + "' not found";
+        return false;
+    }
+
+    for (const auto& dep : node_it->second.dependencies) {
+        std::string target_key;
+        if (nodes_.find(dep.resolved_name) != nodes_.end()) {
+            target_key = dep.resolved_name;
+        } else if (nodes_.find(dep.raw_path) != nodes_.end()) {
+            target_key = dep.raw_path;
+        } else {
+            for (const auto& [k, node] : nodes_) {
+                if (node.dylib_id == dep.raw_path || node.dylib_id == dep.resolved_name || node.name == dep.resolved_name) {
+                    target_key = k;
+                    break;
+                }
+            }
+        }
+
+        if (target_key.empty()) {
+            if (dep.is_weak) {
+                continue;
+            }
+            if (out_err) *out_err = "Missing required dynamic library: '" + dep.raw_path + "'";
+            return false;
+        }
+
+        if (target_key == current) {
+            continue;
+        }
+
+        if (std::find(visited.begin(), visited.end(), target_key) != visited.end()) {
+            continue;
+        }
+
+        if (!dfs_resolve(target_key, depth + 1, visiting, visited, order, out_err)) {
+            return false;
+        }
+    }
+
+    visiting.pop_back();
+    visited.push_back(current);
+    order.push_back(current);
+
+    return true;
 }
 
 } // namespace winios::loader

@@ -159,6 +159,21 @@ bool FileDescriptorTable::deserialize(const std::uint8_t*& src, std::size_t& rem
 BsdProcess::BsdProcess(pid_t pid, pid_t ppid, std::string name, KernelTask* task)
     : pid_(pid), ppid_(ppid), name_(std::move(name)), state_(ProcessState::Starting), task_(task) {}
 
+void BsdProcess::add_child(pid_t child_pid) {
+    if (std::find(children_.begin(), children_.end(), child_pid) == children_.end()) {
+        children_.push_back(child_pid);
+    }
+}
+
+bool BsdProcess::remove_child(pid_t child_pid) {
+    auto it = std::find(children_.begin(), children_.end(), child_pid);
+    if (it != children_.end()) {
+        children_.erase(it);
+        return true;
+    }
+    return false;
+}
+
 void BsdProcess::add_thread(KernelThread* thread) {
     if (thread && std::find(threads_.begin(), threads_.end(), thread) == threads_.end()) {
         threads_.push_back(thread);
@@ -205,6 +220,17 @@ void BsdProcess::serialize(std::vector<std::uint8_t>& dst) const {
     dst.insert(dst.end(), name_.begin(), name_.end());
 
     fd_table_.serialize(dst);
+
+    // Serialize children
+    const std::uint32_t child_count = static_cast<std::uint32_t>(children_.size());
+    const auto* p_cc = reinterpret_cast<const std::uint8_t*>(&child_count);
+    dst.insert(dst.end(), p_cc, p_cc + sizeof(child_count));
+    for (pid_t c : children_) {
+        const auto* pc = reinterpret_cast<const std::uint8_t*>(&c);
+        dst.insert(dst.end(), pc, pc + sizeof(c));
+    }
+
+    dst.push_back(parent_notified_ ? 1u : 0u);
 }
 
 std::unique_ptr<BsdProcess> BsdProcess::deserialize(const std::uint8_t*& src, std::size_t& remaining) {
@@ -250,6 +276,28 @@ std::unique_ptr<BsdProcess> BsdProcess::deserialize(const std::uint8_t*& src, st
         return nullptr;
     }
 
+    // Deserialize children if present (for backward compatibility, check remaining size)
+    if (remaining >= sizeof(std::uint32_t)) {
+        std::uint32_t child_count = 0;
+        std::memcpy(&child_count, src, sizeof(child_count));
+        src += sizeof(child_count);
+        remaining -= sizeof(child_count);
+
+        for (std::uint32_t i = 0; i < child_count; ++i) {
+            if (remaining < sizeof(pid_t)) break;
+            pid_t c = 0;
+            std::memcpy(&c, src, sizeof(c));
+            src += sizeof(c);
+            remaining -= sizeof(c);
+            proc->children_.push_back(c);
+        }
+
+        if (remaining >= 1) {
+            proc->parent_notified_ = (*src++ != 0);
+            remaining -= 1;
+        }
+    }
+
     return proc;
 }
 
@@ -271,9 +319,30 @@ bool BsdProcessManager::initialize(KernelTask* kernel_task) {
 }
 
 BsdProcess* BsdProcessManager::create_process(const std::string& name, pid_t ppid, KernelTask* task) {
-    const pid_t pid = next_pid_++;
+    // Find next available PID
+    pid_t pid = next_pid_++;
+    if (next_pid_ >= kMaxPids) {
+        next_pid_ = 1;
+    }
+    // Handle PID collision
+    while (processes_.find(pid) != processes_.end()) {
+        pid = next_pid_++;
+        if (next_pid_ >= kMaxPids) {
+            next_pid_ = 1;
+        }
+    }
+
     auto proc = std::make_unique<BsdProcess>(pid, ppid, name, task);
     proc->set_state(ProcessState::Runnable);
+
+    // Register with parent if ppid exists
+    if (ppid != 0) {
+        auto parent_it = processes_.find(ppid);
+        if (parent_it != processes_.end()) {
+            parent_it->second->add_child(pid);
+        }
+    }
+
     BsdProcess* ret = proc.get();
     processes_[pid] = std::move(proc);
     return ret;
@@ -287,7 +356,28 @@ bool BsdProcessManager::terminate_process(pid_t pid, int exit_code) {
     if (it == processes_.end()) {
         return false;
     }
-    it->second->terminate(exit_code);
+    auto* proc = it->second.get();
+    proc->terminate(exit_code);
+
+    // Reparent orphans to PID 1 (Darwin XNU standard bsd/kern/kern_exit.c)
+    BsdProcess* init_proc = get_process(1);
+    for (pid_t child_pid : proc->children()) {
+        BsdProcess* child = get_process(child_pid);
+        if (child) {
+            child->set_ppid(1);
+            if (init_proc && init_proc->pid() != child_pid) {
+                init_proc->add_child(child_pid);
+            }
+        }
+    }
+    proc->clear_children();
+
+    // Notify parent
+    BsdProcess* parent = get_process(proc->ppid());
+    if (parent) {
+        proc->notify_parent();
+    }
+
     return true;
 }
 
@@ -318,9 +408,68 @@ bool BsdProcessManager::reap_process(pid_t pid) {
     if (!it->second->is_terminated()) {
         return false; // Can only reap zombie/terminated processes
     }
+
+    // Unlink from parent
+    BsdProcess* parent = get_process(it->second->ppid());
+    if (parent) {
+        parent->remove_child(pid);
+    }
+
     processes_.erase(it);
     return true;
 }
+
+int BsdProcessManager::wait_process(pid_t parent_pid, pid_t wpid, int* out_status, int options) {
+    BsdProcess* parent = get_process(parent_pid);
+    if (!parent || parent->children().empty()) {
+        return -10; // -ECHILD (No child processes)
+    }
+
+    if (wpid < -1 || wpid == 0) {
+        return -22; // -EINVAL (Process groups not supported in bounded model)
+    }
+
+    if (wpid > 0) {
+        const auto& children = parent->children();
+        if (std::find(children.begin(), children.end(), wpid) == children.end()) {
+            return -10; // -ECHILD (Not a child of caller)
+        }
+        BsdProcess* child = get_process(wpid);
+        if (!child) {
+            return -10; // -ECHILD
+        }
+        if (child->is_terminated()) {
+            if (out_status) {
+                *out_status = (child->exit_code() & 0xFF) << 8;
+            }
+            reap_process(wpid);
+            return wpid;
+        }
+        if ((options & 1) != 0) { // WNOHANG
+            return 0; // Child still running
+        }
+        return 0;
+    }
+
+    // wpid == -1: wait for any child
+    const auto children = parent->children();
+    for (pid_t child_pid : children) {
+        BsdProcess* child = get_process(child_pid);
+        if (child && child->is_terminated()) {
+            if (out_status) {
+                *out_status = (child->exit_code() & 0xFF) << 8;
+            }
+            reap_process(child_pid);
+            return child_pid;
+        }
+    }
+
+    if ((options & 1) != 0) { // WNOHANG
+        return 0;
+    }
+    return 0;
+}
+
 
 void BsdProcessManager::serialize(std::vector<std::uint8_t>& dst) const {
     const auto* p_next = reinterpret_cast<const std::uint8_t*>(&next_pid_);
@@ -337,28 +486,32 @@ void BsdProcessManager::serialize(std::vector<std::uint8_t>& dst) const {
     }
 }
 
-bool BsdProcessManager::deserialize(const std::uint8_t* src, std::size_t size) {
-    if (size < sizeof(pid_t) + sizeof(std::uint32_t)) return false;
-    const std::uint8_t* ptr = src;
-    std::size_t remaining = size;
+bool BsdProcessManager::deserialize_stream(const std::uint8_t*& src, std::size_t& remaining) {
+    if (remaining < sizeof(pid_t) + sizeof(std::uint32_t)) return false;
 
-    std::memcpy(&next_pid_, ptr, sizeof(next_pid_));
-    ptr += sizeof(next_pid_);
+    std::memcpy(&next_pid_, src, sizeof(next_pid_));
+    src += sizeof(next_pid_);
     remaining -= sizeof(next_pid_);
 
     std::uint32_t count = 0;
-    std::memcpy(&count, ptr, sizeof(count));
-    ptr += sizeof(count);
+    std::memcpy(&count, src, sizeof(count));
+    src += sizeof(count);
     remaining -= sizeof(count);
 
     processes_.clear();
     for (std::uint32_t i = 0; i < count; ++i) {
-        auto proc = BsdProcess::deserialize(ptr, remaining);
+        auto proc = BsdProcess::deserialize(src, remaining);
         if (!proc) return false;
         const pid_t pid = proc->pid();
         processes_[pid] = std::move(proc);
     }
     return true;
+}
+
+bool BsdProcessManager::deserialize(const std::uint8_t* src, std::size_t size) {
+    const std::uint8_t* ptr = src;
+    std::size_t remaining = size;
+    return deserialize_stream(ptr, remaining);
 }
 
 } // namespace winios::kernel

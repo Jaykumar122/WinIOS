@@ -26,6 +26,7 @@ KernelThread::KernelThread(std::uint64_t tid,
     tcb_.stack_size = stack_size;
     tcb_.total_runtime_ticks = 0;
     tcb_.exit_code = 0;
+    owner_pid_ = static_cast<std::int32_t>(arg);
 
     // Stack pointer alignment (16-byte aligned at top of allocated stack)
     const std::uint64_t initial_sp = (stack_base + stack_size) & ~0xFULL;

@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "loader/macho_loader.h"
@@ -18,7 +19,7 @@ namespace winios::loader {
 constexpr std::size_t kMaxDependencyDepth = 64;
 
 // -----------------------------------------------------------------------------
-// Mach-O Dependency Relationship
+// Mach-O Dependency Relationship (Legacy / Multi-Image Graph)
 // -----------------------------------------------------------------------------
 struct MachODependencyEdge {
     std::string   raw_path;
@@ -108,6 +109,78 @@ public:
 
 private:
     std::map<std::string, MachODependencyNode> nodes_;
+};
+
+// =============================================================================
+// Campaign 212: MachoDependencyGraph (Darwin Userspace Runtime & Dyld Loader)
+// =============================================================================
+
+struct DylibDependency {
+    std::string raw_path;
+    std::string resolved_name;
+    bool is_weak{false};
+    bool is_reexport{false};
+    std::uint32_t current_version{0};
+    std::uint32_t compatibility_version{0};
+};
+
+struct DependencyNode {
+    std::string name;
+    std::string dylib_id;
+    std::vector<std::uint8_t> binary_data;
+    std::vector<DylibDependency> dependencies;
+};
+
+class MachoDependencyGraph {
+public:
+    static constexpr std::size_t kMaxDependencies = 16;
+    static constexpr std::size_t kMaxDepth = 8;
+
+    MachoDependencyGraph() = default;
+    ~MachoDependencyGraph() = default;
+
+    // Parses LC_LOAD_DYLIB, LC_LOAD_WEAK_DYLIB, LC_REEXPORT_DYLIB, LC_ID_DYLIB from a Mach-O binary
+    static bool parse_dependencies(
+        const std::vector<std::uint8_t>& binary,
+        std::vector<DylibDependency>& out_deps,
+        std::string* out_id = nullptr,
+        std::string* out_err = nullptr);
+
+    // Adds a named Mach-O image to the graph
+    bool add_image(
+        const std::string& name,
+        const std::vector<std::uint8_t>& binary,
+        std::string* out_err = nullptr);
+
+    // Resolves dependency loading order (bottom-up / topological order)
+    bool resolve_load_order(
+        const std::string& root_name,
+        std::vector<std::string>& out_load_order,
+        std::string* out_err = nullptr) const;
+
+    [[nodiscard]] bool has_image(const std::string& name) const noexcept {
+        return nodes_.find(name) != nodes_.end();
+    }
+
+    [[nodiscard]] const DependencyNode* get_node(const std::string& name) const {
+        auto it = nodes_.find(name);
+        return (it != nodes_.end()) ? &it->second : nullptr;
+    }
+
+    [[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
+
+    void clear() noexcept { nodes_.clear(); }
+
+private:
+    bool dfs_resolve(
+        const std::string& current,
+        std::size_t depth,
+        std::vector<std::string>& visiting,
+        std::vector<std::string>& visited,
+        std::vector<std::string>& order,
+        std::string* out_err) const;
+
+    std::unordered_map<std::string, DependencyNode> nodes_{};
 };
 
 } // namespace winios::loader

@@ -29,6 +29,16 @@ UserAddressSpace::~UserAddressSpace() {
         ppm_.free_page(pa);
     }
     allocated_physical_pages_.clear();
+    if (root_l2_table_pa_ != 0) {
+        ppm_.free_page(root_l2_table_pa_);
+        root_l2_table_pa_ = 0;
+    }
+}
+
+void UserAddressSpace::record_allocated_page(std::uint64_t pa) {
+    if (pa != 0 && std::find(allocated_physical_pages_.begin(), allocated_physical_pages_.end(), pa) == allocated_physical_pages_.end()) {
+        allocated_physical_pages_.push_back(pa);
+    }
 }
 
 bool UserAddressSpace::map_user_page(std::uint64_t va,
@@ -45,9 +55,15 @@ bool UserAddressSpace::map_user_page(std::uint64_t va,
         return false;
     }
 
+    if (translate(va) != 0) {
+        return false; // Already mapped (prevent overlapping duplicate mappings)
+    }
+
     if (!vpt_.map_page(root_l2_table_pa_, va, pa, perms, PageMemoryType::NormalMemory, &ppm_)) {
         return false;
     }
+
+    record_allocated_page(pa);
 
     // Update VM map
     std::uint32_t vm_prot = kVmProtRead;
