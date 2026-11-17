@@ -1,0 +1,81 @@
+{
+  "campaign": 213,
+  "system": "WinIOS Virtual Display, Window Server, Compositor & Touch Input Subsystem",
+  "target_research_profile": "iPhone 15 (iPhone15,4 / D37AP / Apple A16 Bionic T8120)",
+  "display_profile": {
+    "default_resolution": "800x1200",
+    "retina_reference_resolution": "1179x2556",
+    "pixel_format": "B8G8R8A8_UNORM / R8G8B8A8_UNORM / R5G6B5_UNORM",
+    "supported_orientations": [
+      "Portrait",
+      "PortraitUpsideDown",
+      "LandscapeLeft",
+      "LandscapeRight"
+    ],
+    "max_display_dimensions": "8192x8192",
+    "max_framebuffer_allocation_mb": 64
+  },
+  "window_server_capabilities": {
+    "compositor_type": "Deterministic Multi-Surface Z-Ordered Compositor",
+    "blending": "Porter-Duff Source-Over Alpha Blending",
+    "damage_tracking": "Bounding Box Dirty Rect Tracking & Partial Redraw",
+    "frame_scheduler": "Deterministic Virtual Clock Frame Scheduler (60 / 120 FPS)",
+    "per_surface_memory_limit_mb": 32,
+    "per_process_surface_quota": 16,
+    "total_display_budget_mb": 128,
+    "access_control": "PID-based ownership validation with kernel privilege override"
+  },
+  "input_subsystem_capabilities": {
+    "digitizer": "10-contact multi-touch digitizer",
+    "touch_phases": [
+      "TouchBegin",
+      "TouchMove",
+      "TouchEnd",
+      "TouchCancel"
+    ],
+    "hardware_buttons": [
+      "ButtonHome",
+      "ButtonLock",
+      "ButtonVolumeUp",
+      "ButtonVolumeDown"
+    ],
+    "keyboard_support": "ASCII KeyPress and KeyRelease",
+    "queue_architecture": "Bounded FIFO ring buffer (256 events, oldest overwrite on overflow)",
+    "routing_policy": "Frontmost window hit-testing with contact capture and window-local coordinate translation"
+  },
+  "syscall_interface_category_c": {
+    "abi_convention": "X16 = Syscall Number, X0..X5 = Arguments, X0 = Return Code / Return Value",
+    "syscalls": [
+      { "number": 500, "name": "SYS_winios_window_create", "description": "Create application window and display surface" },
+      { "number": 501, "name": "SYS_winios_window_destroy", "description": "Destroy window and release allocated surfaces" },
+      { "number": 502, "name": "SYS_winios_surface_update", "description": "Upload pixel buffer to process display surface" },
+      { "number": 503, "name": "SYS_winios_surface_present", "description": "Mark surface dirty and schedule compositor frame" },
+      { "number": 504, "name": "SYS_winios_poll_event", "description": "Retrieve next input event from process queue (window-local coordinates)" },
+      { "number": 505, "name": "SYS_winios_surface_fill", "description": "Fill rectangle on surface with 32-bit color" },
+      { "number": 506, "name": "SYS_winios_set_window_title", "description": "Update window title string" }
+    ]
+  },
+  "guest_workloads": {
+    "guest_shell": {
+      "type": "Freestanding ARM64 Mach-O",
+      "execution_level": "EL0",
+      "role": "Home screen shell with app launcher icons",
+      "window_size": "800x1200",
+      "touch_targets": ["Counter App Icon", "Notes App Icon"]
+    },
+    "counter_app": {
+      "type": "Freestanding ARM64 Mach-O",
+      "execution_level": "EL0",
+      "role": "Interactive numeric counter application",
+      "window_size": "700x900",
+      "touch_targets": ["+1 Increment Button", "Exit Button"]
+    },
+    "notes_app": {
+      "type": "Freestanding ARM64 Mach-O",
+      "execution_level": "EL0",
+      "role": "Interactive notepad application",
+      "window_size": "700x900",
+      "touch_targets": ["Checklist Checkbox", "Close Note Button"]
+    }
+  }
+}

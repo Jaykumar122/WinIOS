@@ -1,7 +1,13 @@
 #include "kernel/user_syscall_dispatcher.h"
 #include "kernel/pipe.h"
 #include "vfs/vfs.h"
+#include "graphics/window_manager.h"
+#include "graphics/display_surface.h"
+#include "graphics/compositor.h"
+#include "input/input_router.h"
+#include "runtime/guest_ui_runtime.h"
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -32,7 +38,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     std::uint64_t arg0 = 0;
     std::uint64_t arg1 = 0;
     std::uint64_t arg2 = 0;
-    // std::uint64_t arg3 = 0;
+    std::uint64_t arg3 = 0;
+    std::uint64_t arg4 = 0;
+    std::uint64_t arg5 = 0;
 
     bool is_darwin_strict = false;
     bool is_fast_abi = false;
@@ -44,7 +52,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         arg0 = cpu.read_register(0);
         arg1 = cpu.read_register(1);
         arg2 = cpu.read_register(2);
-        // arg3 = cpu.read_register(3);
+        arg3 = cpu.read_register(3);
+        arg4 = cpu.read_register(4);
+        arg5 = cpu.read_register(5);
     } else if (abi_mode_ == SyscallAbi::WinIOSFast) {
         is_fast_abi = true;
         last_used_abi_ = SyscallAbi::WinIOSFast;
@@ -52,14 +62,21 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         arg0 = cpu.read_register(1);
         arg1 = cpu.read_register(2);
         arg2 = cpu.read_register(3);
+        arg3 = cpu.read_register(4);
+        arg4 = cpu.read_register(5);
+        arg5 = cpu.read_register(6);
     } else { // AutoDetect
         const std::uint64_t reg16 = cpu.read_register(16);
         if (reg16 != 0) {
+            is_darwin_strict = true;
             last_used_abi_ = SyscallAbi::DarwinStrict;
             sys_num = reg16;
             arg0 = cpu.read_register(0);
             arg1 = cpu.read_register(1);
             arg2 = cpu.read_register(2);
+            arg3 = cpu.read_register(3);
+            arg4 = cpu.read_register(4);
+            arg5 = cpu.read_register(5);
         } else {
             last_used_abi_ = SyscallAbi::WinIOSFast;
             is_fast_abi = true;
@@ -67,6 +84,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             arg0 = cpu.read_register(1);
             arg1 = cpu.read_register(2);
             arg2 = cpu.read_register(3);
+            arg3 = cpu.read_register(4);
+            arg4 = cpu.read_register(5);
+            arg5 = cpu.read_register(6);
         }
     }
 
@@ -467,6 +487,227 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     case kSysMachMsg: {
         ++stats_.total_ipc_traps;
         return record_success(0); // KERN_SUCCESS
+    }
+
+    case kSysWiniosWindowCreate: {
+        ++stats_.total_display_syscalls;
+        if (!surface_mgr_ || !window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::string title;
+        if (arg0 != 0 && arg1 > 0) {
+            std::size_t read_len = std::min<std::size_t>(static_cast<std::size_t>(arg1), 256u);
+            std::vector<char> str_buf(read_len + 1, 0);
+            if (uas.copyout(reinterpret_cast<const void*>(arg0), str_buf.data(), read_len)) {
+                title = str_buf.data();
+            }
+        }
+        if (title.empty()) {
+            title = "WinIOS App";
+        }
+
+        std::uint32_t w = static_cast<std::uint32_t>(arg4);
+        std::uint32_t h = static_cast<std::uint32_t>(arg5);
+        if (w == 0 || h == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        std::shared_ptr<graphics::DisplaySurface> surf;
+        auto res = surface_mgr_->create_surface(proc.pid(), w, h, graphics::PixelFormat::B8G8R8A8_UNORM, surf);
+        if (res != graphics::SurfaceResultCode::Success || !surf) {
+            if (res == graphics::SurfaceResultCode::SurfaceLimitExceeded ||
+                res == graphics::SurfaceResultCode::MemoryBudgetExceeded ||
+                res == graphics::SurfaceResultCode::PerSurfaceLimitExceeded) {
+                return record_error(kErrnoEPERM);
+            }
+            return record_error(kErrnoEINVAL);
+        }
+
+        graphics::Rect frame{
+            static_cast<std::uint32_t>(std::max<std::int32_t>(0, static_cast<std::int32_t>(arg2))),
+            static_cast<std::uint32_t>(std::max<std::int32_t>(0, static_cast<std::int32_t>(arg3))),
+            w,
+            h
+        };
+
+        std::uint32_t wid = window_mgr_->create_window(proc.pid(), title, frame, surf);
+        if (compositor_) {
+            compositor_->add_surface(surf);
+        }
+
+        return record_success(wid);
+    }
+
+    case kSysWiniosWindowDestroy: {
+        ++stats_.total_display_syscalls;
+        if (!surface_mgr_ || !window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+
+        if (compositor_ && win->surface) {
+            compositor_->remove_surface(win->surface->id());
+        }
+
+        if (input_router_) {
+            input_router_->on_window_destroyed(wid);
+        }
+
+        if (win->surface) {
+            surface_mgr_->destroy_surface(proc.pid(), win->surface->id());
+        }
+
+        window_mgr_->destroy_window(proc.pid(), wid);
+        return record_success(0);
+    }
+
+    case kSysWiniosSurfaceUpdate: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        std::uint64_t buf_va = arg1;
+        std::size_t buf_size = static_cast<std::size_t>(arg2);
+
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+        if (!win->surface) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (buf_size < win->surface->size_bytes()) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        std::vector<std::uint8_t> temp_buf(win->surface->size_bytes());
+        if (!uas.copyout(reinterpret_cast<const void*>(buf_va), temp_buf.data(), temp_buf.size())) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        win->surface->copy_pixels(proc.pid(), temp_buf.data(), temp_buf.size());
+        if (compositor_) {
+            compositor_->invalidate_rect(win->frame);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosSurfacePresent: {
+        ++stats_.total_display_syscalls;
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        if (window_mgr_) {
+            auto win = window_mgr_->get_window(wid);
+            if (win && win->can_access(proc.pid()) && win->surface) {
+                win->surface->damage_tracker().mark_full_damage(win->surface->width(), win->surface->height());
+                if (compositor_) {
+                    compositor_->composite(false);
+                }
+            }
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosPollEvent: {
+        ++stats_.total_input_polls;
+        if (!input_router_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint64_t evt_va = arg0;
+        std::size_t evt_size = static_cast<std::size_t>(arg1);
+        if (evt_size < sizeof(runtime::GuestInputEvent)) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        input::InputEvent raw_evt{};
+        if (!input_router_->poll_event(proc.pid(), raw_evt)) {
+            // No event available: return 0
+            return record_success(0);
+        }
+
+        runtime::GuestInputEvent guest_evt{};
+        guest_evt.type = static_cast<std::uint32_t>(raw_evt.type);
+        guest_evt.contact_id = raw_evt.touch.contact_id;
+        guest_evt.x = raw_evt.touch.x;
+        guest_evt.y = raw_evt.touch.y;
+        if (raw_evt.target_window_id != 0 && window_mgr_) {
+            auto win = window_mgr_->get_window(raw_evt.target_window_id);
+            if (win) {
+                guest_evt.x -= static_cast<std::int32_t>(win->frame.x);
+                guest_evt.y -= static_cast<std::int32_t>(win->frame.y);
+            }
+        }
+        guest_evt.key_code = raw_evt.key_code;
+        guest_evt.window_id = raw_evt.target_window_id;
+        guest_evt.timestamp_us = raw_evt.timestamp_us;
+
+        if (!uas.copyin(evt_va, &guest_evt, sizeof(guest_evt))) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        return record_success(1); // 1 event delivered!
+    }
+
+    case kSysWiniosSurfaceFill: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+        if (!win->surface) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        graphics::Rect r{
+            static_cast<std::uint32_t>(arg1),
+            static_cast<std::uint32_t>(arg2),
+            static_cast<std::uint32_t>(arg3),
+            static_cast<std::uint32_t>(arg4)
+        };
+        std::uint32_t color = static_cast<std::uint32_t>(arg5);
+
+        win->surface->fill_rect(proc.pid(), r, color);
+        if (compositor_) {
+            compositor_->invalidate_rect(win->frame);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosSetWindowTitle: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+
+        std::uint64_t t_va = arg1;
+        std::size_t t_len = static_cast<std::size_t>(arg2);
+        std::size_t read_len = std::min<std::size_t>(t_len, 256u);
+        std::vector<char> tb(read_len + 1, 0);
+        if (uas.copyout(reinterpret_cast<const void*>(t_va), tb.data(), read_len)) {
+            win->title = tb.data();
+        }
+        return record_success(0);
     }
 
     default: {

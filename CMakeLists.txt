@@ -177,6 +177,16 @@ add_library(winios_core STATIC
     src/runtime/apple_xnu_early_boot.cpp
     src/ui/display_window.cpp
     src/graphics/window_server.cpp
+    src/graphics/virtual_display.cpp
+    src/graphics/display_surface.cpp
+    src/graphics/window_manager.cpp
+    src/graphics/compositor.cpp
+    src/graphics/frame_scheduler.cpp
+    src/graphics/display_snapshot.cpp
+    src/input/virtual_input_device.cpp
+    src/input/touch_event_queue.cpp
+    src/input/input_router.cpp
+    src/runtime/guest_ui_runtime.cpp
     src/app/elf_session_cli.cpp
     src/app/linux_boot_cli.cpp
     src/app/darwin_boot_cli.cpp
@@ -4227,6 +4237,109 @@ add_executable(stage212_22_adversarial_security_tests tests/unit/stage212_22_adv
 target_link_libraries(stage212_22_adversarial_security_tests PRIVATE winios_core)
 winios_set_warnings(stage212_22_adversarial_security_tests)
 add_test(NAME stage212_22_adversarial_security_tests COMMAND stage212_22_adversarial_security_tests)
+
+# ============================================================================
+# Campaign 213 Test Suites
+# ============================================================================
+add_executable(stage213_2_virtual_display_tests tests/unit/stage213_2_virtual_display_tests.cpp)
+target_link_libraries(stage213_2_virtual_display_tests PRIVATE winios_core)
+winios_set_warnings(stage213_2_virtual_display_tests)
+add_test(NAME stage213_2_virtual_display_tests COMMAND stage213_2_virtual_display_tests)
+
+add_executable(stage213_3_framebuffer_memory_tests tests/unit/stage213_3_framebuffer_memory_tests.cpp)
+target_link_libraries(stage213_3_framebuffer_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage213_3_framebuffer_memory_tests)
+add_test(NAME stage213_3_framebuffer_memory_tests COMMAND stage213_3_framebuffer_memory_tests)
+
+add_executable(stage213_4_raster_primitives_tests tests/unit/stage213_4_raster_primitives_tests.cpp)
+target_link_libraries(stage213_4_raster_primitives_tests PRIVATE winios_core)
+winios_set_warnings(stage213_4_raster_primitives_tests)
+add_test(NAME stage213_4_raster_primitives_tests COMMAND stage213_4_raster_primitives_tests)
+
+add_executable(stage213_5_display_surface_tests tests/unit/stage213_5_display_surface_tests.cpp)
+target_link_libraries(stage213_5_display_surface_tests PRIVATE winios_core)
+winios_set_warnings(stage213_5_display_surface_tests)
+add_test(NAME stage213_5_display_surface_tests COMMAND stage213_5_display_surface_tests)
+
+add_executable(stage213_6_resource_accounting_tests tests/unit/stage213_6_resource_accounting_tests.cpp)
+target_link_libraries(stage213_6_resource_accounting_tests PRIVATE winios_core)
+winios_set_warnings(stage213_6_resource_accounting_tests)
+add_test(NAME stage213_6_resource_accounting_tests COMMAND stage213_6_resource_accounting_tests)
+
+add_executable(stage213_7_window_manager_tests tests/unit/stage213_7_window_manager_tests.cpp)
+target_link_libraries(stage213_7_window_manager_tests PRIVATE winios_core)
+winios_set_warnings(stage213_7_window_manager_tests)
+add_test(NAME stage213_7_window_manager_tests COMMAND stage213_7_window_manager_tests)
+
+add_executable(stage213_8_compositor_tests tests/unit/stage213_8_compositor_tests.cpp)
+target_link_libraries(stage213_8_compositor_tests PRIVATE winios_core)
+winios_set_warnings(stage213_8_compositor_tests)
+add_test(NAME stage213_8_compositor_tests COMMAND stage213_8_compositor_tests)
+
+add_executable(stage213_9_damage_tracking_tests tests/unit/stage213_9_damage_tracking_tests.cpp)
+target_link_libraries(stage213_9_damage_tracking_tests PRIVATE winios_core)
+winios_set_warnings(stage213_9_damage_tracking_tests)
+add_test(NAME stage213_9_damage_tracking_tests COMMAND stage213_9_damage_tracking_tests)
+
+add_executable(stage213_10_frame_scheduler_tests tests/unit/stage213_10_frame_scheduler_tests.cpp)
+target_link_libraries(stage213_10_frame_scheduler_tests PRIVATE winios_core)
+winios_set_warnings(stage213_10_frame_scheduler_tests)
+add_test(NAME stage213_10_frame_scheduler_tests COMMAND stage213_10_frame_scheduler_tests)
+
+add_executable(stage213_11_host_presentation_tests tests/unit/stage213_11_host_presentation_tests.cpp)
+target_link_libraries(stage213_11_host_presentation_tests PRIVATE winios_core)
+winios_set_warnings(stage213_11_host_presentation_tests)
+add_test(NAME stage213_11_host_presentation_tests COMMAND stage213_11_host_presentation_tests)
+
+add_executable(stage213_13_input_device_tests tests/unit/stage213_13_input_device_tests.cpp)
+target_link_libraries(stage213_13_input_device_tests PRIVATE winios_core)
+winios_set_warnings(stage213_13_input_device_tests)
+add_test(NAME stage213_13_input_device_tests COMMAND stage213_13_input_device_tests)
+
+add_executable(stage213_14_touch_queue_tests tests/unit/stage213_14_touch_queue_tests.cpp)
+target_link_libraries(stage213_14_touch_queue_tests PRIVATE winios_core)
+winios_set_warnings(stage213_14_touch_queue_tests)
+add_test(NAME stage213_14_touch_queue_tests COMMAND stage213_14_touch_queue_tests)
+
+add_executable(stage213_15_input_translation_tests tests/unit/stage213_15_input_translation_tests.cpp)
+target_link_libraries(stage213_15_input_translation_tests PRIVATE winios_core)
+winios_set_warnings(stage213_15_input_translation_tests)
+add_test(NAME stage213_15_input_translation_tests COMMAND stage213_15_input_translation_tests)
+
+add_executable(stage213_16_guest_input_api_tests tests/unit/stage213_16_guest_input_api_tests.cpp)
+target_link_libraries(stage213_16_guest_input_api_tests PRIVATE winios_core)
+winios_set_warnings(stage213_16_guest_input_api_tests)
+add_test(NAME stage213_16_guest_input_api_tests COMMAND stage213_16_guest_input_api_tests)
+
+add_executable(stage213_18_display_syscalls_tests tests/unit/stage213_18_display_syscalls_tests.cpp)
+target_link_libraries(stage213_18_display_syscalls_tests PRIVATE winios_core)
+winios_set_warnings(stage213_18_display_syscalls_tests)
+add_test(NAME stage213_18_display_syscalls_tests COMMAND stage213_18_display_syscalls_tests)
+
+add_executable(stage213_19_guest_ui_lib_tests tests/unit/stage213_19_guest_ui_lib_tests.cpp)
+target_link_libraries(stage213_19_guest_ui_lib_tests PRIVATE winios_core)
+winios_set_warnings(stage213_19_guest_ui_lib_tests)
+add_test(NAME stage213_19_guest_ui_lib_tests COMMAND stage213_19_guest_ui_lib_tests)
+
+add_executable(stage213_20_guest_shell_tests tests/unit/stage213_20_guest_shell_tests.cpp)
+target_link_libraries(stage213_20_guest_shell_tests PRIVATE winios_core)
+winios_set_warnings(stage213_20_guest_shell_tests)
+add_test(NAME stage213_20_guest_shell_tests COMMAND stage213_20_guest_shell_tests)
+
+add_executable(stage213_21_interactive_apps_tests tests/unit/stage213_21_interactive_apps_tests.cpp)
+target_link_libraries(stage213_21_interactive_apps_tests PRIVATE winios_core)
+winios_set_warnings(stage213_21_interactive_apps_tests)
+add_test(NAME stage213_21_interactive_apps_tests COMMAND stage213_21_interactive_apps_tests)
+
+add_executable(stage213_22_adversarial_security_tests tests/unit/stage213_22_adversarial_security_tests.cpp)
+target_link_libraries(stage213_22_adversarial_security_tests PRIVATE winios_core)
+winios_set_warnings(stage213_22_adversarial_security_tests)
+add_test(NAME stage213_22_adversarial_security_tests COMMAND stage213_22_adversarial_security_tests)
+
+add_executable(stage213_23_interactive_e2e_tests tests/unit/stage213_23_interactive_e2e_tests.cpp)
+target_link_libraries(stage213_23_interactive_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage213_23_interactive_e2e_tests)
+add_test(NAME stage213_23_interactive_e2e_tests COMMAND stage213_23_interactive_e2e_tests)
 
 
 

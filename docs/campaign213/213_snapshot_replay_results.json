@@ -1,0 +1,47 @@
+{
+  "campaign": 213,
+  "title": "Display State Deterministic Snapshot & Replay Validation Results",
+  "magic": "0x57445350 (WDSP)",
+  "version": 1,
+  "tests": [
+    {
+      "test_name": "VirtualDisplay Framebuffer Serialization",
+      "status": "PASSED",
+      "verified_properties": [
+        "Magic header 0x57445350 validation",
+        "DisplayConfiguration fidelity (width, height, stride, format, orientation, scale)",
+        "Raw framebuffer byte preservation across roundtrip",
+        "Deterministic byte-for-byte state recreation"
+      ]
+    },
+    {
+      "test_name": "DisplaySurface & Quota Accounting Snapshot",
+      "status": "PASSED",
+      "verified_properties": [
+        "Surface metadata preservation (id, owner_pid, width, height, stride, format)",
+        "Layering state preservation (pos_x, pos_y, z_order, opacity, visibility)",
+        "Damage tracker state synchronization",
+        "SurfaceResourceManager process accounting restoration"
+      ]
+    },
+    {
+      "test_name": "WindowManager State Snapshot",
+      "status": "PASSED",
+      "verified_properties": [
+        "Window hierarchy and Z-order preservation",
+        "Focus tracking and focused window recreation",
+        "Title string encoding and frame bounds validation"
+      ]
+    },
+    {
+      "test_name": "Corrupt and Truncated Stream Rejection",
+      "status": "PASSED",
+      "verified_properties": [
+        "Truncated header (<24 bytes) rejected cleanly",
+        "Corrupted magic header rejected with error code",
+        "Incomplete framebuffer payload rejected with error code",
+        "Zero memory corruption or dangling pointer occurrence"
+      ]
+    }
+  ]
+}

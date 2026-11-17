@@ -15,8 +15,20 @@ namespace winios::graphics {
 // -----------------------------------------------------------------------------
 enum class PixelFormat {
     B8G8R8A8_UNORM, // Standard 32-bit BGRA (Little-Endian ARGB/BGRA on Windows)
-    R8G8B8A8_UNORM  // Standard 32-bit RGBA
+    R8G8B8A8_UNORM, // Standard 32-bit RGBA
+    R5G6B5_UNORM    // Standard 16-bit RGB565 (5 bits red, 6 bits green, 5 bits blue)
 };
+
+[[nodiscard]] constexpr std::uint32_t bytes_per_pixel(PixelFormat fmt) noexcept {
+    switch (fmt) {
+    case PixelFormat::R5G6B5_UNORM:
+        return 2u;
+    case PixelFormat::B8G8R8A8_UNORM:
+    case PixelFormat::R8G8B8A8_UNORM:
+    default:
+        return 4u;
+    }
+}
 
 struct Rect {
     std::uint32_t x{0};

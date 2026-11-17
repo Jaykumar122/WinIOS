@@ -1,0 +1,28 @@
+{
+  "campaign": 213,
+  "stage": "213.0",
+  "baseline_commit": "d065badb7fe4fb1bbc8e80939bfb842db8ee50a7",
+  "total_registered_tests": 670,
+  "tests_passed": 669,
+  "tests_failed": 0,
+  "tests_skipped": 1,
+  "skipped_test_details": [
+    {
+      "test_name": "inferno_integration_tests",
+      "test_number": 383,
+      "reason": "Explicitly skipped when Inferno physical coprocessor emulation harness is not present"
+    }
+  ],
+  "campaign_212_tests": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0,
+    "execution_time_seconds": 1.18
+  },
+  "campaign_211_tests": {
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "execution_time_seconds": 0.35
+  }
+}

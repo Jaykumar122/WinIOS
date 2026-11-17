@@ -1,0 +1,213 @@
+{
+  "campaign": 213,
+  "title": "Adversarial Security Suite & Vulnerability Regression Results",
+  "total_vectors_tested": 29,
+  "vectors_passed": 29,
+  "vectors_failed": 0,
+  "pass_rate_percent": 100.0,
+  "vectors": [
+    {
+      "vector_id": 1,
+      "category": "VirtualDisplay Framebuffer",
+      "name": "Framebuffer bounds overflow",
+      "description": "Verify that reading/writing pixels outside virtual display bounds is safely rejected with OutOfBounds",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 2,
+      "category": "VirtualDisplay Validation",
+      "name": "Invalid zero dimensions",
+      "description": "Verify DisplayConfiguration with width=0 or height=0 is rejected with InvalidDimensions",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 3,
+      "category": "VirtualDisplay Validation",
+      "name": "Excessive dimensions (>8192)",
+      "description": "Verify dimensions exceeding 8192x8192 are rejected with InvalidDimensions",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 4,
+      "category": "VirtualDisplay Validation",
+      "name": "Invalid row stride",
+      "description": "Verify row_stride less than width * bytes_per_pixel is rejected with InvalidStride",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 5,
+      "category": "VirtualDisplay Memory",
+      "name": "Excessive allocation limit (>64MB)",
+      "description": "Verify total framebuffer allocation exceeding 64MB limit is rejected with AllocationExceeded",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 6,
+      "category": "SurfaceResourceManager Quotas",
+      "name": "Per-surface memory limit (32MB)",
+      "description": "Verify single surface creation exceeding 32MB limit is rejected with PerSurfaceLimitExceeded",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 7,
+      "category": "SurfaceResourceManager Quotas",
+      "name": "Per-process surface quota (16 surfaces)",
+      "description": "Verify process attempting to allocate 17th surface is rejected with SurfaceLimitExceeded",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 8,
+      "category": "SurfaceResourceManager Quotas",
+      "name": "Total display budget limit (128MB)",
+      "description": "Verify cumulative allocation across all processes exceeding 128MB is rejected with MemoryBudgetExceeded",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 9,
+      "category": "SurfaceResourceManager Lifecycles",
+      "name": "Invalid surface handle lookup",
+      "description": "Verify querying nonexistent surface handle returns NotFound with nullptr",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 10,
+      "category": "SurfaceResourceManager Lifecycles",
+      "name": "Stale destroyed surface handle lookup",
+      "description": "Verify accessing destroyed surface handle returns NotFound (use-after-free protection)",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 11,
+      "category": "Process Isolation",
+      "name": "Cross-process surface write denied",
+      "description": "Verify PID A cannot write pixels to surface owned by PID B (AccessDenied)",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 12,
+      "category": "Process Isolation",
+      "name": "Cross-process surface read denied",
+      "description": "Verify PID A cannot read pixels from surface owned by PID B (AccessDenied)",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 13,
+      "category": "Process Isolation",
+      "name": "Cross-process fill_rect denied",
+      "description": "Verify PID A cannot invoke fill_rect on surface owned by PID B (AccessDenied)",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 14,
+      "category": "WindowManager Security",
+      "name": "Destroying nonexistent window handle",
+      "description": "Verify destroying invalid window ID returns false without crashing",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 15,
+      "category": "WindowManager Security",
+      "name": "Cross-process window tampering blocked",
+      "description": "Verify unauthorized process cannot resize or move window owned by another PID",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 16,
+      "category": "VirtualDisplay Validation",
+      "name": "Malformed pixel format rejected",
+      "description": "Verify unknown/unsupported pixel format value is rejected with UnsupportedFormat",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 17,
+      "category": "DisplaySurface Bounds",
+      "name": "Out-of-bounds pixel read rejected",
+      "description": "Verify reading pixel coordinates beyond surface width/height returns OutOfBounds",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 18,
+      "category": "DisplaySurface Bounds",
+      "name": "Out-of-bounds pixel write rejected",
+      "description": "Verify writing pixel coordinates beyond surface width/height returns OutOfBounds",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 19,
+      "category": "RasterPrimitives Clipping",
+      "name": "Damage rect clipping outside buffer is empty",
+      "description": "Verify dirty rectangle entirely outside surface dimensions clips to empty Rect",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 20,
+      "category": "DirectX Presentation",
+      "name": "Presentation buffer undersized rejected",
+      "description": "Verify presenting frame buffer smaller than required width * height * 4 is rejected",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 21,
+      "category": "Input Queuing Security",
+      "name": "Touch queue capped at capacity (overflow tracked)",
+      "description": "Verify rapid burst of 300 touch events overwrites oldest without unbound memory growth",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 22,
+      "category": "VirtualInputDevice Security",
+      "name": "Invalid touch contact identifier (>=10) rejected",
+      "description": "Verify contact IDs >= 10 are rejected preventing digitizer table overflow",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 23,
+      "category": "Input Coordinate Security",
+      "name": "Host coordinate extreme overflow clamped to screen bounds",
+      "description": "Verify host pointer coordinates (-500, 99999) are safely clamped to [0, width-1] and [0, height-1]",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 24,
+      "category": "Input Router Isolation",
+      "name": "Unauthorized input event polling blocked",
+      "description": "Verify PID cannot poll input events delivered to and captured by another process",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 25,
+      "category": "Input Lifecycle Security",
+      "name": "Window destruction synthesized TouchCancel to active process",
+      "description": "Verify closing window with active touch contact synthesizes TouchCancel to prevent stuck pointer state",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 26,
+      "category": "DisplaySnapshot Determinism",
+      "name": "Display snapshot serialization produces non-empty bytes",
+      "description": "Verify complete virtual display state serializes with 0x57445350 magic and valid length",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 27,
+      "category": "DisplaySnapshot Determinism",
+      "name": "Display snapshot deserialization succeeds",
+      "description": "Verify deserializing serialized snapshot restores virtual display instance correctly",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 28,
+      "category": "DisplaySnapshot Determinism",
+      "name": "Restored framebuffer content matches original",
+      "description": "Verify all pixels in restored virtual display match original framebuffer byte-for-byte",
+      "result": "PASS"
+    },
+    {
+      "vector_id": 29,
+      "category": "DisplaySnapshot Robustness",
+      "name": "Truncated snapshot buffer safely rejected",
+      "description": "Verify corrupt/truncated snapshot stream is cleanly rejected without crash or memory fault",
+      "result": "PASS"
+    }
+  ]
+}

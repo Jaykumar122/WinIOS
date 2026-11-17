@@ -14,6 +14,16 @@ namespace winios::vfs {
 class VirtualFileSystem;
 }
 
+namespace winios::graphics {
+class WindowManager;
+class SurfaceResourceManager;
+class Compositor;
+}
+
+namespace winios::input {
+class InputRouter;
+}
+
 namespace winios::kernel {
 
 // Pinned Darwin/XNU Syscall Numbers (xnu-10002.1.13 bsd/sys/syscall.h)
@@ -33,6 +43,15 @@ inline constexpr std::uint64_t kSysLseek      = 199;
 inline constexpr std::uint64_t kSysSchedYield = 329;
 inline constexpr std::uint64_t kSysFstat64    = 338;
 inline constexpr std::uint64_t kSysStat64     = 339;
+
+// WinIOS Category C Display and Window System Calls
+inline constexpr std::uint64_t kSysWiniosWindowCreate    = 500;
+inline constexpr std::uint64_t kSysWiniosWindowDestroy   = 501;
+inline constexpr std::uint64_t kSysWiniosSurfaceUpdate   = 502;
+inline constexpr std::uint64_t kSysWiniosSurfacePresent  = 503;
+inline constexpr std::uint64_t kSysWiniosPollEvent       = 504;
+inline constexpr std::uint64_t kSysWiniosSurfaceFill     = 505;
+inline constexpr std::uint64_t kSysWiniosSetWindowTitle  = 506;
 
 // Pinned Darwin/XNU Errno Numbers (xnu-10002.1.13 bsd/sys/errno.h)
 inline constexpr std::int32_t kErrnoEPERM   = 1;
@@ -80,6 +99,8 @@ struct SyscallStats {
     std::uint64_t total_ipc_traps{0};
     std::uint64_t total_invalid_syscalls{0};
     std::uint64_t total_invalid_pointers{0};
+    std::uint64_t total_display_syscalls{0};
+    std::uint64_t total_input_polls{0};
 };
 
 class UserSyscallDispatcher {
@@ -97,6 +118,17 @@ public:
     void set_vfs(vfs::VirtualFileSystem* vfs) noexcept { vfs_ = vfs; }
     [[nodiscard]] vfs::VirtualFileSystem* vfs() noexcept { return vfs_; }
 
+    void set_window_manager(graphics::WindowManager* wm) noexcept { window_mgr_ = wm; }
+    [[nodiscard]] graphics::WindowManager* window_manager() noexcept { return window_mgr_; }
+
+    void set_surface_resource_manager(graphics::SurfaceResourceManager* srm) noexcept { surface_mgr_ = srm; }
+    [[nodiscard]] graphics::SurfaceResourceManager* surface_resource_manager() noexcept { return surface_mgr_; }
+
+    void set_compositor(graphics::Compositor* comp) noexcept { compositor_ = comp; }
+    [[nodiscard]] graphics::Compositor* compositor() noexcept { return compositor_; }
+
+    void set_input_router(input::InputRouter* router) noexcept { input_router_ = router; }
+    [[nodiscard]] input::InputRouter* input_router() noexcept { return input_router_; }
 
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
@@ -117,6 +149,10 @@ private:
     SyscallAbi last_used_abi_{SyscallAbi::DarwinStrict};
     BsdProcessManager* proc_mgr_{nullptr};
     vfs::VirtualFileSystem* vfs_{nullptr};
+    graphics::WindowManager* window_mgr_{nullptr};
+    graphics::SurfaceResourceManager* surface_mgr_{nullptr};
+    graphics::Compositor* compositor_{nullptr};
+    input::InputRouter* input_router_{nullptr};
 };
 
 } // namespace winios::kernel

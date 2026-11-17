@@ -1,0 +1,15 @@
+# WinIOS Campaign 213 Cryptographic SHA-256 Manifest
+123e0073f91eef5987596dae4298c05bb3198775c94e6e84fe85586fb96dcbe7       50416  artifacts/campaign-213\counter_app.macho
+a6e55d864a80b8b03df88c2fba5878dc9a58bda7e303b17979092b15260b13da        3663  artifacts/campaign-213\counter_app.s
+ddbdb7bde38309c541eb2dffe485c3685353626dd0b068bc859b7c7a1914c798       50480  artifacts/campaign-213\guest_shell.macho
+045957a22f318a8d1f79d28cd7e76efa54a4570fd8dd3d37a8f2f5dd5f02ebb7        4283  artifacts/campaign-213\guest_shell.s
+eab951eddaa892a60e8e3cd13d1d67692df9fcad367adf71fe288fd8c24ce1ab       50400  artifacts/campaign-213\notes_app.macho
+73da2cc4b1dc9d04cbf5249af51e2ed267c34e543fa4fee22bb8e8189ce3e2c3        4300  artifacts/campaign-213\notes_app.s
+86ce3bd84bdbb27412615eb9a6e2e85fc1f75700c9d653bba8f9fed636d7d96b     3840054  artifacts/campaign-213\screenshot_01_shell_homescreen.bmp
+89f9bd9e0fe0dffa6eadc934c68adb9ecb918c788845073d122623a202a56e7a     3840054  artifacts/campaign-213\screenshot_02_counter_app_launched.bmp
+89f9bd9e0fe0dffa6eadc934c68adb9ecb918c788845073d122623a202a56e7a     3840054  artifacts/campaign-213\screenshot_03_counter_app_incremented.bmp
+89f9bd9e0fe0dffa6eadc934c68adb9ecb918c788845073d122623a202a56e7a     3840054  artifacts/campaign-213\screenshot_04_return_to_shell.bmp
+bc3d697ae85869a0aa62d5e713500c300bb128df59b2ea9f8ddbe5e4edb892cf     3840054  artifacts/campaign-213\screenshot_05_notes_app_launched.bmp
+1610a8668d538f82575435b092f1b40e16701fc6b5a1b043677712d300643eaf     3840054  artifacts/campaign-213\screenshot_06_notes_app_checked.bmp
+1610a8668d538f82575435b092f1b40e16701fc6b5a1b043677712d300643eaf     3840054  artifacts/campaign-213\screenshot_07_shell_closeout.bmp
+72d2db9a1839935c6828fa9a75edf17fc219b563d21251f8ec6ab43fac8b04df      320054  artifacts/campaign-213\test_host_presentation.bmp
