@@ -20,6 +20,8 @@ struct CompositorStats {
     std::uint64_t partial_redraw_frames{0};
     std::uint64_t skipped_frames{0};
     std::uint64_t total_pixels_composited{0};
+    std::uint64_t occluded_surfaces_culled{0};
+    std::uint64_t occluded_pixels_saved{0};
 };
 
 // -----------------------------------------------------------------------------

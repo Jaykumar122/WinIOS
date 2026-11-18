@@ -42,6 +42,7 @@ public:
     void grant(std::uint32_t pid, Capability cap);
     void grant_mask(std::uint32_t pid, std::uint32_t mask);
     void grant_named(std::uint32_t pid, const std::vector<std::string>& perm_names);
+    void revoke(std::uint32_t pid, Capability cap);
     void revoke_all(std::uint32_t pid);
 
     [[nodiscard]] bool check(std::uint32_t pid, Capability cap) const noexcept;

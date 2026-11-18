@@ -18,6 +18,8 @@
 #include "runtime/execution_boundary.h"
 #include "security/capability_manager.h"
 #include "packaging/app_registry.h"
+#include "runtime/system_clipboard.h"
+#include "kernel/app_lifecycle_manager.h"
 
 #include <algorithm>
 #include <cstring>
@@ -1570,6 +1572,93 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             desc_entry->vfs_desc = vfs_desc;
         }
         return record_success(static_cast<std::uint64_t>(fd));
+    }
+
+    case kSysWiniosWindowSetVisibility: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        const std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        const bool visible = (arg1 != 0);
+
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+
+        window_mgr_->set_window_state(proc.pid(), wid, visible ? graphics::WindowState::Normal : graphics::WindowState::Hidden);
+        if (win->surface) {
+            win->surface->set_visible(visible);
+        }
+        if (compositor_) {
+            compositor_->invalidate_rect(win->frame);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosClipboardGet: {
+        if (!clipboard_) {
+            return record_error(kErrnoENOSYS);
+        }
+        std::string text;
+        bool ok = clipboard_->get_text(proc.pid(), text);
+        if (!ok) {
+            return record_error(kErrnoEPERM);
+        }
+        const std::uint64_t buf_va = arg0;
+        const std::size_t max_len = static_cast<std::size_t>(arg1);
+        if (buf_va == 0 || max_len == 0) {
+            return record_success(text.size());
+        }
+        std::size_t copy_len = std::min(text.size(), max_len - 1);
+        std::vector<char> out_buf(copy_len + 1, '\0');
+        std::memcpy(out_buf.data(), text.data(), copy_len);
+        auto vres = memory::GuestMemoryValidator::copyout(uas, out_buf.data(), buf_va, copy_len + 1, 1);
+        if (vres != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(copy_len);
+    }
+
+    case kSysWiniosClipboardSet: {
+        if (!clipboard_) {
+            return record_error(kErrnoENOSYS);
+        }
+        const std::uint64_t text_va = arg0;
+        const std::size_t text_len = static_cast<std::size_t>(arg1);
+        if (text_len > runtime::SystemClipboard::kMaxClipboardBytes) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::string text;
+        auto vres = memory::GuestMemoryValidator::copy_string(uas, text_va, text_len, text);
+        if (vres != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+        bool ok = clipboard_->set_text(proc.pid(), text);
+        if (!ok) {
+            return record_error(kErrnoEPERM);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosAppSupervisorNotify: {
+        if (!lifecycle_mgr_) {
+            return record_success(0);
+        }
+        std::uint32_t state_val = static_cast<std::uint32_t>(arg0);
+        AppState new_state = AppState::Foreground;
+        if (state_val == 2) new_state = AppState::Foreground;
+        else if (state_val == 3) new_state = AppState::Background;
+        else if (state_val == 4) new_state = AppState::Suspended;
+        else if (state_val == 6) new_state = AppState::Terminating;
+        else if (state_val == 7) new_state = AppState::Terminated;
+
+        bool ok = lifecycle_mgr_->transition_to(proc.pid(), new_state);
+        return record_success(ok ? 0 : 1);
     }
 
     default: {

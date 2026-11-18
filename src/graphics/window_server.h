@@ -44,6 +44,13 @@ struct Rect {
         return px >= x && px < (x + width) && py >= y && py < (y + height);
     }
 
+    [[nodiscard]] bool contains(const Rect& o) const noexcept {
+        if (o.empty()) return true;
+        if (empty()) return false;
+        return o.x >= x && (o.x + o.width) <= (x + width) &&
+               o.y >= y && (o.y + o.height) <= (y + height);
+    }
+
     [[nodiscard]] Rect union_with(const Rect& o) const noexcept {
         if (empty()) return o;
         if (o.empty()) return *this;

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <mutex>
 
+#include "runtime/interactive_runtime_contract.h"
+
 namespace winios::renderer {
 
 struct PacingDiagnostics {
@@ -26,6 +28,7 @@ public:
     void reset();
 
     [[nodiscard]] PacingDiagnostics diagnostics() const noexcept;
+    [[nodiscard]] runtime::winios_presentation_stats_t presentation_stats(std::uint32_t refresh_rate_hz = 60) const noexcept;
 
 private:
     mutable std::mutex lock_;

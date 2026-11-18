@@ -57,4 +57,15 @@ PacingDiagnostics PresentationPacer::diagnostics() const noexcept {
     return diag_;
 }
 
+runtime::winios_presentation_stats_t PresentationPacer::presentation_stats(std::uint32_t refresh_rate_hz) const noexcept {
+    std::lock_guard<std::mutex> guard(lock_);
+    runtime::winios_presentation_stats_t s{};
+    s.total_frames_presented = diag_.total_frames;
+    s.total_frames_dropped = diag_.dropped_frames;
+    s.last_presentation_timestamp_us = diag_.last_frame_time_ns / 1000;
+    s.average_frame_time_us = static_cast<std::uint32_t>(diag_.average_interval_ms * 1000.0);
+    s.refresh_rate_hz = refresh_rate_hz;
+    return s;
+}
+
 } // namespace winios::renderer

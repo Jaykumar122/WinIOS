@@ -37,6 +37,14 @@ void CapabilityManager::grant_named(std::uint32_t pid, const std::vector<std::st
     process_caps_[pid] = mask;
 }
 
+void CapabilityManager::revoke(std::uint32_t pid, Capability cap) {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = process_caps_.find(pid);
+    if (it != process_caps_.end()) {
+        it->second &= ~static_cast<std::uint32_t>(cap);
+    }
+}
+
 void CapabilityManager::revoke_all(std::uint32_t pid) {
     std::lock_guard<std::mutex> guard(lock_);
     process_caps_.erase(pid);

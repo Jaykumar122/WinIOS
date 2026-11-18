@@ -26,6 +26,13 @@ int32_t winios_surface_fill(winios_wid_t wid, uint32_t x, uint32_t y, uint32_t w
 int32_t winios_surface_update(winios_wid_t wid, const void* pixels, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 int32_t winios_surface_present(winios_wid_t wid);
 
+// Hardware-independent 2D Drawing Primitives
+int32_t winios_draw_pixel(winios_wid_t wid, int32_t x, int32_t y, winios_color_t color);
+int32_t winios_draw_line(winios_wid_t wid, int32_t x0, int32_t y0, int32_t x1, int32_t y1, winios_color_t color);
+int32_t winios_draw_rect(winios_wid_t wid, int32_t x, int32_t y, uint32_t w, uint32_t h, winios_color_t color, uint32_t filled);
+int32_t winios_draw_text(winios_wid_t wid, int32_t x, int32_t y, const char* text, winios_color_t color);
+int32_t winios_blit(winios_wid_t wid, const void* src_pixels, int32_t dst_x, int32_t dst_y, uint32_t w, uint32_t h, uint32_t src_stride);
+
 #ifdef __cplusplus
 }
 #endif

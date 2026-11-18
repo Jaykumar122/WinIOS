@@ -140,6 +140,7 @@ public:
 
     // Process Termination Cleanup
     void cleanup_process_windows(std::uint32_t pid);
+    void destroy_windows_for_process(std::uint32_t pid) { cleanup_process_windows(pid); }
 
 private:
     void reassign_focus_locked();

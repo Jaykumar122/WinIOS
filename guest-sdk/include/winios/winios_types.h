@@ -9,9 +9,9 @@ extern "C" {
 #endif
 
 #define WINIOS_SDK_VERSION_MAJOR 1
-#define WINIOS_SDK_VERSION_MINOR 5
+#define WINIOS_SDK_VERSION_MINOR 6
 #define WINIOS_SDK_VERSION_PATCH 0
-#define WINIOS_SDK_VERSION       0x00010500
+#define WINIOS_SDK_VERSION       0x00010600
 
 #define WINIOS_ABI_CATEGORY_A_DARWIN_BSD 0x01
 #define WINIOS_ABI_CATEGORY_B_MSG_TRAP   0x02
@@ -80,6 +80,11 @@ typedef enum {
 #define WINIOS_SYS_SPAWN_PROCESS       530
 #define WINIOS_SYS_GET_PROCESS_STATUS  531
 #define WINIOS_SYS_RESOURCE_OPEN       532
+// Category C ABI v1.6 Extensions (Campaign 222)
+#define WINIOS_SYS_WINDOW_SET_VISIBILITY 533
+#define WINIOS_SYS_CLIPBOARD_GET         534
+#define WINIOS_SYS_CLIPBOARD_SET         535
+#define WINIOS_SYS_APP_SUPERVISOR_NOTIFY 536
 
 // Alignment helper
 #define WINIOS_ALIGNED(n) __attribute__((aligned(n)))

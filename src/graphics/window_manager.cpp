@@ -146,9 +146,21 @@ bool WindowManager::set_window_frame(std::uint32_t caller_pid, std::uint32_t win
         return false;
     }
 
+    Rect old_frame = it->second->frame;
     it->second->frame = frame;
     if (it->second->surface) {
-        it->second->surface->set_position(static_cast<std::int32_t>(frame.x), static_cast<std::int32_t>(frame.y));
+        auto cf = it->second->client_frame();
+        if (cf.width != it->second->surface->width() || cf.height != it->second->surface->height()) {
+            it->second->surface->resize(cf.width, cf.height);
+        }
+        it->second->surface->set_position(static_cast<std::int32_t>(cf.x), static_cast<std::int32_t>(cf.y));
+    }
+    it->second->is_dirty = true;
+    Rect damage = old_frame.union_with(it->second->frame);
+    if (it->second->dirty_rect.width == 0 || it->second->dirty_rect.height == 0) {
+        it->second->dirty_rect = damage;
+    } else {
+        it->second->dirty_rect = it->second->dirty_rect.union_with(damage);
     }
     return true;
 }

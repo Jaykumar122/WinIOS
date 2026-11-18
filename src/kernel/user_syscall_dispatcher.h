@@ -30,12 +30,14 @@ class GuestEventServices;
 class GuestStorageApi;
 class GuestAllocator;
 class AppPreferences;
+class SystemClipboard;
 }
 
 namespace winios::kernel {
 
 class KernelThreadManager;
 class MultiProcessScheduler;
+class AppLifecycleManager;
 }
 
 namespace winios::security {
@@ -103,9 +105,13 @@ inline constexpr std::uint64_t kSysWiniosMsgTrap          = 527;
 inline constexpr std::uint64_t kSysWiniosLog              = 528;
 inline constexpr std::uint64_t kSysWiniosGetAppInfo       = 529;
 inline constexpr std::uint64_t kSysWiniosSpawnProcess     = 530;
-inline constexpr std::uint64_t kSysWiniosGetProcessStatus = 531;
-inline constexpr std::uint64_t kSysWiniosResourceOpen     = 532;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC     = 532;
+inline constexpr std::uint64_t kSysWiniosGetProcessStatus     = 531;
+inline constexpr std::uint64_t kSysWiniosResourceOpen         = 532;
+inline constexpr std::uint64_t kSysWiniosWindowSetVisibility = 533;
+inline constexpr std::uint64_t kSysWiniosClipboardGet        = 534;
+inline constexpr std::uint64_t kSysWiniosClipboardSet        = 535;
+inline constexpr std::uint64_t kSysWiniosAppSupervisorNotify = 536;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC        = 536;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;
@@ -219,6 +225,12 @@ public:
     void set_app_registry(packaging::ApplicationRegistry* reg) noexcept { app_reg_ = reg; }
     [[nodiscard]] packaging::ApplicationRegistry* app_registry() noexcept { return app_reg_; }
 
+    void set_system_clipboard(runtime::SystemClipboard* sc) noexcept { clipboard_ = sc; }
+    [[nodiscard]] runtime::SystemClipboard* system_clipboard() noexcept { return clipboard_; }
+
+    void set_lifecycle_manager(AppLifecycleManager* lm) noexcept { lifecycle_mgr_ = lm; }
+    [[nodiscard]] AppLifecycleManager* lifecycle_manager() noexcept { return lifecycle_mgr_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -260,6 +272,8 @@ private:
     MultiProcessScheduler* multi_sched_{nullptr};
     security::CapabilityManager* cap_mgr_{nullptr};
     packaging::ApplicationRegistry* app_reg_{nullptr};
+    runtime::SystemClipboard* clipboard_{nullptr};
+    AppLifecycleManager* lifecycle_mgr_{nullptr};
     std::unordered_map<std::uint64_t, MutexRecord> mutex_table_;
 };
 

@@ -125,8 +125,28 @@ bool Compositor::composite(bool force_full) {
         return a->z_order() < b->z_order();
     });
 
-    // Composite each surface inside the damage box
-    for (const auto& surf : sorted_surfaces) {
+    // Composite each surface inside the damage box with occlusion culling
+    for (std::size_t i = 0; i < sorted_surfaces.size(); ++i) {
+        const auto& surf = sorted_surfaces[i];
+        const Rect surf_bounds = surf->bounds();
+
+        // Check if completely occluded by an opaque surface above it
+        bool occluded = false;
+        for (std::size_t j = i + 1; j < sorted_surfaces.size(); ++j) {
+            const auto& upper = sorted_surfaces[j];
+            if (upper->opacity() >= 1.0f && upper->bounds().contains(surf_bounds)) {
+                occluded = true;
+                break;
+            }
+        }
+
+        if (occluded) {
+            stats_.occluded_surfaces_culled++;
+            stats_.occluded_pixels_saved += (surf->width() * surf->height());
+            surf->damage_tracker().clear();
+            continue;
+        }
+
         Rect src_rect{0, 0, surf->width(), surf->height()};
 
         RasterPrimitives::blit(

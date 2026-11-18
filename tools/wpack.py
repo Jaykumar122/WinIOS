@@ -66,7 +66,9 @@ def pack_app(app_dir, out_wios, bundle_id, app_name, version="1.2.0"):
         f"name={app_name}",
         f"version={version}",
         "architecture=arm64",
-        "min_os_version=218.0",
+        "min_os_version=222.0",
+        "min_abi_version=1.6",
+        "permissions=display.window,storage.private,logging,clipboard",
         "executable_name=bin/app"
     ]
     files = []

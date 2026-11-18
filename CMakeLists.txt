@@ -4940,6 +4940,133 @@ target_link_libraries(stage221_23_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage221_23_adversarial_tests)
 add_test(NAME stage221_23_adversarial_tests COMMAND stage221_23_adversarial_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 222: Interactive Native ARM64 Application Environment
+# -----------------------------------------------------------------------------
+add_executable(stage222_3_guest_window_api_tests
+    tests/unit/stage222_3_guest_window_api_tests.cpp
+)
+target_include_directories(stage222_3_guest_window_api_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_3_guest_window_api_tests PRIVATE winios_core)
+winios_set_warnings(stage222_3_guest_window_api_tests)
+add_test(NAME stage222_3_guest_window_api_tests COMMAND stage222_3_guest_window_api_tests)
+
+add_executable(stage222_4_window_server_tests
+    tests/unit/stage222_4_window_server_tests.cpp
+)
+target_include_directories(stage222_4_window_server_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_4_window_server_tests PRIVATE winios_core)
+winios_set_warnings(stage222_4_window_server_tests)
+add_test(NAME stage222_4_window_server_tests COMMAND stage222_4_window_server_tests)
+
+add_executable(stage222_5_guest_surface_tests
+    tests/unit/stage222_5_guest_surface_tests.cpp
+)
+target_include_directories(stage222_5_guest_surface_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_5_guest_surface_tests PRIVATE winios_core)
+winios_set_warnings(stage222_5_guest_surface_tests)
+add_test(NAME stage222_5_guest_surface_tests COMMAND stage222_5_guest_surface_tests)
+
+add_executable(stage222_6_drawing_runtime_tests
+    tests/unit/stage222_6_drawing_runtime_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_compile_definitions(stage222_6_drawing_runtime_tests PRIVATE WINIOS_HOST_TEST_OVERRIDE=1)
+target_include_directories(stage222_6_drawing_runtime_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_6_drawing_runtime_tests PRIVATE winios_core)
+winios_set_warnings(stage222_6_drawing_runtime_tests)
+add_test(NAME stage222_6_drawing_runtime_tests COMMAND stage222_6_drawing_runtime_tests)
+
+add_executable(stage222_7_event_queue_tests
+    tests/unit/stage222_7_event_queue_tests.cpp
+)
+target_include_directories(stage222_7_event_queue_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_7_event_queue_tests PRIVATE winios_core)
+winios_set_warnings(stage222_7_event_queue_tests)
+add_test(NAME stage222_7_event_queue_tests COMMAND stage222_7_event_queue_tests)
+
+add_executable(stage222_8_input_provenance_tests
+    tests/unit/stage222_8_input_provenance_tests.cpp
+)
+target_include_directories(stage222_8_input_provenance_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_8_input_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage222_8_input_provenance_tests)
+add_test(NAME stage222_8_input_provenance_tests COMMAND stage222_8_input_provenance_tests)
+
+add_executable(stage222_10_window_lifecycle_tests
+    tests/unit/stage222_10_window_lifecycle_tests.cpp
+)
+target_include_directories(stage222_10_window_lifecycle_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_10_window_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage222_10_window_lifecycle_tests)
+add_test(NAME stage222_10_window_lifecycle_tests COMMAND stage222_10_window_lifecycle_tests)
+
+add_executable(stage222_11_compositor_tests
+    tests/unit/stage222_11_compositor_tests.cpp
+)
+target_include_directories(stage222_11_compositor_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_11_compositor_tests PRIVATE winios_core)
+winios_set_warnings(stage222_11_compositor_tests)
+add_test(NAME stage222_11_compositor_tests COMMAND stage222_11_compositor_tests)
+
+add_executable(stage222_13_ui_toolkit_tests
+    tests/unit/stage222_13_ui_toolkit_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_compile_definitions(stage222_13_ui_toolkit_tests PRIVATE WINIOS_HOST_TEST_OVERRIDE=1)
+target_include_directories(stage222_13_ui_toolkit_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_13_ui_toolkit_tests PRIVATE winios_core)
+winios_set_warnings(stage222_13_ui_toolkit_tests)
+add_test(NAME stage222_13_ui_toolkit_tests COMMAND stage222_13_ui_toolkit_tests)
+
+add_executable(stage222_15_timer_scheduler_tests
+    tests/unit/stage222_15_timer_scheduler_tests.cpp
+)
+target_include_directories(stage222_15_timer_scheduler_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_15_timer_scheduler_tests PRIVATE winios_core)
+winios_set_warnings(stage222_15_timer_scheduler_tests)
+add_test(NAME stage222_15_timer_scheduler_tests COMMAND stage222_15_timer_scheduler_tests)
+
+add_executable(stage222_17_app_supervisor_tests
+    tests/unit/stage222_17_app_supervisor_tests.cpp
+)
+target_include_directories(stage222_17_app_supervisor_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_17_app_supervisor_tests PRIVATE winios_core)
+winios_set_warnings(stage222_17_app_supervisor_tests)
+add_test(NAME stage222_17_app_supervisor_tests COMMAND stage222_17_app_supervisor_tests)
+
+add_executable(stage222_20_interactive_notes_tests
+    tests/unit/stage222_20_interactive_notes_tests.cpp
+)
+target_include_directories(stage222_20_interactive_notes_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_20_interactive_notes_tests PRIVATE winios_core)
+winios_set_warnings(stage222_20_interactive_notes_tests)
+add_test(NAME stage222_20_interactive_notes_tests COMMAND stage222_20_interactive_notes_tests)
+
+add_executable(stage222_21_runtime_monitor_tests
+    tests/unit/stage222_21_runtime_monitor_tests.cpp
+)
+target_include_directories(stage222_21_runtime_monitor_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_21_runtime_monitor_tests PRIVATE winios_core)
+winios_set_warnings(stage222_21_runtime_monitor_tests)
+add_test(NAME stage222_21_runtime_monitor_tests COMMAND stage222_21_runtime_monitor_tests)
+
+add_executable(stage222_22_multi_app_desktop_tests
+    tests/unit/stage222_22_multi_app_desktop_tests.cpp
+)
+target_include_directories(stage222_22_multi_app_desktop_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_22_multi_app_desktop_tests PRIVATE winios_core)
+winios_set_warnings(stage222_22_multi_app_desktop_tests)
+add_test(NAME stage222_22_multi_app_desktop_tests COMMAND stage222_22_multi_app_desktop_tests)
+
+add_executable(stage222_23_adversarial_tests
+    tests/unit/stage222_23_adversarial_tests.cpp
+)
+target_include_directories(stage222_23_adversarial_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage222_23_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage222_23_adversarial_tests)
+add_test(NAME stage222_23_adversarial_tests COMMAND stage222_23_adversarial_tests)
+
 
 
 

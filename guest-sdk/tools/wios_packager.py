@@ -35,12 +35,12 @@ def cmd_init(args):
         f.write(f"bundle_id={args.id}\n")
         f.write(f"name={args.name}\n")
         f.write(f"version=1.0.0\n")
-        f.write(f"min_os_version=221.0\n")
+        f.write(f"min_os_version=222.0\n")
         f.write(f"architecture=arm64\n")
-        f.write(f"min_abi_version=1.5\n")
+        f.write(f"min_abi_version=1.6\n")
         f.write(f"executable_name=bin/{args.name.lower().replace(' ', '_')}\n")
         f.write(f"storage_quota_bytes=10485760\n")
-        f.write(f"permissions=display.window,storage.private,logging\n")
+        f.write(f"permissions=display.window,storage.private,logging,clipboard\n")
 
     main_c = os.path.join(project_dir, "src", "main.c")
     with open(main_c, "w", encoding="utf-8") as f:

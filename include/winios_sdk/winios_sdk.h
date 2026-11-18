@@ -14,10 +14,12 @@ extern "C" {
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_1 0x00010100
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_2 0x00010200
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_5 0x00010500
-#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010500
+#define WINIOS_CATEGORY_C_ABI_VERSION_1_6 0x00010600
+#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010600
 #define WINIOS_SDK_VERSION_1_2            0x00010200
 #define WINIOS_SDK_VERSION_1_5            0x00010500
-#define WINIOS_SDK_VERSION                0x00010500
+#define WINIOS_SDK_VERSION_1_6            0x00010600
+#define WINIOS_SDK_VERSION                0x00010600
 
 // Syscalls 500..512 (ABI v1.0 & v1.1)
 #define SYS_WINIOS_WINDOW_CREATE          500
@@ -45,9 +47,21 @@ extern "C" {
 #define SYS_WINIOS_PREFS_GET              520
 #define SYS_WINIOS_PREFS_SET              521
 
+// Syscalls 530..536 (ABI v1.6 Extensions)
+#define SYS_WINIOS_WINDOW_GET_PROPERTIES  530
+#define SYS_WINIOS_WINDOW_SET_GEOMETRY_V2 531
+#define SYS_WINIOS_WINDOW_RAISE           532
+#define SYS_WINIOS_WINDOW_SET_VISIBILITY  533
+#define SYS_WINIOS_CLIPBOARD_GET          534
+#define SYS_WINIOS_CLIPBOARD_SET          535
+#define SYS_WINIOS_APP_SUPERVISOR_NOTIFY  536
+
 // -----------------------------------------------------------------------------
 // Core UI & Window Types
 // -----------------------------------------------------------------------------
+#ifndef WINIOS_WINDOW_TYPES_DEFINED
+#define WINIOS_WINDOW_TYPES_DEFINED
+
 typedef uint32_t winios_wid_t;
 typedef uint32_t winios_color_t;
 
@@ -87,10 +101,11 @@ typedef struct {
 } winios_event_t;
 
 typedef enum {
-    WINIOS_WINDOW_STATE_NORMAL    = 0,
-    WINIOS_WINDOW_STATE_MINIMIZED = 1,
-    WINIOS_WINDOW_STATE_HIDDEN    = 2,
-    WINIOS_WINDOW_STATE_CLOSED    = 3
+    WINIOS_WINDOW_STATE_HIDDEN    = 0,
+    WINIOS_WINDOW_STATE_VISIBLE   = 1,
+    WINIOS_WINDOW_STATE_MINIMIZED = 2,
+    WINIOS_WINDOW_STATE_MAXIMIZED = 3,
+    WINIOS_WINDOW_STATE_CLOSED    = 4
 } winios_window_state_t;
 
 typedef struct {
@@ -100,6 +115,8 @@ typedef struct {
     uint32_t      is_focused;     // 1 if focused, 0 otherwise
     uint32_t      always_on_top;  // 1 if always on top, 0 otherwise
 } winios_window_geometry_t;
+
+#endif // WINIOS_WINDOW_TYPES_DEFINED
 
 typedef struct {
     uint32_t count;
