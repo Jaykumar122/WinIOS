@@ -206,6 +206,7 @@ add_library(winios_core STATIC
     src/graphics/window_manager.cpp
     src/graphics/window_decorations.cpp
     src/graphics/multi_window_compositor.cpp
+    src/graphics/desktop_controller.cpp
     src/graphics/window_animator.cpp
     src/graphics/compositor.cpp
     src/graphics/frame_scheduler.cpp
@@ -5397,6 +5398,95 @@ target_include_directories(stage225_23_adversarial_tests PRIVATE guest-sdk/inclu
 target_link_libraries(stage225_23_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage225_23_adversarial_tests)
 add_test(NAME stage225_23_adversarial_tests COMMAND stage225_23_adversarial_tests)
+
+# Campaign 226 Tests
+add_executable(stage226_3_window_manager_tests
+    tests/unit/stage226_3_window_manager_tests.cpp
+)
+target_include_directories(stage226_3_window_manager_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_3_window_manager_tests PRIVATE winios_core)
+winios_set_warnings(stage226_3_window_manager_tests)
+add_test(NAME stage226_3_window_manager_tests COMMAND stage226_3_window_manager_tests)
+
+add_executable(stage226_4_compositor_tests
+    tests/unit/stage226_4_compositor_tests.cpp
+)
+target_include_directories(stage226_4_compositor_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_4_compositor_tests PRIVATE winios_core)
+winios_set_warnings(stage226_4_compositor_tests)
+add_test(NAME stage226_4_compositor_tests COMMAND stage226_4_compositor_tests)
+
+add_executable(stage226_6_pointer_routing_tests
+    tests/unit/stage226_6_pointer_routing_tests.cpp
+)
+target_include_directories(stage226_6_pointer_routing_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_6_pointer_routing_tests PRIVATE winios_core)
+winios_set_warnings(stage226_6_pointer_routing_tests)
+add_test(NAME stage226_6_pointer_routing_tests COMMAND stage226_6_pointer_routing_tests)
+
+add_executable(stage226_7_keyboard_focus_tests
+    tests/unit/stage226_7_keyboard_focus_tests.cpp
+)
+target_include_directories(stage226_7_keyboard_focus_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_7_keyboard_focus_tests PRIVATE winios_core)
+winios_set_warnings(stage226_7_keyboard_focus_tests)
+add_test(NAME stage226_7_keyboard_focus_tests COMMAND stage226_7_keyboard_focus_tests)
+
+add_executable(stage226_10_notification_overlay_tests
+    tests/unit/stage226_10_notification_overlay_tests.cpp
+)
+target_include_directories(stage226_10_notification_overlay_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_10_notification_overlay_tests PRIVATE winios_core)
+winios_set_warnings(stage226_10_notification_overlay_tests)
+add_test(NAME stage226_10_notification_overlay_tests COMMAND stage226_10_notification_overlay_tests)
+
+add_executable(stage226_11_desktop_event_loop_tests
+    tests/unit/stage226_11_desktop_event_loop_tests.cpp
+)
+target_include_directories(stage226_11_desktop_event_loop_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_11_desktop_event_loop_tests PRIVATE winios_core)
+winios_set_warnings(stage226_11_desktop_event_loop_tests)
+add_test(NAME stage226_11_desktop_event_loop_tests COMMAND stage226_11_desktop_event_loop_tests)
+
+add_executable(stage226_12_abi_v2_syscall_tests
+    tests/unit/stage226_12_abi_v2_syscall_tests.cpp
+)
+target_include_directories(stage226_12_abi_v2_syscall_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_12_abi_v2_syscall_tests PRIVATE winios_core)
+winios_set_warnings(stage226_12_abi_v2_syscall_tests)
+add_test(NAME stage226_12_abi_v2_syscall_tests COMMAND stage226_12_abi_v2_syscall_tests)
+
+add_executable(stage226_19_multiwindow_app_tests
+    tests/unit/stage226_19_multiwindow_app_tests.cpp
+)
+target_include_directories(stage226_19_multiwindow_app_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_19_multiwindow_app_tests PRIVATE winios_core)
+winios_set_warnings(stage226_19_multiwindow_app_tests)
+add_test(NAME stage226_19_multiwindow_app_tests COMMAND stage226_19_multiwindow_app_tests)
+
+add_executable(stage226_20_multi_app_tests
+    tests/unit/stage226_20_multi_app_tests.cpp
+)
+target_include_directories(stage226_20_multi_app_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_20_multi_app_tests PRIVATE winios_core)
+winios_set_warnings(stage226_20_multi_app_tests)
+add_test(NAME stage226_20_multi_app_tests COMMAND stage226_20_multi_app_tests)
+
+add_executable(stage226_21_deterministic_replay_tests
+    tests/unit/stage226_21_deterministic_replay_tests.cpp
+)
+target_include_directories(stage226_21_deterministic_replay_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_21_deterministic_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage226_21_deterministic_replay_tests)
+add_test(NAME stage226_21_deterministic_replay_tests COMMAND stage226_21_deterministic_replay_tests)
+
+add_executable(stage226_22_adversarial_tests
+    tests/unit/stage226_22_adversarial_tests.cpp
+)
+target_include_directories(stage226_22_adversarial_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage226_22_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage226_22_adversarial_tests)
+add_test(NAME stage226_22_adversarial_tests COMMAND stage226_22_adversarial_tests)
 
 
 

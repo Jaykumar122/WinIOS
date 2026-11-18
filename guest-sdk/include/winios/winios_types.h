@@ -111,6 +111,17 @@ typedef enum {
 #define WINIOS_SYS_TIME_GET              558
 #define WINIOS_SYS_NOTIFICATION_POST     559
 #define WINIOS_SYS_DEVICE_DIAG_SUMMARY   560
+// Category C ABI v2.0 Extensions (Campaign 226)
+#define WINIOS_SYS_WINDOW_CREATE_V2      561
+#define WINIOS_SYS_WINDOW_DESTROY_V2     562
+#define WINIOS_SYS_WINDOW_SET_STATE      563
+#define WINIOS_SYS_WINDOW_GET_STATE      564
+#define WINIOS_SYS_WINDOW_INVALIDATE_RECT 565
+#define WINIOS_SYS_EVENT_POLL_V2         566
+#define WINIOS_SYS_EVENT_WAIT            567
+#define WINIOS_SYS_TEXT_INPUT_SUBMIT     568
+#define WINIOS_SYS_CLIPBOARD_GET_V2      569
+#define WINIOS_SYS_CLIPBOARD_SET_V2      570
 
 // Alignment helper
 #define WINIOS_ALIGNED(n) __attribute__((aligned(n)))

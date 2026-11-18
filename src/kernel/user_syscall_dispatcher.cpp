@@ -2138,6 +2138,298 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         return record_success(0);
     }
 
+    // -------------------------------------------------------------------------
+    // Category C ABI v2.0 Extensions (Syscalls 561..570)
+    // -------------------------------------------------------------------------
+    case kSysWiniosWindowCreateV2: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DisplayWindow)) {
+            return record_error(kErrnoEPERM);
+        }
+        std::string title;
+        if (!read_user_string(uas, arg0, title, 128)) {
+            return record_error(kErrnoEFAULT);
+        }
+        const uint32_t x = static_cast<uint32_t>(arg1);
+        const uint32_t y = static_cast<uint32_t>(arg2);
+        const uint32_t w = static_cast<uint32_t>(arg3);
+        const uint32_t h = static_cast<uint32_t>(arg4);
+
+        if (w == 0 || h == 0 || w > 3840 || h > 3840) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        std::shared_ptr<graphics::DisplaySurface> surface = nullptr;
+        if (surface_mgr_) {
+            auto code = surface_mgr_->create_surface(
+                proc.pid(), w, h, graphics::PixelFormat::B8G8R8A8_UNORM, surface);
+            if (code != graphics::SurfaceResultCode::Success || !surface) {
+                return record_error(kErrnoENOMEM);
+            }
+        }
+
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+
+        uint64_t handle = window_mgr_->create_window_v2(
+            proc.pid(), title, graphics::Rect{x, y, w, h}, surface);
+        return record_success(handle);
+    }
+
+    case kSysWiniosWindowDestroyV2: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (!window_mgr_->is_handle_valid(arg0)) {
+            return record_error(kErrnoEBADF);
+        }
+        bool ok = window_mgr_->destroy_window_by_handle(proc.pid(), arg0);
+        if (!ok) {
+            return record_error(kErrnoEPERM);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosWindowSetState: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (!window_mgr_->is_handle_valid(arg0)) {
+            return record_error(kErrnoEBADF);
+        }
+        const uint32_t target_state = static_cast<uint32_t>(arg1);
+        bool ok = false;
+        if (target_state == 1) { // Minimize
+            ok = window_mgr_->minimize_window(proc.pid(), arg0);
+        } else if (target_state == 4) { // Maximize
+            ok = window_mgr_->maximize_window(proc.pid(), arg0, graphics::Rect{0, 0, 1290, 2796});
+        } else if (target_state == 0) { // Restore / Normal
+            ok = window_mgr_->restore_window(proc.pid(), arg0);
+        } else if (target_state == 2) { // Hide
+            auto win = window_mgr_->get_window_by_handle(arg0);
+            if (win && win->can_access(proc.pid())) {
+                ok = window_mgr_->set_window_state(proc.pid(), win->id, graphics::WindowState::Hidden);
+            }
+        } else {
+            return record_error(kErrnoEINVAL);
+        }
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosWindowGetState: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg1 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto win = window_mgr_->get_window_by_handle(arg0);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+        winios_window_state_data_t st{};
+        st.handle = win->handle();
+        st.owner_pid = win->owner_pid;
+        st.state = static_cast<uint32_t>(win->state);
+        st.z_order = win->z_order;
+        st.is_focused = win->is_focused ? 1 : 0;
+        st.frame.x = win->frame.x;
+        st.frame.y = win->frame.y;
+        st.frame.width = win->frame.width;
+        st.frame.height = win->frame.height;
+        auto cf = win->client_frame();
+        st.client_frame.x = cf.x;
+        st.client_frame.y = cf.y;
+        st.client_frame.width = cf.width;
+        st.client_frame.height = cf.height;
+
+        if (!uas.copyin(arg1, &st, sizeof(st))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosWindowInvalidateRect: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        auto win = window_mgr_->get_window_by_handle(arg0);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+        graphics::Rect dmg = win->client_frame();
+        if (arg1 != 0) {
+            winios_rect_t r{};
+            if (!uas.copyout(reinterpret_cast<const void*>(arg1), &r, sizeof(r))) {
+                return record_error(kErrnoEFAULT);
+            }
+            dmg = graphics::Rect{r.x, r.y, r.width, r.height};
+        }
+        window_mgr_->invalidate_window_rect(proc.pid(), arg0, dmg);
+        return record_success(0);
+    }
+
+    case kSysWiniosEventPollV2: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg1 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        graphics::DesktopEvent dev{};
+        bool got = false;
+        if (arg0 != 0) {
+            got = window_mgr_->poll_event(proc.pid(), arg0, dev);
+        } else {
+            auto proc_wins = window_mgr_->get_windows_for_process(proc.pid());
+            for (const auto& w : proc_wins) {
+                if (w->event_queue.pop(dev)) {
+                    got = true;
+                    break;
+                }
+            }
+        }
+
+        if (!got) {
+            return record_success(0);
+        }
+
+        winios_desktop_event_t out_ev{};
+        out_ev.version = WINIOS_CATEGORY_C_ABI_VERSION_2_0;
+        out_ev.size = sizeof(winios_desktop_event_t);
+        out_ev.event_type = dev.event_type;
+        out_ev.flags = dev.flags;
+        out_ev.timestamp_us = dev.timestamp_us;
+        out_ev.window_handle = dev.window_handle;
+        out_ev.x = dev.x;
+        out_ev.y = dev.y;
+        out_ev.screen_x = dev.screen_x;
+        out_ev.screen_y = dev.screen_y;
+        out_ev.button_or_key = dev.button_or_key;
+        out_ev.wheel_delta = dev.wheel_delta;
+        out_ev.modifiers = dev.modifiers;
+        out_ev.payload_len = dev.payload_len;
+        std::memcpy(out_ev.payload, dev.payload, sizeof(out_ev.payload));
+
+        if (!uas.copyin(arg1, &out_ev, sizeof(out_ev))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(1);
+    }
+
+    case kSysWiniosEventWait: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg1 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        graphics::DesktopEvent dev{};
+        bool got = false;
+        if (arg0 != 0) {
+            got = window_mgr_->poll_event(proc.pid(), arg0, dev);
+        } else {
+            auto proc_wins = window_mgr_->get_windows_for_process(proc.pid());
+            for (const auto& w : proc_wins) {
+                if (w->event_queue.pop(dev)) {
+                    got = true;
+                    break;
+                }
+            }
+        }
+        if (got) {
+            winios_desktop_event_t out_ev{};
+            out_ev.version = WINIOS_CATEGORY_C_ABI_VERSION_2_0;
+            out_ev.size = sizeof(winios_desktop_event_t);
+            out_ev.event_type = dev.event_type;
+            out_ev.flags = dev.flags;
+            out_ev.timestamp_us = dev.timestamp_us;
+            out_ev.window_handle = dev.window_handle;
+            out_ev.x = dev.x;
+            out_ev.y = dev.y;
+            out_ev.screen_x = dev.screen_x;
+            out_ev.screen_y = dev.screen_y;
+            out_ev.button_or_key = dev.button_or_key;
+            out_ev.wheel_delta = dev.wheel_delta;
+            out_ev.modifiers = dev.modifiers;
+            out_ev.payload_len = dev.payload_len;
+            std::memcpy(out_ev.payload, dev.payload, sizeof(out_ev.payload));
+            if (!uas.copyin(arg1, &out_ev, sizeof(out_ev))) {
+                return record_error(kErrnoEFAULT);
+            }
+            return record_success(1);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosTextInputSubmit: {
+        if (!window_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg1 == 0 || arg2 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        const std::size_t tlen = std::min<std::size_t>(arg2, 64);
+        std::vector<char> buf(tlen + 1, 0);
+        if (!uas.copyout(reinterpret_cast<const void*>(arg1), buf.data(), tlen)) {
+            return record_error(kErrnoEFAULT);
+        }
+        graphics::DesktopEvent dev{};
+        dev.event_type = static_cast<uint32_t>(graphics::DesktopEventType::TextInput);
+        dev.window_handle = arg0;
+        dev.payload_len = static_cast<uint32_t>(tlen);
+        std::memcpy(dev.payload, buf.data(), tlen);
+        dev.payload[tlen] = 0;
+        if (arg0 != 0) {
+            window_mgr_->post_event(arg0, dev);
+        } else {
+            window_mgr_->post_event_to_focused(dev);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosClipboardGetV2: {
+        if (!clipboard_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::string clip_text;
+        bool ok = clipboard_->get_text(proc.pid(), clip_text);
+        if (!ok || clip_text.empty()) {
+            if (arg2 != 0) {
+                size_t zero = 0;
+                uas.copyin(arg2, &zero, sizeof(zero));
+            }
+            return record_success(0);
+        }
+        const std::size_t copy_len = std::min<std::size_t>(clip_text.size(), arg1);
+        if (!uas.copyin(arg0, clip_text.data(), copy_len)) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (arg2 != 0) {
+            uas.copyin(arg2, &copy_len, sizeof(copy_len));
+        }
+        return record_success(copy_len);
+    }
+
+    case kSysWiniosClipboardSetV2: {
+        if (!clipboard_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0 || arg1 > 65536) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<char> buf(arg1 + 1, 0);
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), buf.data(), arg1)) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string clip_str(buf.data(), arg1);
+        bool ok = clipboard_->set_text(proc.pid(), clip_str);
+        return record_success(ok ? 0 : 1);
+    }
+
     default: {
         ++stats_.total_invalid_syscalls;
         return record_error(kErrnoENOSYS);

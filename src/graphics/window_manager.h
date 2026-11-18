@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "graphics/display_surface.h"
+#include "graphics/window_event_queue.h"
 
 namespace winios::graphics {
 
@@ -19,8 +20,17 @@ enum class WindowState : std::uint8_t {
     Normal = 0,
     Minimized = 1,
     Hidden = 2,
-    Closed = 3
+    Closed = 3,
+    Maximized = 4
 };
+
+inline constexpr std::uint32_t window_handle_id(std::uint64_t handle) noexcept {
+    return static_cast<std::uint32_t>(handle & 0xFFFFFFFFULL);
+}
+
+inline constexpr std::uint32_t window_handle_gen(std::uint64_t handle) noexcept {
+    return static_cast<std::uint32_t>(handle >> 32);
+}
 
 enum class NonClientZone : std::uint8_t {
     None           = 0,
@@ -43,9 +53,11 @@ struct Window {
     static constexpr std::uint32_t  kButtonMargin = 6;
 
     std::uint32_t                   id{0};
+    std::uint32_t                   generation{1};
     std::uint32_t                   owner_pid{0};
     std::string                     title;
     Rect                            frame{0, 0, 0, 0};
+    Rect                            restore_frame{0, 0, 0, 0};
     std::int32_t                    z_order{0};
     WindowState                     state{WindowState::Normal};
     bool                            is_focused{false};
@@ -57,13 +69,18 @@ struct Window {
     bool                            is_dirty{true};
     Rect                            dirty_rect{0, 0, 0, 0};
     std::shared_ptr<DisplaySurface> surface;
+    WindowEventQueue                event_queue;
+
+    [[nodiscard]] std::uint64_t handle() const noexcept {
+        return (static_cast<std::uint64_t>(generation) << 32) | static_cast<std::uint64_t>(id);
+    }
 
     [[nodiscard]] bool can_access(std::uint32_t caller_pid) const noexcept {
         return caller_pid == 0 || caller_pid == owner_pid;
     }
 
     [[nodiscard]] bool is_visible() const noexcept {
-        return state == WindowState::Normal && surface && surface->is_visible();
+        return (state == WindowState::Normal || state == WindowState::Maximized) && surface && surface->is_visible();
     }
 
     [[nodiscard]] bool is_minimized() const noexcept {
@@ -92,14 +109,38 @@ public:
     WindowManager(const WindowManager&) = delete;
     WindowManager& operator=(const WindowManager&) = delete;
 
-    // Window Creation & Destruction
+    // Window Creation & Destruction (v1: 32-bit ID, v2: 64-bit Generation Handle)
     std::uint32_t create_window(
         std::uint32_t owner_pid,
         const std::string& title,
         const Rect& frame,
         std::shared_ptr<DisplaySurface> surface);
 
+    std::uint64_t create_window_v2(
+        std::uint32_t owner_pid,
+        const std::string& title,
+        const Rect& frame,
+        std::shared_ptr<DisplaySurface> surface);
+
     bool destroy_window(std::uint32_t caller_pid, std::uint32_t window_id);
+    bool destroy_window_by_handle(std::uint32_t caller_pid, std::uint64_t handle);
+
+    // Generation-Tagged Handle Lookup & Validation
+    [[nodiscard]] std::shared_ptr<Window> get_window_by_handle(std::uint64_t handle) const;
+    [[nodiscard]] bool is_handle_valid(std::uint64_t handle) const noexcept;
+
+    // Window State Transitions (Minimize, Maximize, Restore)
+    bool minimize_window(std::uint32_t caller_pid, std::uint64_t handle);
+    bool maximize_window(std::uint32_t caller_pid, std::uint64_t handle, const Rect& screen_bounds);
+    bool restore_window(std::uint32_t caller_pid, std::uint64_t handle);
+
+    // Event Delivery & Polling
+    bool post_event(std::uint64_t handle, const DesktopEvent& ev);
+    bool post_event_to_focused(const DesktopEvent& ev);
+    bool poll_event(std::uint32_t caller_pid, std::uint64_t handle, DesktopEvent& out_ev);
+
+    // Invalidation
+    bool invalidate_window_rect(std::uint32_t caller_pid, std::uint64_t handle, const Rect& damage);
 
     // Focus Management
     bool set_focus(std::uint32_t window_id);
@@ -149,6 +190,7 @@ private:
     std::uint32_t                                next_window_id_{1};
     std::uint32_t                                focused_window_id_{0};
     std::map<std::uint32_t, std::shared_ptr<Window>> windows_;
+    std::map<std::uint32_t, std::uint32_t>       generations_;
 };
 
 } // namespace winios::graphics

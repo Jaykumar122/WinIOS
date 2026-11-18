@@ -1735,5 +1735,64 @@ int32_t winios_device_diag_summary(winios_device_diag_t* out_diag) {
     return (int32_t)winios_syscall1(WINIOS_SYS_DEVICE_DIAG_SUMMARY, (uint64_t)(uintptr_t)out_diag);
 }
 
+// -----------------------------------------------------------------------------
+// Interactive Desktop & Window Management APIs (ABI v2.0)
+// -----------------------------------------------------------------------------
+uint64_t winios_window_create_v2(const char* title, uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t flags) {
+    if (!title || w == 0 || h == 0) return 0;
+    return (uint64_t)winios_syscall6(WINIOS_SYS_WINDOW_CREATE_V2,
+                                    (uint64_t)(uintptr_t)title,
+                                    (uint64_t)x,
+                                    (uint64_t)y,
+                                    (uint64_t)w,
+                                    (uint64_t)h,
+                                    (uint64_t)flags);
+}
+
+int32_t winios_window_destroy_v2(uint64_t handle) {
+    if (handle == 0) return -1;
+    return (int32_t)winios_syscall1(WINIOS_SYS_WINDOW_DESTROY_V2, handle);
+}
+
+int32_t winios_window_set_state_v2(uint64_t handle, uint32_t state) {
+    if (handle == 0) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_WINDOW_SET_STATE, handle, (uint64_t)state);
+}
+
+int32_t winios_window_get_state_v2(uint64_t handle, winios_window_state_data_t* out_state) {
+    if (handle == 0 || !out_state) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_WINDOW_GET_STATE, handle, (uint64_t)(uintptr_t)out_state);
+}
+
+int32_t winios_window_invalidate_rect(uint64_t handle, const winios_rect_t* rect) {
+    if (handle == 0) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_WINDOW_INVALIDATE_RECT, handle, (uint64_t)(uintptr_t)rect);
+}
+
+int32_t winios_event_poll_v2(uint64_t handle, winios_desktop_event_t* out_event) {
+    if (!out_event) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_EVENT_POLL_V2, handle, (uint64_t)(uintptr_t)out_event);
+}
+
+int32_t winios_event_wait(uint64_t handle, winios_desktop_event_t* out_event, uint64_t timeout_us) {
+    if (!out_event) return -1;
+    return (int32_t)winios_syscall3(WINIOS_SYS_EVENT_WAIT, handle, (uint64_t)(uintptr_t)out_event, timeout_us);
+}
+
+int32_t winios_text_input_submit(uint64_t handle, const char* utf8_text, size_t len) {
+    if (!utf8_text || len == 0) return -1;
+    return (int32_t)winios_syscall3(WINIOS_SYS_TEXT_INPUT_SUBMIT, handle, (uint64_t)(uintptr_t)utf8_text, (uint64_t)len);
+}
+
+int64_t winios_clipboard_get_v2(char* out_buf, size_t max_len, size_t* actual_len) {
+    if (!out_buf || max_len == 0) return -1;
+    return (int64_t)winios_syscall3(WINIOS_SYS_CLIPBOARD_GET_V2, (uint64_t)(uintptr_t)out_buf, (uint64_t)max_len, (uint64_t)(uintptr_t)actual_len);
+}
+
+int32_t winios_clipboard_set_v2(const char* text, size_t len) {
+    if (!text || len == 0) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_CLIPBOARD_SET_V2, (uint64_t)(uintptr_t)text, (uint64_t)len);
+}
+
 
 

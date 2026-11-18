@@ -30,6 +30,15 @@ std::uint32_t WindowManager::create_window(
     }
     win->z_order = max_z + 1;
 
+    std::uint32_t gen = 1;
+    auto gen_it = generations_.find(wid);
+    if (gen_it != generations_.end()) {
+        gen = gen_it->second;
+    } else {
+        generations_[wid] = 1;
+    }
+    win->generation = gen;
+
     // Update surface position to match window frame if surface exists
     if (win->surface) {
         win->surface->set_position(static_cast<std::int32_t>(frame.x), static_cast<std::int32_t>(frame.y));
@@ -51,6 +60,21 @@ std::uint32_t WindowManager::create_window(
     return wid;
 }
 
+std::uint64_t WindowManager::create_window_v2(
+    std::uint32_t owner_pid,
+    const std::string& title,
+    const Rect& frame,
+    std::shared_ptr<DisplaySurface> surface) {
+
+    std::uint32_t wid = create_window(owner_pid, title, frame, std::move(surface));
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = windows_.find(wid);
+    if (it != windows_.end()) {
+        return it->second->handle();
+    }
+    return 0;
+}
+
 bool WindowManager::destroy_window(std::uint32_t caller_pid, std::uint32_t window_id) {
     std::lock_guard<std::mutex> guard(lock_);
     auto it = windows_.find(window_id);
@@ -63,6 +87,7 @@ bool WindowManager::destroy_window(std::uint32_t caller_pid, std::uint32_t windo
     }
 
     it->second->state = WindowState::Closed;
+    generations_[window_id] = it->second->generation + 1;
     windows_.erase(it);
 
     if (focused_window_id_ == window_id) {
@@ -70,6 +95,151 @@ bool WindowManager::destroy_window(std::uint32_t caller_pid, std::uint32_t windo
         reassign_focus_locked();
     }
 
+    return true;
+}
+
+bool WindowManager::destroy_window_by_handle(std::uint32_t caller_pid, std::uint64_t handle) {
+    const std::uint32_t wid = static_cast<std::uint32_t>(handle & 0xFFFFFFFFULL);
+    const std::uint32_t gen = static_cast<std::uint32_t>((handle >> 32) & 0xFFFFFFFFULL);
+
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = windows_.find(wid);
+    if (it == windows_.end() || it->second->generation != gen) {
+        return false;
+    }
+
+    if (!it->second->can_access(caller_pid)) {
+        return false;
+    }
+
+    it->second->state = WindowState::Closed;
+    generations_[wid] = gen + 1;
+    windows_.erase(it);
+
+    if (focused_window_id_ == wid) {
+        focused_window_id_ = 0;
+        reassign_focus_locked();
+    }
+
+    return true;
+}
+
+std::shared_ptr<Window> WindowManager::get_window_by_handle(std::uint64_t handle) const {
+    const std::uint32_t wid = static_cast<std::uint32_t>(handle & 0xFFFFFFFFULL);
+    const std::uint32_t gen = static_cast<std::uint32_t>((handle >> 32) & 0xFFFFFFFFULL);
+
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = windows_.find(wid);
+    if (it != windows_.end() && it->second->generation == gen) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+bool WindowManager::is_handle_valid(std::uint64_t handle) const noexcept {
+    const std::uint32_t wid = static_cast<std::uint32_t>(handle & 0xFFFFFFFFULL);
+    const std::uint32_t gen = static_cast<std::uint32_t>((handle >> 32) & 0xFFFFFFFFULL);
+
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = windows_.find(wid);
+    return it != windows_.end() && it->second->generation == gen && it->second->state != WindowState::Closed;
+}
+
+bool WindowManager::minimize_window(std::uint32_t caller_pid, std::uint64_t handle) {
+    auto win = get_window_by_handle(handle);
+    if (!win || !win->can_access(caller_pid)) return false;
+    return set_window_state(caller_pid, win->id, WindowState::Minimized);
+}
+
+bool WindowManager::maximize_window(std::uint32_t caller_pid, std::uint64_t handle, const Rect& screen_bounds) {
+    std::lock_guard<std::mutex> guard(lock_);
+    const std::uint32_t wid = static_cast<std::uint32_t>(handle & 0xFFFFFFFFULL);
+    const std::uint32_t gen = static_cast<std::uint32_t>((handle >> 32) & 0xFFFFFFFFULL);
+
+    auto it = windows_.find(wid);
+    if (it == windows_.end() || it->second->generation != gen || !it->second->can_access(caller_pid)) {
+        return false;
+    }
+
+    auto& win = it->second;
+    if (win->state != WindowState::Maximized) {
+        win->restore_frame = win->frame;
+        win->state = WindowState::Maximized;
+        // Apply maximized bounds
+        Rect old_frame = win->frame;
+        win->frame = screen_bounds;
+        if (win->surface) {
+            auto cf = win->client_frame();
+            if (cf.width != win->surface->width() || cf.height != win->surface->height()) {
+                win->surface->resize(cf.width, cf.height);
+            }
+            win->surface->set_position(static_cast<std::int32_t>(cf.x), static_cast<std::int32_t>(cf.y));
+        }
+        win->is_dirty = true;
+        win->dirty_rect = old_frame.union_with(win->frame);
+    }
+    return true;
+}
+
+bool WindowManager::restore_window(std::uint32_t caller_pid, std::uint64_t handle) {
+    std::lock_guard<std::mutex> guard(lock_);
+    const std::uint32_t wid = static_cast<std::uint32_t>(handle & 0xFFFFFFFFULL);
+    const std::uint32_t gen = static_cast<std::uint32_t>((handle >> 32) & 0xFFFFFFFFULL);
+
+    auto it = windows_.find(wid);
+    if (it == windows_.end() || it->second->generation != gen || !it->second->can_access(caller_pid)) {
+        return false;
+    }
+
+    auto& win = it->second;
+    if (win->state == WindowState::Maximized) {
+        win->state = WindowState::Normal;
+        Rect old_frame = win->frame;
+        win->frame = (win->restore_frame.width > 0 && win->restore_frame.height > 0) ? win->restore_frame : Rect{50, 50, 400, 300};
+        if (win->surface) {
+            auto cf = win->client_frame();
+            if (cf.width != win->surface->width() || cf.height != win->surface->height()) {
+                win->surface->resize(cf.width, cf.height);
+            }
+            win->surface->set_position(static_cast<std::int32_t>(cf.x), static_cast<std::int32_t>(cf.y));
+        }
+        win->is_dirty = true;
+        win->dirty_rect = old_frame.union_with(win->frame);
+    } else if (win->state == WindowState::Minimized || win->state == WindowState::Hidden) {
+        win->state = WindowState::Normal;
+        if (win->surface) {
+            win->surface->set_visible(true);
+        }
+    }
+    return true;
+}
+
+bool WindowManager::post_event(std::uint64_t handle, const DesktopEvent& ev) {
+    auto win = get_window_by_handle(handle);
+    if (!win) return false;
+    return win->event_queue.push(ev);
+}
+
+bool WindowManager::post_event_to_focused(const DesktopEvent& ev) {
+    std::lock_guard<std::mutex> guard(lock_);
+    if (focused_window_id_ == 0) return false;
+    auto it = windows_.find(focused_window_id_);
+    if (it == windows_.end()) return false;
+    DesktopEvent routed = ev;
+    routed.window_handle = it->second->handle();
+    return it->second->event_queue.push(routed);
+}
+
+bool WindowManager::poll_event(std::uint32_t caller_pid, std::uint64_t handle, DesktopEvent& out_ev) {
+    auto win = get_window_by_handle(handle);
+    if (!win || !win->can_access(caller_pid)) return false;
+    return win->event_queue.pop(out_ev);
+}
+
+bool WindowManager::invalidate_window_rect(std::uint32_t caller_pid, std::uint64_t handle, const Rect& damage) {
+    auto win = get_window_by_handle(handle);
+    if (!win || !win->can_access(caller_pid)) return false;
+    mark_window_dirty(win->id, damage);
     return true;
 }
 
@@ -462,7 +632,12 @@ void WindowManager::cleanup_process_windows(std::uint32_t pid) {
     }
 
     for (std::uint32_t wid : to_remove) {
-        windows_.erase(wid);
+        auto it = windows_.find(wid);
+        if (it != windows_.end()) {
+            it->second->state = WindowState::Closed;
+            generations_[wid] = it->second->generation + 1;
+            windows_.erase(it);
+        }
     }
 
     if (focused_window_id_ != 0 && windows_.find(focused_window_id_) == windows_.end()) {

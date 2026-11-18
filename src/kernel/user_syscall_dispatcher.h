@@ -143,7 +143,19 @@ inline constexpr std::uint64_t kSysWiniosNetRecv           = 557;
 inline constexpr std::uint64_t kSysWiniosTimeGet           = 558;
 inline constexpr std::uint64_t kSysWiniosNotificationPost  = 559;
 inline constexpr std::uint64_t kSysWiniosDeviceDiagSummary = 560;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC      = 560;
+
+// Category C ABI v2.0 Extensions (Campaign 226 - Multi-Window Compositor & Desktop Events)
+inline constexpr std::uint64_t kSysWiniosWindowCreateV2       = 561;
+inline constexpr std::uint64_t kSysWiniosWindowDestroyV2      = 562;
+inline constexpr std::uint64_t kSysWiniosWindowSetState       = 563;
+inline constexpr std::uint64_t kSysWiniosWindowGetState       = 564;
+inline constexpr std::uint64_t kSysWiniosWindowInvalidateRect = 565;
+inline constexpr std::uint64_t kSysWiniosEventPollV2          = 566;
+inline constexpr std::uint64_t kSysWiniosEventWait             = 567;
+inline constexpr std::uint64_t kSysWiniosTextInputSubmit      = 568;
+inline constexpr std::uint64_t kSysWiniosClipboardGetV2       = 569;
+inline constexpr std::uint64_t kSysWiniosClipboardSetV2       = 570;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC          = 570;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;
@@ -158,6 +170,7 @@ inline constexpr std::int32_t kErrnoECHILD  = 10;
 inline constexpr std::int32_t kErrnoENOMEM  = 12;
 inline constexpr std::int32_t kErrnoEFAULT  = 14;
 inline constexpr std::int32_t kErrnoEEXIST  = 17;
+inline constexpr std::int32_t kErrnoENODEV  = 19;
 inline constexpr std::int32_t kErrnoEINVAL  = 22;
 inline constexpr std::int32_t kErrnoESPIPE  = 29;
 inline constexpr std::int32_t kErrnoEPIPE   = 32;

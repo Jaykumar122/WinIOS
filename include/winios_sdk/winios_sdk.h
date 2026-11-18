@@ -90,6 +90,20 @@ extern "C" {
 #define SYS_WINIOS_NOTIFICATION_POST      559
 #define SYS_WINIOS_DEVICE_DIAG_SUMMARY    560
 
+// Syscalls 561..570 (ABI v2.0 Interactive Desktop Compositor & Window Events)
+#define SYS_WINIOS_WINDOW_CREATE_V2       561
+#define SYS_WINIOS_WINDOW_DESTROY_V2      562
+#define SYS_WINIOS_WINDOW_SET_STATE       563
+#define SYS_WINIOS_WINDOW_GET_STATE       564
+#define SYS_WINIOS_WINDOW_INVALIDATE_RECT 565
+#define SYS_WINIOS_EVENT_POLL_V2          566
+#define SYS_WINIOS_EVENT_WAIT             567
+#define SYS_WINIOS_TEXT_INPUT_SUBMIT      568
+#define SYS_WINIOS_CLIPBOARD_GET_V2       569
+#define SYS_WINIOS_CLIPBOARD_SET_V2       570
+
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_0 0x00020000
+
 // -----------------------------------------------------------------------------
 // Core UI & Window Types
 // -----------------------------------------------------------------------------
@@ -107,6 +121,35 @@ typedef struct {
     uint32_t width;
     uint32_t height;
 } winios_rect_t;
+
+typedef struct {
+    uint32_t version;         // ABI version (0x00020000)
+    uint32_t size;            // sizeof(winios_desktop_event_t) = 128
+    uint32_t event_type;      // DesktopEventType
+    uint32_t flags;           // Flags (bit 0: synthetic, bit 1: repeat)
+    uint64_t timestamp_us;    // Monotonic timestamp
+    uint64_t window_handle;   // 64-bit generation-tagged handle
+    int32_t  x;               // Client-relative X
+    int32_t  y;               // Client-relative Y
+    int32_t  screen_x;        // Screen X
+    int32_t  screen_y;        // Screen Y
+    uint32_t button_or_key;   // Mouse button or keycode
+    int32_t  wheel_delta;     // Wheel delta
+    uint32_t modifiers;       // Modifier mask (Shift=1, Ctrl=2, Alt=4, Meta=8)
+    uint32_t payload_len;     // Payload byte length
+    uint8_t  payload[64];     // Inline payload (e.g. UTF-8 text)
+} winios_desktop_event_t;
+
+typedef struct {
+    uint64_t handle;
+    uint32_t owner_pid;
+    uint32_t state;           // 0: Normal, 1: Minimized, 2: Hidden, 3: Closed, 4: Maximized
+    int32_t  z_order;
+    uint32_t is_focused;
+    winios_rect_t frame;
+    winios_rect_t client_frame;
+    uint32_t reserved[4];
+} winios_window_state_data_t;
 
 typedef enum {
     WINIOS_EVENT_NONE                 = 0,

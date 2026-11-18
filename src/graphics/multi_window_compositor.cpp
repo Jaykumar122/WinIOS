@@ -158,7 +158,7 @@ bool MultiWindowCompositor::composite(bool force_full) {
     // 2. Composite visible windows in z-order back to front
     for (std::size_t i = 0; i < windows.size(); ++i) {
         const auto& w = windows[i];
-        if (!w || !w->is_visible()) continue;
+        if (!w || !w->is_visible() || w->state == WindowState::Closed) continue;
 
         // Stage 216.12 Occlusion check: Is window completely covered by a higher opaque window?
         bool is_occluded = false;
