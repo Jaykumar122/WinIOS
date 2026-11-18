@@ -38,15 +38,17 @@ def validate_macho(binary_path):
         print(f"[VALID] 64-bit ARM64 Mach-O: ncmds={ncmds}, sizeofcmds={sizeofcmds}")
         return True
 
-def compile_arm64(src_path, out_bin):
-    print(f"[*] Compiling {src_path} -> {out_bin} using Zig...")
+def compile_arm64(src_path, out_bin, entry="__start"):
+    print(f"[*] Compiling {src_path} -> {out_bin} using Zig (entry={entry})...")
     cmd = [
         "zig", "cc",
         "-target", "aarch64-macos",
         "-nostdlib",
         "-fno-sanitize=undefined",
         "-O2",
-        "-Wl,-e,__start",
+        "-fno-vectorize",
+        "-fno-slp-vectorize",
+        f"-Wl,-e,{entry}",
         src_path,
         "-o", out_bin
     ]
@@ -63,20 +65,33 @@ def pack_app(app_dir, out_wios, bundle_id, app_name, version="1.2.0"):
         f"bundle_id={bundle_id}",
         f"name={app_name}",
         f"version={version}",
-        "min_os_version=217.0",
+        "architecture=arm64",
+        "min_os_version=218.0",
         "executable_name=bin/app"
     ]
     files = []
+    seen_paths = set()
     for root, _, filenames in os.walk(app_dir):
         for fn in filenames:
             full_path = os.path.join(root, fn)
             rel_path = os.path.relpath(full_path, app_dir).replace("\\", "/")
-            h = compute_sha256(full_path)
+            if ".." in rel_path or rel_path.startswith("/"):
+                print(f"[ERROR] Path traversal attempted in package: {rel_path}", file=sys.stderr)
+                return False
+            if rel_path in seen_paths:
+                print(f"[ERROR] Duplicate entry in package: {rel_path}", file=sys.stderr)
+                return False
+            seen_paths.add(rel_path)
+
             sz = os.path.getsize(full_path)
+            if sz > 32 * 1024 * 1024:
+                print(f"[ERROR] File size exceeds 32MB limit: {rel_path} ({sz} bytes)", file=sys.stderr)
+                return False
+
+            h = compute_sha256(full_path)
             files.append((rel_path, sz, h, full_path))
 
     with open(out_wios, 'wb') as out_f:
-        # Magic: WIOSPKG\0 (8 bytes)
         out_f.write(b"WIOSPKG\0")
         manifest_text = "\n".join(manifest_lines) + "\n"
         manifest_bytes = manifest_text.encode('utf-8')
@@ -94,7 +109,8 @@ def pack_app(app_dir, out_wios, bundle_id, app_name, version="1.2.0"):
             with open(full_path, 'rb') as in_f:
                 out_f.write(in_f.read())
 
-    print(f"[SUCCESS] Created package: {out_wios} ({os.path.getsize(out_wios)} bytes)")
+    pkg_hash = compute_sha256(out_wios)
+    print(f"[SUCCESS] Created package: {out_wios} ({os.path.getsize(out_wios)} bytes, SHA-256: {pkg_hash})")
     return True
 
 def verify_package(wios_path):
@@ -110,6 +126,21 @@ def verify_package(wios_path):
         m_len = struct.unpack('<I', f.read(4))[0]
         manifest = f.read(m_len).decode('utf-8')
         num_files = struct.unpack('<I', f.read(4))[0]
+        seen_files = set()
+        for _ in range(num_files):
+            p_len = struct.unpack('<I', f.read(4))[0]
+            rel_p = f.read(p_len).decode('utf-8')
+            if ".." in rel_p or rel_p.startswith("/"):
+                print(f"[ERROR] Dangerous path in package: {rel_p}", file=sys.stderr)
+                return False
+            if rel_p in seen_files:
+                print(f"[ERROR] Duplicate path in package: {rel_p}", file=sys.stderr)
+                return False
+            seen_files.add(rel_p)
+            sz = struct.unpack('<Q', f.read(8))[0]
+            h_len = struct.unpack('<I', f.read(4))[0]
+            _ = f.read(h_len)
+            f.seek(sz, os.SEEK_CUR)
         print(f"[VALID] Package verified: files={num_files}, manifest_len={m_len}")
     return True
 
@@ -120,6 +151,7 @@ def main():
     compile_p = sub.add_parser("compile", help="Compile C source to ARM64 Mach-O")
     compile_p.add_argument("src", help="Source file")
     compile_p.add_argument("-o", "--out", required=True, help="Output binary")
+    compile_p.add_argument("--entry", default="__start", help="Entry point symbol (default: __start)")
 
     validate_p = sub.add_parser("validate", help="Validate Mach-O binary")
     validate_p.add_argument("bin", help="Binary path")
@@ -135,7 +167,7 @@ def main():
 
     args = parser.parse_args()
     if args.cmd == "compile":
-        ok = compile_arm64(args.src, args.out)
+        ok = compile_arm64(args.src, args.out, entry=args.entry)
         sys.exit(0 if ok else 1)
     elif args.cmd == "validate":
         ok = validate_macho(args.bin)

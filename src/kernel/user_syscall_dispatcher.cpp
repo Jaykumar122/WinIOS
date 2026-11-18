@@ -9,6 +9,11 @@
 #include "runtime/guest_event_services.h"
 #include "memory/guest_memory_validator.h"
 #include "winios_sdk/winios_sdk.h"
+#include "runtime/guest_storage_api.h"
+#include "runtime/guest_allocator.h"
+#include "runtime/guest_ipc.h"
+#include "runtime/app_preferences.h"
+#include "runtime/execution_boundary.h"
 
 #include <algorithm>
 #include <cstring>
@@ -28,7 +33,7 @@ static bool read_user_string(memory::UserAddressSpace& uas, std::uint64_t va, st
         }
         out_str.push_back(ch);
     }
-    return false;
+    return !out_str.empty();
 }
 
 bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
@@ -942,6 +947,180 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         return record_success(tid);
+    }
+
+    case kSysWiniosAllocHeap: {
+        if (!allocator_) return record_error(kErrnoENOSYS);
+        if (arg0 == 0) return record_success(0);
+        uint64_t ptr = allocator_->Allocate(static_cast<size_t>(arg0), arg1 != 0 ? static_cast<size_t>(arg1) : 16);
+        if (ptr == 0) return record_error(kErrnoENOMEM);
+        return record_success(ptr);
+    }
+
+    case kSysWiniosFreeHeap: {
+        if (!allocator_) return record_error(kErrnoENOSYS);
+        if (arg0 == 0) return record_success(0);
+        bool ok = allocator_->Free(arg0);
+        return ok ? record_success(0) : record_error(kErrnoEINVAL);
+    }
+
+    case kSysWiniosGetRuntimeInfo: {
+        if (arg0 == 0) return record_error(kErrnoEFAULT);
+        winios_runtime_info_t info{};
+        info.abi_version = kWiniosCategoryCAbiVersion;
+        info.process_id = proc.pid();
+        if (allocator_) {
+            info.heap_used_bytes = allocator_->GetStats().bytes_allocated;
+        }
+        info.total_instructions_retired = runtime::ExecutionBoundaryEnforcer::Get().GetVerifiedGuestInstructionsRetired();
+        if (!uas.copyin(arg0, &info, sizeof(info))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosStorageRead: {
+        if (!storage_api_) return record_error(kErrnoENOSYS);
+        winios_storage_req_t req{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string path;
+        if (!read_user_string(uas, req.path_ptr, path, req.path_len > 0 ? req.path_len : 256)) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (path.find("..") != std::string::npos || (!path.empty() && (path.front() == '/' || path.front() == '\\'))) {
+            return record_error(kErrnoEPERM);
+        }
+        int fd = storage_api_->OpenFile(path, static_cast<uint32_t>(runtime::FileMode::kReadOnly));
+        if (fd < 0) return record_error(kErrnoENOENT);
+        std::vector<char> buf(arg2);
+        int nread = storage_api_->ReadFile(fd, buf.data(), static_cast<size_t>(arg2));
+        storage_api_->CloseFile(fd);
+        if (nread > 0 && arg1 != 0) {
+            if (!uas.copyin(arg1, buf.data(), static_cast<size_t>(nread))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        return record_success(nread >= 0 ? nread : 0);
+    }
+
+    case kSysWiniosStorageWrite: {
+        if (!storage_api_) return record_error(kErrnoENOSYS);
+        winios_storage_req_t req{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string path;
+        if (!read_user_string(uas, req.path_ptr, path, req.path_len > 0 ? req.path_len : 256)) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (path.find("..") != std::string::npos || (!path.empty() && (path.front() == '/' || path.front() == '\\'))) {
+            return record_error(kErrnoEPERM);
+        }
+        uint32_t mode = static_cast<uint32_t>(runtime::FileMode::kWriteOnly) |
+                        static_cast<uint32_t>(runtime::FileMode::kCreate) |
+                        static_cast<uint32_t>(runtime::FileMode::kTruncate);
+        int fd = storage_api_->OpenFile(path, mode);
+        if (fd < 0) return record_error(kErrnoEPERM);
+        std::vector<char> buf(arg2);
+        if (arg2 > 0 && arg1 != 0) {
+            if (!uas.copyout(reinterpret_cast<const void*>(arg1), buf.data(), arg2)) {
+                storage_api_->CloseFile(fd);
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        int nwritten = storage_api_->WriteFile(fd, buf.data(), static_cast<size_t>(arg2));
+        storage_api_->CloseFile(fd);
+        return record_success(nwritten >= 0 ? nwritten : 0);
+    }
+
+    case kSysWiniosIpcCreatePort: {
+        std::string port_name;
+        if (arg0 != 0) {
+            read_user_string(uas, arg0, port_name, 64);
+        }
+        uint32_t port = runtime::GuestIpcRouter::Get().CreatePort(proc.pid(), port_name);
+        if (port == 0) return record_error(kErrnoEPERM);
+        return record_success(port);
+    }
+
+    case kSysWiniosIpcSend: {
+        winios_ipc_msg_desc_t desc{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &desc, sizeof(desc))) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::vector<uint8_t> payload(desc.data_size);
+        if (desc.data_size > 0 && desc.data_ptr != 0) {
+            if (!uas.copyout(reinterpret_cast<const void*>(desc.data_ptr), payload.data(), desc.data_size)) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        bool ok = runtime::GuestIpcRouter::Get().Send(proc.pid(), desc.target_port, payload.data(), desc.data_size, desc.message_id);
+        return ok ? record_success(0) : record_error(kErrnoEINVAL);
+    }
+
+    case kSysWiniosIpcRecv: {
+        uint32_t port = static_cast<uint32_t>(arg0);
+        runtime::IpcMessage msg{};
+        bool ok = runtime::GuestIpcRouter::Get().Receive(proc.pid(), port, &msg);
+        if (!ok) return record_error(kErrnoENOENT);
+        winios_ipc_msg_desc_t desc{};
+        desc.sender_pid = msg.sender_pid;
+        desc.target_port = port;
+        desc.data_ptr = arg2;
+        desc.data_size = static_cast<uint32_t>(std::min(msg.data.size(), static_cast<size_t>(arg3)));
+        desc.message_id = msg.message_id;
+        if (desc.data_size > 0 && arg2 != 0) {
+            if (!uas.copyin(arg2, msg.data.data(), desc.data_size)) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        if (!uas.copyin(arg1, &desc, sizeof(desc))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosPrefGetSet: {
+        if (!preferences_) return record_error(kErrnoENOSYS);
+        winios_pref_entry_t entry{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg1), &entry, sizeof(entry))) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string key;
+        if (!read_user_string(uas, entry.key_ptr, key, entry.key_len > 0 ? entry.key_len : 64)) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (arg0 == 0) { // Get
+            if (entry.val_type == 1) { // string
+                std::string val = preferences_->GetString(key);
+                size_t copy_len = std::min(val.size() + 1, static_cast<size_t>(entry.val_size));
+                if (copy_len > 0 && entry.val_ptr != 0) {
+                    uas.copyin(entry.val_ptr, val.c_str(), copy_len);
+                }
+            } else if (entry.val_type == 2) { // int
+                int val = preferences_->GetInt(key);
+                if (entry.val_ptr != 0 && entry.val_size >= sizeof(int)) {
+                    uas.copyin(entry.val_ptr, &val, sizeof(int));
+                }
+            }
+            return record_success(0);
+        } else if (arg0 == 1) { // Set
+            if (entry.val_type == 1) {
+                std::string val;
+                read_user_string(uas, entry.val_ptr, val, entry.val_size);
+                preferences_->SetString(key, val);
+                preferences_->Save();
+            } else if (entry.val_type == 2) {
+                int val = 0;
+                uas.copyout(reinterpret_cast<const void*>(entry.val_ptr), &val, sizeof(int));
+                preferences_->SetInt(key, val);
+                preferences_->Save();
+            }
+            return record_success(0);
+        }
+        return record_error(kErrnoEINVAL);
     }
 
     default: {

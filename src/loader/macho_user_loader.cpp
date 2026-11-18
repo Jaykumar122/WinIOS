@@ -1,5 +1,6 @@
 #include "loader/macho_user_loader.h"
 #include "loader/embedded_user_apps_211.inl"
+#include "loader/embedded_guest_workloads_218.inl"
 
 #include <cstring>
 #include <iostream>
@@ -12,6 +13,10 @@ std::vector<std::uint8_t> MachoUserLoader::get_embedded_first_app() {
 
 std::vector<std::uint8_t> MachoUserLoader::get_embedded_init_app() {
     return std::vector<std::uint8_t>(kUserInitAppMacho_data, kUserInitAppMacho_data + kUserInitAppMacho_len);
+}
+
+std::vector<std::uint8_t> MachoUserLoader::get_embedded_test_workload() {
+    return std::vector<std::uint8_t>(kGuestTestWorkloadMacho_data, kGuestTestWorkloadMacho_data + kGuestTestWorkloadMacho_len);
 }
 
 bool MachoUserLoader::validate_header(const std::uint8_t* data, std::size_t size, std::string* out_err) {
@@ -60,6 +65,8 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
     }
 
     std::size_t offset = 32;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> mapped_ranges;
+    std::vector<std::uint64_t> allocated_pages;
 
     for (std::uint32_t i = 0; i < ncmds; ++i) {
         if (offset + 8 > binary.size()) {
@@ -107,7 +114,31 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
             if ((initprot & 0x2) != 0 && (initprot & 0x4) != 0) {
                 res.valid = false;
                 res.error_message = "W^X violation: Segment marked simultaneously Writable and Executable";
+                for (auto pa : allocated_pages) ppm.free_page(pa);
                 return res;
+            }
+
+            // 16 KB page granule alignment check
+            if ((vmaddr & (memory::kPhysicalPageSize16KB - 1)) != 0) {
+                res.valid = false;
+                res.error_message = "Segment vmaddr is not aligned to 16 KB page granule";
+                for (auto pa : allocated_pages) ppm.free_page(pa);
+                return res;
+            }
+
+            // Segment overlap check
+            if (vmsize > 0) {
+                const std::uint64_t seg_start = vmaddr;
+                const std::uint64_t seg_end = vmaddr + vmsize;
+                for (const auto& existing : mapped_ranges) {
+                    if (seg_start < existing.second && seg_end > existing.first) {
+                        res.valid = false;
+                        res.error_message = "Segment virtual address overlap detected";
+                        for (auto pa : allocated_pages) ppm.free_page(pa);
+                        return res;
+                    }
+                }
+                mapped_ranges.push_back({seg_start, seg_end});
             }
 
             if (std::strcmp(segname, "__PAGEZERO") == 0) {
@@ -116,13 +147,19 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
                 if (initprot != 0 || maxprot != 0) {
                     res.valid = false;
                     res.error_message = "__PAGEZERO segment must have VM_PROT_NONE";
+                    for (auto pa : allocated_pages) ppm.free_page(pa);
                     return res;
                 }
+            } else if (std::strcmp(segname, "__LINKEDIT") == 0) {
+                // LINKEDIT is not mapped into runtime RAM for freestanding static binaries
+                ++res.segments_loaded;
             } else if (vmsize > 0) {
                 // Determine page permissions
                 memory::PagePermissions perms = memory::PagePermissions::UserRead;
                 if ((initprot & 0x4) != 0) {
                     perms = memory::PagePermissions::UserExecute;
+                } else if (std::strcmp(segname, "__DATA_CONST") == 0) {
+                    perms = memory::PagePermissions::UserRead;
                 } else if ((initprot & 0x2) != 0) {
                     perms = memory::PagePermissions::UserReadWrite;
                 }
@@ -135,8 +172,10 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
                     if (pa == 0) {
                         res.valid = false;
                         res.error_message = "Out of physical DRAM pages while loading Mach-O segment";
+                        for (auto freed_pa : allocated_pages) ppm.free_page(freed_pa);
                         return res;
                     }
+                    allocated_pages.push_back(pa);
 
                     // Zero-initialize page
                     for (std::size_t b = 0; b < memory::kPhysicalPageSize16KB; ++b) {
@@ -160,6 +199,7 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
                     if (!uas.map_user_page(page_va, pa, perms)) {
                         res.valid = false;
                         res.error_message = "Failed to map user page into UserAddressSpace";
+                        for (auto freed_pa : allocated_pages) ppm.free_page(freed_pa);
                         return res;
                     }
                 }
@@ -167,6 +207,9 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
                 if (std::strcmp(segname, "__TEXT") == 0) {
                     res.text_vmaddr = vmaddr;
                     res.text_vmsize = vmsize;
+                } else if (std::strcmp(segname, "__DATA_CONST") == 0) {
+                    res.data_const_vmaddr = vmaddr;
+                    res.data_const_vmsize = vmsize;
                 } else if (std::strcmp(segname, "__DATA") == 0) {
                     res.data_vmaddr = vmaddr;
                     res.data_vmsize = vmsize;
@@ -203,6 +246,15 @@ LoadedUserImage MachoUserLoader::load_image(const std::vector<std::uint8_t>& bin
     if (res.entry_point == 0 && res.text_vmaddr != 0) {
         // Fallback: default to start of __TEXT segment
         res.entry_point = res.text_vmaddr;
+    }
+
+    if (res.text_vmsize > 0) {
+        if (res.entry_point < res.text_vmaddr || res.entry_point >= res.text_vmaddr + res.text_vmsize) {
+            res.valid = false;
+            res.error_message = "Entry point outside executable __TEXT segment boundary";
+            for (auto freed_pa : allocated_pages) ppm.free_page(freed_pa);
+            return res;
+        }
     }
 
     res.valid = (res.segments_loaded > 0 && res.entry_point != 0);

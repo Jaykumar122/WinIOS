@@ -14,7 +14,7 @@
 namespace winios::memory {
 
 inline constexpr std::uint64_t kUserSpaceBaseVa = 0x0000000000000000ULL;
-inline constexpr std::uint64_t kUserSpaceLimitVa = 0x0000000080000000ULL; // 2 GiB user address space limit
+inline constexpr std::uint64_t kUserSpaceLimitVa = 0x0000000800000000ULL; // 32 GiB user address space limit
 
 class UserAddressSpace {
 public:

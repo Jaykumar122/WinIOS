@@ -24,6 +24,8 @@ struct LoadedUserImage {
     std::uint64_t text_vmsize{0};
     std::uint64_t data_vmaddr{0};
     std::uint64_t data_vmsize{0};
+    std::uint64_t data_const_vmaddr{0};
+    std::uint64_t data_const_vmsize{0};
     std::uint64_t stack_size{0x10000ULL}; // 64 KiB default stack
     std::size_t segments_loaded{0};
     std::string error_message;
@@ -43,6 +45,7 @@ public:
     // Embedded test applications
     static std::vector<std::uint8_t> get_embedded_first_app();
     static std::vector<std::uint8_t> get_embedded_init_app();
+    static std::vector<std::uint8_t> get_embedded_test_workload();
 };
 
 } // namespace winios::loader

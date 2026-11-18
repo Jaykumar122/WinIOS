@@ -26,6 +26,9 @@ class InputRouter;
 
 namespace winios::runtime {
 class GuestEventServices;
+class GuestStorageApi;
+class GuestAllocator;
+class AppPreferences;
 }
 
 namespace winios::kernel {
@@ -64,9 +67,19 @@ inline constexpr std::uint64_t kSysWiniosWindowSetGeometry = 509;
 inline constexpr std::uint64_t kSysWiniosWindowSetFocus    = 510;
 inline constexpr std::uint64_t kSysWiniosWindowList        = 511;
 inline constexpr std::uint64_t kSysWiniosCreateTimer       = 512;
+// Category C ABI v1.2 Extensions
+inline constexpr std::uint64_t kSysWiniosAllocHeap        = 513;
+inline constexpr std::uint64_t kSysWiniosFreeHeap         = 514;
+inline constexpr std::uint64_t kSysWiniosGetRuntimeInfo   = 515;
+inline constexpr std::uint64_t kSysWiniosStorageRead      = 516;
+inline constexpr std::uint64_t kSysWiniosStorageWrite     = 517;
+inline constexpr std::uint64_t kSysWiniosIpcCreatePort    = 518;
+inline constexpr std::uint64_t kSysWiniosIpcSend          = 519;
+inline constexpr std::uint64_t kSysWiniosIpcRecv          = 520;
+inline constexpr std::uint64_t kSysWiniosPrefGetSet       = 521;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
-    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosCreateTimer;
+    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosPrefGetSet;
 }
 
 // Pinned Darwin/XNU Errno Numbers (xnu-10002.1.13 bsd/sys/errno.h)
@@ -75,6 +88,7 @@ inline constexpr std::int32_t kErrnoENOENT  = 2;
 inline constexpr std::int32_t kErrnoESRCH   = 3;
 inline constexpr std::int32_t kErrnoEBADF   = 9;
 inline constexpr std::int32_t kErrnoECHILD  = 10;
+inline constexpr std::int32_t kErrnoENOMEM  = 12;
 inline constexpr std::int32_t kErrnoEFAULT  = 14;
 inline constexpr std::int32_t kErrnoEEXIST  = 17;
 inline constexpr std::int32_t kErrnoEINVAL  = 22;
@@ -149,6 +163,15 @@ public:
     void set_event_services(runtime::GuestEventServices* ev) noexcept { event_services_ = ev; }
     [[nodiscard]] runtime::GuestEventServices* event_services() noexcept { return event_services_; }
 
+    void set_storage_api(runtime::GuestStorageApi* storage) noexcept { storage_api_ = storage; }
+    [[nodiscard]] runtime::GuestStorageApi* storage_api() noexcept { return storage_api_; }
+
+    void set_allocator(runtime::GuestAllocator* alloc) noexcept { allocator_ = alloc; }
+    [[nodiscard]] runtime::GuestAllocator* allocator() noexcept { return allocator_; }
+
+    void set_preferences(runtime::AppPreferences* prefs) noexcept { preferences_ = prefs; }
+    [[nodiscard]] runtime::AppPreferences* preferences() noexcept { return preferences_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -173,6 +196,9 @@ private:
     graphics::Compositor* compositor_{nullptr};
     input::InputRouter* input_router_{nullptr};
     runtime::GuestEventServices* event_services_{nullptr};
+    runtime::GuestStorageApi* storage_api_{nullptr};
+    runtime::GuestAllocator* allocator_{nullptr};
+    runtime::AppPreferences* preferences_{nullptr};
 };
 
 } // namespace winios::kernel

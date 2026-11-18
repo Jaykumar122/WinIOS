@@ -283,6 +283,7 @@ add_library(winios_core STATIC
     src/runtime/app_lifecycle.cpp
     src/runtime/app_preferences.cpp
     src/apps/campaign217_apps.cpp
+    src/runtime/execution_boundary.cpp
 )
 
 target_include_directories(winios_core PUBLIC
@@ -4668,6 +4669,52 @@ add_executable(stage217_23_developer_e2e_tests tests/unit/stage217_23_developer_
 target_link_libraries(stage217_23_developer_e2e_tests PRIVATE winios_core)
 winios_set_warnings(stage217_23_developer_e2e_tests)
 add_test(NAME stage217_23_developer_e2e_tests COMMAND stage217_23_developer_e2e_tests)
+
+# Campaign 218 Tests (Genuine ARM64 Guest Execution & Mach-O Conformance)
+add_executable(stage218_2_boundary_tests tests/unit/stage218_2_boundary_tests.cpp)
+target_link_libraries(stage218_2_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage218_2_boundary_tests)
+add_test(NAME stage218_2_boundary_tests COMMAND stage218_2_boundary_tests)
+
+add_executable(stage218_4_macho_hardening_tests tests/unit/stage218_4_macho_hardening_tests.cpp)
+target_link_libraries(stage218_4_macho_hardening_tests PRIVATE winios_core)
+winios_set_warnings(stage218_4_macho_hardening_tests)
+add_test(NAME stage218_4_macho_hardening_tests COMMAND stage218_4_macho_hardening_tests)
+
+add_executable(stage218_5_segment_permissions_tests tests/unit/stage218_5_segment_permissions_tests.cpp)
+target_link_libraries(stage218_5_segment_permissions_tests PRIVATE winios_core)
+winios_set_warnings(stage218_5_segment_permissions_tests)
+add_test(NAME stage218_5_segment_permissions_tests COMMAND stage218_5_segment_permissions_tests)
+
+add_executable(stage218_6_relocation_tests tests/unit/stage218_6_relocation_tests.cpp)
+target_link_libraries(stage218_6_relocation_tests PRIVATE winios_core)
+winios_set_warnings(stage218_6_relocation_tests)
+add_test(NAME stage218_6_relocation_tests COMMAND stage218_6_relocation_tests)
+
+add_executable(stage218_7_abi_v12_startup_tests tests/unit/stage218_7_abi_v12_startup_tests.cpp)
+target_link_libraries(stage218_7_abi_v12_startup_tests PRIVATE winios_core)
+winios_set_warnings(stage218_7_abi_v12_startup_tests)
+add_test(NAME stage218_7_abi_v12_startup_tests COMMAND stage218_7_abi_v12_startup_tests)
+
+add_executable(stage218_8_arm64_execution_tests tests/unit/stage218_8_arm64_execution_tests.cpp)
+target_link_libraries(stage218_8_arm64_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage218_8_arm64_execution_tests)
+add_test(NAME stage218_8_arm64_execution_tests COMMAND stage218_8_arm64_execution_tests)
+
+add_executable(stage218_14_syscall_isolation_tests tests/unit/stage218_14_syscall_isolation_tests.cpp)
+target_link_libraries(stage218_14_syscall_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage218_14_syscall_isolation_tests)
+add_test(NAME stage218_14_syscall_isolation_tests COMMAND stage218_14_syscall_isolation_tests)
+
+add_executable(stage218_22_native_guest_e2e_tests tests/unit/stage218_22_native_guest_e2e_tests.cpp)
+target_link_libraries(stage218_22_native_guest_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage218_22_native_guest_e2e_tests)
+add_test(NAME stage218_22_native_guest_e2e_tests COMMAND stage218_22_native_guest_e2e_tests)
+
+add_executable(stage218_23_adversarial_tests tests/unit/stage218_23_adversarial_tests.cpp)
+target_link_libraries(stage218_23_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage218_23_adversarial_tests)
+add_test(NAME stage218_23_adversarial_tests COMMAND stage218_23_adversarial_tests)
 
 
 
