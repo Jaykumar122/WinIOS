@@ -60,19 +60,8 @@ void winios_exit(int status) {
 // Freestanding Memory Operations
 // -----------------------------------------------------------------------------
 void* winios_memcpy(void* dest, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    const uint8_t* s = (const uint8_t*)src;
-
-    // Word-aligned fast path
-    if ((((uintptr_t)d | (uintptr_t)s) & 0x7) == 0) {
-        while (n >= 8) {
-            *(uint64_t*)d = *(const uint64_t*)s;
-            d += 8;
-            s += 8;
-            n -= 8;
-        }
-    }
-
+    volatile uint8_t* d = (volatile uint8_t*)dest;
+    const volatile uint8_t* s = (const volatile uint8_t*)src;
     while (n--) {
         *d++ = *s++;
     }
@@ -80,8 +69,8 @@ void* winios_memcpy(void* dest, const void* src, size_t n) {
 }
 
 void* winios_memmove(void* dest, const void* src, size_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    const uint8_t* s = (const uint8_t*)src;
+    volatile uint8_t* d = (volatile uint8_t*)dest;
+    const volatile uint8_t* s = (const volatile uint8_t*)src;
 
     if (d == s || n == 0) {
         return dest;
@@ -104,22 +93,8 @@ void* winios_memmove(void* dest, const void* src, size_t n) {
 }
 
 void* winios_memset(void* s, int c, size_t n) {
-    uint8_t* p = (uint8_t*)s;
+    volatile uint8_t* p = (volatile uint8_t*)s;
     const uint8_t val = (uint8_t)c;
-
-    // Word-aligned fill
-    if (((uintptr_t)p & 0x7) == 0 && n >= 8) {
-        uint64_t word = val;
-        word |= (word << 8);
-        word |= (word << 16);
-        word |= (word << 32);
-        while (n >= 8) {
-            *(uint64_t*)p = word;
-            p += 8;
-            n -= 8;
-        }
-    }
-
     while (n--) {
         *p++ = val;
     }
@@ -1663,5 +1638,102 @@ int32_t winios_ipc_register_port(uint64_t port_handle, const char* name) {
     if (!name) return -1;
     return (int32_t)winios_syscall2(WINIOS_SYS_IPC_REGISTER_PORT, port_handle, (uint64_t)(uintptr_t)name);
 }
+
+// -----------------------------------------------------------------------------
+// SDK v1.9 Device & Hardware Abstraction Services
+// -----------------------------------------------------------------------------
+int32_t winios_device_enum(winios_device_info_t* buf, uint32_t max_count, uint32_t class_filter, uint32_t* out_count) {
+    if (!buf || max_count == 0) return -1;
+    return (int32_t)winios_syscall4(WINIOS_SYS_DEVICE_ENUM,
+                                   (uint64_t)(uintptr_t)buf,
+                                   (uint64_t)max_count,
+                                   (uint64_t)class_filter,
+                                   (uint64_t)(uintptr_t)out_count);
+}
+
+int32_t winios_device_get_info(uint64_t handle_or_id, winios_device_info_t* out_info) {
+    if (!out_info) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_DEVICE_GET_INFO,
+                                   handle_or_id,
+                                   (uint64_t)(uintptr_t)out_info);
+}
+
+uint64_t winios_device_open(uint32_t device_id, uint32_t flags) {
+    return (uint64_t)winios_syscall2(WINIOS_SYS_DEVICE_OPEN, (uint64_t)device_id, (uint64_t)flags);
+}
+
+int32_t winios_device_close(uint64_t handle) {
+    return (int32_t)winios_syscall1(WINIOS_SYS_DEVICE_CLOSE, handle);
+}
+
+int32_t winios_display_get_config(winios_display_config_t* out_cfg) {
+    if (!out_cfg) return -1;
+    return (int32_t)winios_syscall1(WINIOS_SYS_DISPLAY_GET_CONFIG, (uint64_t)(uintptr_t)out_cfg);
+}
+
+int32_t winios_display_set_config(const winios_display_config_t* in_cfg) {
+    if (!in_cfg) return -1;
+    return (int32_t)winios_syscall1(WINIOS_SYS_DISPLAY_SET_CONFIG, (uint64_t)(uintptr_t)in_cfg);
+}
+
+int32_t winios_audio_submit(const void* pcm_data, size_t size_bytes) {
+    if (!pcm_data || size_bytes == 0) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_AUDIO_SUBMIT,
+                                   (uint64_t)(uintptr_t)pcm_data,
+                                   (uint64_t)size_bytes);
+}
+
+int32_t winios_audio_get_status(winios_audio_status_t* out_status) {
+    if (!out_status) return -1;
+    return (int32_t)winios_syscall1(WINIOS_SYS_AUDIO_GET_STATUS, (uint64_t)(uintptr_t)out_status);
+}
+
+int32_t winios_sensor_sample(uint32_t sensor_type, winios_sensor_sample_t* out_sample) {
+    if (!out_sample) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_SENSOR_SAMPLE,
+                                   (uint64_t)sensor_type,
+                                   (uint64_t)(uintptr_t)out_sample);
+}
+
+int32_t winios_sensor_set_enabled(uint32_t sensor_type, int32_t enabled) {
+    return (int32_t)winios_syscall2(WINIOS_SYS_SENSOR_SET_ENABLED,
+                                   (uint64_t)sensor_type,
+                                   (uint64_t)enabled);
+}
+
+int32_t winios_net_send(const void* data, size_t length) {
+    if (!data || length == 0) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_NET_SEND,
+                                   (uint64_t)(uintptr_t)data,
+                                   (uint64_t)length);
+}
+
+int64_t winios_net_recv(void* buf, size_t max_len, size_t* out_len) {
+    if (!buf || max_len == 0) return -1;
+    return (int64_t)winios_syscall3(WINIOS_SYS_NET_RECV,
+                                   (uint64_t)(uintptr_t)buf,
+                                   (uint64_t)max_len,
+                                   (uint64_t)(uintptr_t)out_len);
+}
+
+int32_t winios_time_get(winios_timespec_t* out_spec) {
+    if (!out_spec) return -1;
+    return (int32_t)winios_syscall1(WINIOS_SYS_TIME_GET, (uint64_t)(uintptr_t)out_spec);
+}
+
+uint32_t winios_notification_post(const char* title, const char* body, const char* category, uint32_t duration_ms) {
+    if (!title || !body) return 0;
+    return (uint32_t)winios_syscall4(WINIOS_SYS_NOTIFICATION_POST,
+                                    (uint64_t)(uintptr_t)title,
+                                    (uint64_t)(uintptr_t)body,
+                                    (uint64_t)(uintptr_t)category,
+                                    (uint64_t)duration_ms);
+}
+
+int32_t winios_device_diag_summary(winios_device_diag_t* out_diag) {
+    if (!out_diag) return -1;
+    return (int32_t)winios_syscall1(WINIOS_SYS_DEVICE_DIAG_SUMMARY, (uint64_t)(uintptr_t)out_diag);
+}
+
 
 

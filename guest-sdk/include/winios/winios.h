@@ -22,5 +22,6 @@
 #include "winios/logging/log.h"
 #include "winios/config/config.h"
 #include "winios/diagnostics/diagnostics.h"
+#include "winios/devices/device.h"
 
 #endif // WINIOS_GUEST_SDK_H

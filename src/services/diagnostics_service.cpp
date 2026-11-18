@@ -1,4 +1,9 @@
 #include "services/diagnostics_service.h"
+#include "devices/device_registry.h"
+#include "devices/audio_service.h"
+#include "devices/sensor_service.h"
+#include "devices/network_service.h"
+#include "devices/notification_service.h"
 #include <chrono>
 
 namespace winios::services {
@@ -68,6 +73,50 @@ PlatformDiagnosticsSummary DiagnosticsService::get_summary() const {
         s.security_stats = cap_mgr_->get_audit_stats();
     }
     return s;
+}
+
+DeviceDiagnosticsSummary DiagnosticsService::get_device_summary() const {
+    DeviceDiagnosticsSummary ds{};
+    auto& reg = devices::DeviceRegistry::get();
+    const auto all = reg.enumerate_all();
+    ds.total_devices = all.size();
+    for (const auto& d : all) {
+        if (d.state == devices::DeviceState::Running || d.state == devices::DeviceState::Ready) {
+            ++ds.active_devices;
+        }
+    }
+
+    if (auto dev = reg.get_device(devices::VirtualAudioService::kDefaultAudioDeviceId)) {
+        if (auto audio = std::dynamic_pointer_cast<devices::VirtualAudioService>(dev)) {
+            auto st = audio->get_status();
+            ds.audio_bytes_submitted = st.total_bytes_submitted;
+            ds.audio_underruns = st.total_underruns;
+        }
+    }
+
+    if (auto dev = reg.get_device(devices::VirtualSensorService::kDefaultSensorDeviceId)) {
+        if (auto sensor = std::dynamic_pointer_cast<devices::VirtualSensorService>(dev)) {
+            ds.sensor_samples_generated = sensor->total_samples_generated();
+        }
+    }
+
+    if (auto dev = reg.get_device(devices::VirtualNetworkService::kDefaultNetworkDeviceId)) {
+        if (auto net = std::dynamic_pointer_cast<devices::VirtualNetworkService>(dev)) {
+            auto st = net->get_stats();
+            ds.network_packets_sent = st.packets_sent;
+            ds.network_packets_received = st.packets_received;
+            ds.network_packets_dropped = st.packets_dropped;
+        }
+    }
+
+    if (auto dev = reg.get_device(devices::VirtualNotificationService::kDefaultNotificationDeviceId)) {
+        if (auto notif = std::dynamic_pointer_cast<devices::VirtualNotificationService>(dev)) {
+            ds.notifications_posted = notif->total_posted();
+            ds.notifications_active = notif->active_count();
+        }
+    }
+
+    return ds;
 }
 
 } // namespace winios::services

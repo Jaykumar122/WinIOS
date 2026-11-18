@@ -147,6 +147,15 @@ add_library(winios_core STATIC
     src/kernel/app_supervisor.cpp
     src/services/configuration_service.cpp
     src/services/diagnostics_service.cpp
+    src/devices/device_registry.cpp
+    src/devices/display_service.cpp
+    src/devices/input_device_service.cpp
+    src/devices/audio_service.cpp
+    src/devices/sensor_service.cpp
+    src/devices/network_service.cpp
+    src/devices/clock_service.cpp
+    src/devices/lifecycle_service.cpp
+    src/devices/notification_service.cpp
     src/graphics/desktop_launcher.cpp
     src/runtime/system_clipboard.cpp
     src/apps/sample_apps.cpp
@@ -5280,6 +5289,114 @@ target_include_directories(stage224_23_security_fuzzing_tests PRIVATE guest-sdk/
 target_link_libraries(stage224_23_security_fuzzing_tests PRIVATE winios_core)
 winios_set_warnings(stage224_23_security_fuzzing_tests)
 add_test(NAME stage224_23_security_fuzzing_tests COMMAND stage224_23_security_fuzzing_tests)
+
+# ==============================================================================
+# Campaign 225: Virtual Device Services & Hardware Abstraction
+# ==============================================================================
+
+add_executable(stage225_3_device_registry_tests
+    tests/unit/stage225_3_device_registry_tests.cpp
+)
+target_include_directories(stage225_3_device_registry_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_3_device_registry_tests PRIVATE winios_core)
+winios_set_warnings(stage225_3_device_registry_tests)
+add_test(NAME stage225_3_device_registry_tests COMMAND stage225_3_device_registry_tests)
+
+add_executable(stage225_5_device_capability_tests
+    tests/unit/stage225_5_device_capability_tests.cpp
+)
+target_include_directories(stage225_5_device_capability_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_5_device_capability_tests PRIVATE winios_core)
+winios_set_warnings(stage225_5_device_capability_tests)
+add_test(NAME stage225_5_device_capability_tests COMMAND stage225_5_device_capability_tests)
+
+add_executable(stage225_6_display_service_tests
+    tests/unit/stage225_6_display_service_tests.cpp
+)
+target_include_directories(stage225_6_display_service_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_6_display_service_tests PRIVATE winios_core)
+winios_set_warnings(stage225_6_display_service_tests)
+add_test(NAME stage225_6_display_service_tests COMMAND stage225_6_display_service_tests)
+
+add_executable(stage225_8_input_device_tests
+    tests/unit/stage225_8_input_device_tests.cpp
+)
+target_include_directories(stage225_8_input_device_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_8_input_device_tests PRIVATE winios_core)
+winios_set_warnings(stage225_8_input_device_tests)
+add_test(NAME stage225_8_input_device_tests COMMAND stage225_8_input_device_tests)
+
+add_executable(stage225_10_audio_service_tests
+    tests/unit/stage225_10_audio_service_tests.cpp
+)
+target_include_directories(stage225_10_audio_service_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_10_audio_service_tests PRIVATE winios_core)
+winios_set_warnings(stage225_10_audio_service_tests)
+add_test(NAME stage225_10_audio_service_tests COMMAND stage225_10_audio_service_tests)
+
+add_executable(stage225_12_sensor_service_tests
+    tests/unit/stage225_12_sensor_service_tests.cpp
+)
+target_include_directories(stage225_12_sensor_service_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_12_sensor_service_tests PRIVATE winios_core)
+winios_set_warnings(stage225_12_sensor_service_tests)
+add_test(NAME stage225_12_sensor_service_tests COMMAND stage225_12_sensor_service_tests)
+
+add_executable(stage225_14_network_service_tests
+    tests/unit/stage225_14_network_service_tests.cpp
+)
+target_include_directories(stage225_14_network_service_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_14_network_service_tests PRIVATE winios_core)
+winios_set_warnings(stage225_14_network_service_tests)
+add_test(NAME stage225_14_network_service_tests COMMAND stage225_14_network_service_tests)
+
+add_executable(stage225_16_clock_timer_tests
+    tests/unit/stage225_16_clock_timer_tests.cpp
+)
+target_include_directories(stage225_16_clock_timer_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_16_clock_timer_tests PRIVATE winios_core)
+winios_set_warnings(stage225_16_clock_timer_tests)
+add_test(NAME stage225_16_clock_timer_tests COMMAND stage225_16_clock_timer_tests)
+
+add_executable(stage225_18_notification_tests
+    tests/unit/stage225_18_notification_tests.cpp
+)
+target_include_directories(stage225_18_notification_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_18_notification_tests PRIVATE winios_core)
+winios_set_warnings(stage225_18_notification_tests)
+add_test(NAME stage225_18_notification_tests COMMAND stage225_18_notification_tests)
+
+add_executable(stage225_21_device_center_tests
+    tests/unit/stage225_21_device_center_tests.cpp
+)
+target_include_directories(stage225_21_device_center_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_21_device_center_tests PRIVATE winios_core)
+winios_set_warnings(stage225_21_device_center_tests)
+add_test(NAME stage225_21_device_center_tests COMMAND stage225_21_device_center_tests)
+
+add_executable(stage225_21_system_monitor_tests
+    tests/unit/stage225_21_system_monitor_tests.cpp
+)
+target_include_directories(stage225_21_system_monitor_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_21_system_monitor_tests PRIVATE winios_core)
+winios_set_warnings(stage225_21_system_monitor_tests)
+add_test(NAME stage225_21_system_monitor_tests COMMAND stage225_21_system_monitor_tests)
+
+add_executable(stage225_22_multi_app_device_tests
+    tests/unit/stage225_22_multi_app_device_tests.cpp
+)
+target_include_directories(stage225_22_multi_app_device_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_22_multi_app_device_tests PRIVATE winios_core)
+winios_set_warnings(stage225_22_multi_app_device_tests)
+add_test(NAME stage225_22_multi_app_device_tests COMMAND stage225_22_multi_app_device_tests)
+
+add_executable(stage225_23_adversarial_tests
+    tests/unit/stage225_23_adversarial_tests.cpp
+)
+target_include_directories(stage225_23_adversarial_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage225_23_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage225_23_adversarial_tests)
+add_test(NAME stage225_23_adversarial_tests COMMAND stage225_23_adversarial_tests)
 
 
 

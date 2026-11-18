@@ -17,13 +17,15 @@ extern "C" {
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_6 0x00010600
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_7 0x00010700
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_8 0x00010800
-#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010800
+#define WINIOS_CATEGORY_C_ABI_VERSION_1_9 0x00010900
+#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010900
 #define WINIOS_SDK_VERSION_1_2            0x00010200
 #define WINIOS_SDK_VERSION_1_5            0x00010500
 #define WINIOS_SDK_VERSION_1_6            0x00010600
 #define WINIOS_SDK_VERSION_1_7            0x00010700
 #define WINIOS_SDK_VERSION_1_8            0x00010800
-#define WINIOS_SDK_VERSION                0x00010800
+#define WINIOS_SDK_VERSION_1_9            0x00010900
+#define WINIOS_SDK_VERSION                0x00010900
 
 // Syscalls 500..512 (ABI v1.0 & v1.1)
 #define SYS_WINIOS_WINDOW_CREATE          500
@@ -70,6 +72,23 @@ extern "C" {
 #define SYS_WINIOS_IPC_RECV_V2            543
 #define SYS_WINIOS_IPC_LOOKUP_PORT        544
 #define SYS_WINIOS_IPC_REGISTER_PORT      545
+
+// Syscalls 546..560 (ABI v1.9 Virtual Devices & System Services)
+#define SYS_WINIOS_DEVICE_ENUM            546
+#define SYS_WINIOS_DEVICE_GET_INFO        547
+#define SYS_WINIOS_DEVICE_OPEN            548
+#define SYS_WINIOS_DEVICE_CLOSE           549
+#define SYS_WINIOS_DISPLAY_GET_CONFIG     550
+#define SYS_WINIOS_DISPLAY_SET_CONFIG     551
+#define SYS_WINIOS_AUDIO_SUBMIT           552
+#define SYS_WINIOS_AUDIO_GET_STATUS       553
+#define SYS_WINIOS_SENSOR_SAMPLE          554
+#define SYS_WINIOS_SENSOR_SET_ENABLED     555
+#define SYS_WINIOS_NET_SEND               556
+#define SYS_WINIOS_NET_RECV               557
+#define SYS_WINIOS_TIME_GET               558
+#define SYS_WINIOS_NOTIFICATION_POST      559
+#define SYS_WINIOS_DEVICE_DIAG_SUMMARY    560
 
 // -----------------------------------------------------------------------------
 // Core UI & Window Types

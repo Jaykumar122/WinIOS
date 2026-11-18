@@ -127,7 +127,23 @@ inline constexpr std::uint64_t kSysWiniosIpcSendV2         = 542;
 inline constexpr std::uint64_t kSysWiniosIpcRecvV2         = 543;
 inline constexpr std::uint64_t kSysWiniosIpcLookupPort     = 544;
 inline constexpr std::uint64_t kSysWiniosIpcRegisterPort   = 545;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC      = 545;
+// Category C ABI v1.9 Extensions (Campaign 225 - Virtual Devices & System Services)
+inline constexpr std::uint64_t kSysWiniosDeviceEnum        = 546;
+inline constexpr std::uint64_t kSysWiniosDeviceGetInfo     = 547;
+inline constexpr std::uint64_t kSysWiniosDeviceOpen        = 548;
+inline constexpr std::uint64_t kSysWiniosDeviceClose       = 549;
+inline constexpr std::uint64_t kSysWiniosDisplayGetConfig  = 550;
+inline constexpr std::uint64_t kSysWiniosDisplaySetConfig  = 551;
+inline constexpr std::uint64_t kSysWiniosAudioSubmit       = 552;
+inline constexpr std::uint64_t kSysWiniosAudioGetStatus    = 553;
+inline constexpr std::uint64_t kSysWiniosSensorSample      = 554;
+inline constexpr std::uint64_t kSysWiniosSensorSetEnabled  = 555;
+inline constexpr std::uint64_t kSysWiniosNetSend           = 556;
+inline constexpr std::uint64_t kSysWiniosNetRecv           = 557;
+inline constexpr std::uint64_t kSysWiniosTimeGet           = 558;
+inline constexpr std::uint64_t kSysWiniosNotificationPost  = 559;
+inline constexpr std::uint64_t kSysWiniosDeviceDiagSummary = 560;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC      = 560;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;

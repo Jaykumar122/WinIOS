@@ -18,6 +18,13 @@ Capability CapabilityManager::parse_capability_name(const std::string& name) noe
     if (name == "config") return Capability::ConfigAccess;
     if (name == "diagnostics" || name == "diag") return Capability::DiagnosticsAccess;
     if (name == "metadata") return Capability::MetadataAccess;
+    if (name == "device.enum" || name == "device") return Capability::DeviceEnumerate;
+    if (name == "device.input" || name == "input") return Capability::DeviceInput;
+    if (name == "audio.out" || name == "audio") return Capability::AudioOutput;
+    if (name == "audio.in") return Capability::AudioInput;
+    if (name == "sensor" || name == "sensors") return Capability::SensorAccess;
+    if (name == "network" || name == "net") return Capability::NetworkAccess;
+    if (name == "notification" || name == "notify") return Capability::NotificationPost;
     return Capability::None;
 }
 

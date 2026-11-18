@@ -95,6 +95,22 @@ typedef enum {
 #define WINIOS_SYS_IPC_RECV_V2           543
 #define WINIOS_SYS_IPC_LOOKUP_PORT       544
 #define WINIOS_SYS_IPC_REGISTER_PORT     545
+// Category C ABI v1.9 Extensions (Campaign 225)
+#define WINIOS_SYS_DEVICE_ENUM           546
+#define WINIOS_SYS_DEVICE_GET_INFO       547
+#define WINIOS_SYS_DEVICE_OPEN           548
+#define WINIOS_SYS_DEVICE_CLOSE          549
+#define WINIOS_SYS_DISPLAY_GET_CONFIG    550
+#define WINIOS_SYS_DISPLAY_SET_CONFIG    551
+#define WINIOS_SYS_AUDIO_SUBMIT          552
+#define WINIOS_SYS_AUDIO_GET_STATUS      553
+#define WINIOS_SYS_SENSOR_SAMPLE         554
+#define WINIOS_SYS_SENSOR_SET_ENABLED    555
+#define WINIOS_SYS_NET_SEND              556
+#define WINIOS_SYS_NET_RECV              557
+#define WINIOS_SYS_TIME_GET              558
+#define WINIOS_SYS_NOTIFICATION_POST     559
+#define WINIOS_SYS_DEVICE_DIAG_SUMMARY   560
 
 // Alignment helper
 #define WINIOS_ALIGNED(n) __attribute__((aligned(n)))

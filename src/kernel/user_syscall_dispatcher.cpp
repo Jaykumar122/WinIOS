@@ -23,6 +23,15 @@
 #include "kernel/app_supervisor.h"
 #include "services/configuration_service.h"
 #include "services/diagnostics_service.h"
+#include "devices/device_registry.h"
+#include "devices/display_service.h"
+#include "devices/input_device_service.h"
+#include "devices/audio_service.h"
+#include "devices/sensor_service.h"
+#include "devices/network_service.h"
+#include "devices/clock_service.h"
+#include "devices/lifecycle_service.h"
+#include "devices/notification_service.h"
 
 #include <algorithm>
 #include <cstring>
@@ -1869,6 +1878,264 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
         bool ok = runtime::GuestIpcRouter::Get().RegisterPortName(name, port_handle, proc.pid());
         return record_success(ok ? 0 : 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Category C ABI v1.9 Extensions (Campaign 225)
+    // -------------------------------------------------------------------------
+    case kSysWiniosDeviceEnum: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DeviceEnumerate)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto& reg = devices::DeviceRegistry::get();
+        std::vector<devices::DeviceInfo> dev_list;
+        if (arg2 == 0) {
+            dev_list = reg.enumerate_all();
+        } else {
+            dev_list = reg.enumerate_by_class(static_cast<devices::DeviceClass>(arg2));
+        }
+        const uint32_t count_to_copy = static_cast<uint32_t>(
+            std::min<std::size_t>(dev_list.size(), static_cast<std::size_t>(arg1)));
+        for (uint32_t i = 0; i < count_to_copy; ++i) {
+            const uint64_t entry_va = arg0 + (i * sizeof(devices::DeviceInfo));
+            if (!uas.copyin(entry_va, &dev_list[i], sizeof(devices::DeviceInfo))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        if (arg3 != 0) {
+            uas.copyin(arg3, &count_to_copy, sizeof(count_to_copy));
+        }
+        return record_success(count_to_copy);
+    }
+
+    case kSysWiniosDeviceGetInfo: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DeviceEnumerate)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg1 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_by_handle(arg0);
+        if (!dev) {
+            dev = devices::DeviceRegistry::get().get_device(static_cast<uint32_t>(arg0));
+        }
+        if (!dev) {
+            return record_error(kErrnoENOENT);
+        }
+        devices::DeviceInfo info = dev->get_info();
+        if (!uas.copyin(arg1, &info, sizeof(info))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDeviceOpen: {
+        auto dev = devices::DeviceRegistry::get().get_device(static_cast<uint32_t>(arg0));
+        if (!dev) {
+            return record_error(kErrnoENOENT);
+        }
+        if (cap_mgr_ && dev->required_capability() != 0) {
+            const uint32_t pmask = cap_mgr_->get_mask(proc.pid());
+            if ((pmask & dev->required_capability()) != dev->required_capability()) {
+                return record_error(kErrnoEPERM);
+            }
+        }
+        return record_success(dev->handle());
+    }
+
+    case kSysWiniosDeviceClose: {
+        if (!devices::DeviceRegistry::get().is_handle_valid(arg0)) {
+            return record_error(kErrnoEBADF);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDisplayGetConfig: {
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(1);
+        auto disp = std::dynamic_pointer_cast<devices::VirtualDisplayService>(dev);
+        devices::DisplayConfigData cfg = disp ? disp->get_config() : devices::DisplayConfigData{};
+        if (!uas.copyin(arg0, &cfg, sizeof(cfg))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDisplaySetConfig: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DisplayWindow)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        devices::DisplayConfigData cfg{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &cfg, sizeof(cfg))) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(1);
+        auto disp = std::dynamic_pointer_cast<devices::VirtualDisplayService>(dev);
+        bool ok = disp ? disp->set_config(cfg) : false;
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosAudioSubmit: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::AudioOutput)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0 || arg1 == 0 || arg1 > devices::VirtualAudioService::kMaxSubmissionBytes) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<uint8_t> pcm(arg1);
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), pcm.data(), arg1)) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualAudioService::kDefaultAudioDeviceId);
+        auto audio = std::dynamic_pointer_cast<devices::VirtualAudioService>(dev);
+        bool ok = audio ? audio->submit_audio(pcm.data(), arg1) : false;
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosAudioGetStatus: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::AudioOutput)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualAudioService::kDefaultAudioDeviceId);
+        auto audio = std::dynamic_pointer_cast<devices::VirtualAudioService>(dev);
+        devices::AudioStatusData st = audio ? audio->get_status() : devices::AudioStatusData{};
+        if (!uas.copyin(arg0, &st, sizeof(st))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosSensorSample: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::SensorAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg1 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualSensorService::kDefaultSensorDeviceId);
+        auto sensor = std::dynamic_pointer_cast<devices::VirtualSensorService>(dev);
+        devices::SensorSampleData sample{};
+        bool ok = sensor ? sensor->get_latest_sample(static_cast<devices::SensorType>(arg0), &sample) : false;
+        if (!ok) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (!uas.copyin(arg1, &sample, sizeof(sample))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosSensorSetEnabled: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::SensorAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualSensorService::kDefaultSensorDeviceId);
+        auto sensor = std::dynamic_pointer_cast<devices::VirtualSensorService>(dev);
+        bool ok = sensor ? sensor->set_enabled(static_cast<devices::SensorType>(arg0), arg1 != 0) : false;
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosNetSend: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::NetworkAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0 || arg1 == 0 || arg1 > devices::VirtualNetworkService::kMaxMTU) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<uint8_t> pkt(arg1);
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), pkt.data(), arg1)) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualNetworkService::kDefaultNetworkDeviceId);
+        auto net = std::dynamic_pointer_cast<devices::VirtualNetworkService>(dev);
+        bool ok = net ? net->send_packet(pkt.data(), arg1) : false;
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosNetRecv: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::NetworkAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0 || arg1 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualNetworkService::kDefaultNetworkDeviceId);
+        auto net = std::dynamic_pointer_cast<devices::VirtualNetworkService>(dev);
+        std::vector<uint8_t> tmp(arg1);
+        size_t recvd = 0;
+        bool ok = net ? net->receive_packet(tmp.data(), arg1, &recvd) : false;
+        if (!ok) {
+            if (arg2 != 0) {
+                size_t zero = 0;
+                uas.copyin(arg2, &zero, sizeof(zero));
+            }
+            return record_success(0);
+        }
+        if (!uas.copyin(arg0, tmp.data(), recvd)) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (arg2 != 0) {
+            uas.copyin(arg2, &recvd, sizeof(recvd));
+        }
+        return record_success(recvd);
+    }
+
+    case kSysWiniosTimeGet: {
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualClockService::kDefaultClockDeviceId);
+        auto clock = std::dynamic_pointer_cast<devices::VirtualClockService>(dev);
+        devices::TimeSpecData spec = clock ? clock->get_time_spec() : devices::TimeSpecData{};
+        if (!uas.copyin(arg0, &spec, sizeof(spec))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosNotificationPost: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::NotificationPost)) {
+            return record_error(kErrnoEPERM);
+        }
+        std::string title, body, cat;
+        if (!read_user_string(uas, arg0, title, 64) || !read_user_string(uas, arg1, body, 128)) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (arg2 != 0) {
+            read_user_string(uas, arg2, cat, 32);
+        }
+        auto dev = devices::DeviceRegistry::get().get_device(devices::VirtualNotificationService::kDefaultNotificationDeviceId);
+        auto notif = std::dynamic_pointer_cast<devices::VirtualNotificationService>(dev);
+        uint32_t nid = notif ? notif->post_notification(proc.pid(), title.c_str(), body.c_str(), cat.c_str(), static_cast<uint32_t>(arg3)) : 0;
+        return record_success(nid);
+    }
+
+    case kSysWiniosDeviceDiagSummary: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DiagnosticsAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        services::DeviceDiagnosticsSummary sum{};
+        if (diag_service_) {
+            sum = diag_service_->get_device_summary();
+        }
+        if (!uas.copyin(arg0, &sum, sizeof(sum))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
     }
 
     default: {

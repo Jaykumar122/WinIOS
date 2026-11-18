@@ -24,7 +24,14 @@ enum class Capability : std::uint32_t {
     ResourceAccess    = 1 << 10,
     ConfigAccess      = 1 << 11,
     DiagnosticsAccess = 1 << 12,
-    MetadataAccess    = 1 << 13
+    MetadataAccess    = 1 << 13,
+    DeviceEnumerate   = 1 << 14,
+    DeviceInput       = 1 << 15,
+    AudioOutput       = 1 << 16,
+    AudioInput        = 1 << 17,
+    SensorAccess      = 1 << 18,
+    NetworkAccess     = 1 << 19,
+    NotificationPost  = 1 << 20
 };
 
 [[nodiscard]] constexpr std::uint32_t operator|(Capability a, Capability b) noexcept {

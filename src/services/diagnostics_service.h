@@ -51,6 +51,21 @@ struct PlatformDiagnosticsSummary {
     security::SecurityAuditStats security_stats;
 };
 
+#pragma pack(push, 8)
+struct DeviceDiagnosticsSummary {
+    std::size_t   total_devices{0};
+    std::size_t   active_devices{0};
+    std::uint64_t audio_bytes_submitted{0};
+    std::uint64_t audio_underruns{0};
+    std::uint64_t sensor_samples_generated{0};
+    std::uint64_t network_packets_sent{0};
+    std::uint64_t network_packets_received{0};
+    std::uint64_t network_packets_dropped{0};
+    std::uint64_t notifications_posted{0};
+    std::size_t   notifications_active{0};
+};
+#pragma pack(pop)
+
 class DiagnosticsService {
 public:
     static constexpr std::size_t kMaxLogCapacity = 512;
@@ -71,6 +86,7 @@ public:
 
     // Summary diagnostics
     [[nodiscard]] PlatformDiagnosticsSummary get_summary() const;
+    [[nodiscard]] DeviceDiagnosticsSummary get_device_summary() const;
 
 private:
     kernel::AppSupervisor*          supervisor_{nullptr};
