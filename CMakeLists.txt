@@ -267,6 +267,22 @@ add_library(winios_core STATIC
     src/replay/smp_replay_reader.cpp
     src/replay/smp_replay_cursor.cpp
     src/replay/smp_replay_coordinator.cpp
+    src/runtime/guest_app_contract.cpp
+    src/runtime/crt/mini_crt.cpp
+    src/runtime/guest_allocator.cpp
+    src/runtime/guest_runtime_lifecycle.cpp
+    src/runtime/guest_storage_api.cpp
+    src/runtime/guest_event_loop.cpp
+    src/runtime/guest_async_io.cpp
+    src/runtime/guest_ipc.cpp
+    src/resources/resource_bundle.cpp
+    src/resources/resource_manager.cpp
+    src/runtime/ui/font_engine.cpp
+    src/runtime/ui/guest_ui_framework.cpp
+    src/runtime/ui/guest_layout_engine.cpp
+    src/runtime/app_lifecycle.cpp
+    src/runtime/app_preferences.cpp
+    src/apps/campaign217_apps.cpp
 )
 
 target_include_directories(winios_core PUBLIC
@@ -4616,6 +4632,42 @@ add_executable(stage216_23_desktop_e2e_tests tests/unit/stage216_23_desktop_e2e_
 target_link_libraries(stage216_23_desktop_e2e_tests PRIVATE winios_core)
 winios_set_warnings(stage216_23_desktop_e2e_tests)
 add_test(NAME stage216_23_desktop_e2e_tests COMMAND stage216_23_desktop_e2e_tests)
+
+# Campaign 217 Tests (Guest Application Runtime & Developer SDK)
+add_executable(stage217_2_contract_tests tests/unit/stage217_2_contract_tests.cpp)
+target_link_libraries(stage217_2_contract_tests PRIVATE winios_core)
+winios_set_warnings(stage217_2_contract_tests)
+add_test(NAME stage217_2_contract_tests COMMAND stage217_2_contract_tests)
+
+add_executable(stage217_5_allocator_tests tests/unit/stage217_5_allocator_tests.cpp)
+target_link_libraries(stage217_5_allocator_tests PRIVATE winios_core)
+winios_set_warnings(stage217_5_allocator_tests)
+add_test(NAME stage217_5_allocator_tests COMMAND stage217_5_allocator_tests)
+
+add_executable(stage217_7_storage_tests tests/unit/stage217_7_storage_tests.cpp)
+target_link_libraries(stage217_7_storage_tests PRIVATE winios_core)
+winios_set_warnings(stage217_7_storage_tests)
+add_test(NAME stage217_7_storage_tests COMMAND stage217_7_storage_tests)
+
+add_executable(stage217_8_event_ipc_tests tests/unit/stage217_8_event_ipc_tests.cpp)
+target_link_libraries(stage217_8_event_ipc_tests PRIVATE winios_core)
+winios_set_warnings(stage217_8_event_ipc_tests)
+add_test(NAME stage217_8_event_ipc_tests COMMAND stage217_8_event_ipc_tests)
+
+add_executable(stage217_12_resources_ui_tests tests/unit/stage217_12_resources_ui_tests.cpp)
+target_link_libraries(stage217_12_resources_ui_tests PRIVATE winios_core)
+winios_set_warnings(stage217_12_resources_ui_tests)
+add_test(NAME stage217_12_resources_ui_tests COMMAND stage217_12_resources_ui_tests)
+
+add_executable(stage217_19_sdk_apps_tests tests/unit/stage217_19_sdk_apps_tests.cpp)
+target_link_libraries(stage217_19_sdk_apps_tests PRIVATE winios_core)
+winios_set_warnings(stage217_19_sdk_apps_tests)
+add_test(NAME stage217_19_sdk_apps_tests COMMAND stage217_19_sdk_apps_tests)
+
+add_executable(stage217_23_developer_e2e_tests tests/unit/stage217_23_developer_e2e_tests.cpp)
+target_link_libraries(stage217_23_developer_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage217_23_developer_e2e_tests)
+add_test(NAME stage217_23_developer_e2e_tests COMMAND stage217_23_developer_e2e_tests)
 
 
 
