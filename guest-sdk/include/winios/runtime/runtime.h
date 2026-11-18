@@ -70,6 +70,9 @@ void    winios_u64_to_hex(uint64_t val, char* out_buf);
 // Exit process
 void winios_exit(int status);
 
+// Scheduling
+void winios_sched_yield(void);
+
 #ifdef __cplusplus
 }
 #endif

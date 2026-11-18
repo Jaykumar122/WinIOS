@@ -5067,6 +5067,110 @@ target_link_libraries(stage222_23_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage222_23_adversarial_tests)
 add_test(NAME stage222_23_adversarial_tests COMMAND stage222_23_adversarial_tests)
 
+add_executable(stage223_2_app_framework_tests
+    tests/unit/stage223_2_app_framework_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_compile_definitions(stage223_2_app_framework_tests PRIVATE WINIOS_WINDOW_TEST_OVERRIDE=1)
+target_include_directories(stage223_2_app_framework_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_2_app_framework_tests PRIVATE winios_core)
+winios_set_warnings(stage223_2_app_framework_tests)
+add_test(NAME stage223_2_app_framework_tests COMMAND stage223_2_app_framework_tests)
+
+add_executable(stage223_4_layout_engine_tests
+    tests/unit/stage223_4_layout_engine_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_include_directories(stage223_4_layout_engine_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_4_layout_engine_tests PRIVATE winios_core)
+winios_set_warnings(stage223_4_layout_engine_tests)
+add_test(NAME stage223_4_layout_engine_tests COMMAND stage223_4_layout_engine_tests)
+
+add_executable(stage223_7_ui_component_tests
+    tests/unit/stage223_7_ui_component_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_include_directories(stage223_7_ui_component_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_7_ui_component_tests PRIVATE winios_core)
+winios_set_warnings(stage223_7_ui_component_tests)
+add_test(NAME stage223_7_ui_component_tests COMMAND stage223_7_ui_component_tests)
+
+add_executable(stage223_10_window_interaction_tests
+    tests/unit/stage223_10_window_interaction_tests.cpp
+)
+target_include_directories(stage223_10_window_interaction_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_10_window_interaction_tests PRIVATE winios_core)
+winios_set_warnings(stage223_10_window_interaction_tests)
+add_test(NAME stage223_10_window_interaction_tests COMMAND stage223_10_window_interaction_tests)
+
+add_executable(stage223_11_input_provenance_tests
+    tests/unit/stage223_11_input_provenance_tests.cpp
+)
+target_include_directories(stage223_11_input_provenance_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_11_input_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage223_11_input_provenance_tests)
+add_test(NAME stage223_11_input_provenance_tests COMMAND stage223_11_input_provenance_tests)
+
+add_executable(stage223_14_clipboard_interop_tests
+    tests/unit/stage223_14_clipboard_interop_tests.cpp
+)
+target_include_directories(stage223_14_clipboard_interop_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_14_clipboard_interop_tests PRIVATE winios_core)
+winios_set_warnings(stage223_14_clipboard_interop_tests)
+add_test(NAME stage223_14_clipboard_interop_tests COMMAND stage223_14_clipboard_interop_tests)
+
+add_executable(stage223_16_compositor_damage_tests
+    tests/unit/stage223_16_compositor_damage_tests.cpp
+)
+target_include_directories(stage223_16_compositor_damage_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_16_compositor_damage_tests PRIVATE winios_core)
+winios_set_warnings(stage223_16_compositor_damage_tests)
+add_test(NAME stage223_16_compositor_damage_tests COMMAND stage223_16_compositor_damage_tests)
+
+add_executable(stage223_19_calculator_tests
+    tests/unit/stage223_19_calculator_tests.cpp
+)
+target_include_directories(stage223_19_calculator_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_19_calculator_tests PRIVATE winios_core)
+winios_set_warnings(stage223_19_calculator_tests)
+add_test(NAME stage223_19_calculator_tests COMMAND stage223_19_calculator_tests)
+
+add_executable(stage223_20_notes_v2_tests
+    tests/unit/stage223_20_notes_v2_tests.cpp
+)
+target_include_directories(stage223_20_notes_v2_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_20_notes_v2_tests PRIVATE winios_core)
+winios_set_warnings(stage223_20_notes_v2_tests)
+add_test(NAME stage223_20_notes_v2_tests COMMAND stage223_20_notes_v2_tests)
+
+add_executable(stage223_21_resource_browser_tests
+    tests/unit/stage223_21_resource_browser_tests.cpp
+)
+target_include_directories(stage223_21_resource_browser_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_21_resource_browser_tests PRIVATE winios_core)
+winios_set_warnings(stage223_21_resource_browser_tests)
+add_test(NAME stage223_21_resource_browser_tests COMMAND stage223_21_resource_browser_tests)
+
+add_executable(stage223_22_three_app_desktop_tests
+    tests/unit/stage223_22_three_app_desktop_tests.cpp
+)
+target_include_directories(stage223_22_three_app_desktop_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_22_three_app_desktop_tests PRIVATE winios_core)
+winios_set_warnings(stage223_22_three_app_desktop_tests)
+add_test(NAME stage223_22_three_app_desktop_tests COMMAND stage223_22_three_app_desktop_tests)
+
+add_executable(stage223_23_security_fuzzing_tests
+    tests/unit/stage223_23_security_fuzzing_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_include_directories(stage223_23_security_fuzzing_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage223_23_security_fuzzing_tests PRIVATE winios_core)
+winios_set_warnings(stage223_23_security_fuzzing_tests)
+add_test(NAME stage223_23_security_fuzzing_tests COMMAND stage223_23_security_fuzzing_tests)
+
+
+
+
 
 
 
