@@ -15,8 +15,13 @@ struct AppRegistration {
     std::string version;
     std::string exec_path; // Relative to /Applications/<bundle_id>.app/
     std::string install_dir; // Full VFS path
+    std::string icon_path;
+    std::string startup_config;
+    std::uint64_t storage_quota_bytes{10 * 1024 * 1024};
     std::vector<std::string> permissions;
+    std::vector<std::string> optional_permissions;
     std::uint64_t install_time_us{0};
+    std::uint64_t update_time_us{0};
     bool is_active{true};
 };
 
@@ -30,11 +35,14 @@ public:
 
     bool register_app(AppRegistration app);
     bool unregister_app(const std::string& bundle_id);
+    bool update_app(AppRegistration app);
+    bool set_active(const std::string& bundle_id, bool active);
 
     [[nodiscard]] bool is_installed(const std::string& bundle_id) const;
+    [[nodiscard]] bool is_active(const std::string& bundle_id) const;
     [[nodiscard]] std::optional<AppRegistration> get_app(const std::string& bundle_id) const;
-    [[nodiscard]] std::vector<AppRegistration> list_apps() const;
-    [[nodiscard]] std::size_t app_count() const;
+    [[nodiscard]] std::vector<AppRegistration> list_apps(bool active_only = false) const;
+    [[nodiscard]] std::size_t app_count(bool active_only = false) const;
 
     void clear();
 

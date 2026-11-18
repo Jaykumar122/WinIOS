@@ -16,12 +16,14 @@ extern "C" {
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_5 0x00010500
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_6 0x00010600
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_7 0x00010700
-#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010700
+#define WINIOS_CATEGORY_C_ABI_VERSION_1_8 0x00010800
+#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010800
 #define WINIOS_SDK_VERSION_1_2            0x00010200
 #define WINIOS_SDK_VERSION_1_5            0x00010500
 #define WINIOS_SDK_VERSION_1_6            0x00010600
 #define WINIOS_SDK_VERSION_1_7            0x00010700
-#define WINIOS_SDK_VERSION                0x00010700
+#define WINIOS_SDK_VERSION_1_8            0x00010800
+#define WINIOS_SDK_VERSION                0x00010800
 
 // Syscalls 500..512 (ABI v1.0 & v1.1)
 #define SYS_WINIOS_WINDOW_CREATE          500
@@ -57,6 +59,17 @@ extern "C" {
 #define SYS_WINIOS_CLIPBOARD_GET          534
 #define SYS_WINIOS_CLIPBOARD_SET          535
 #define SYS_WINIOS_APP_SUPERVISOR_NOTIFY  536
+
+// Syscalls 537..545 (ABI v1.8 Platform Extensions)
+#define SYS_WINIOS_CONFIG_GET             537
+#define SYS_WINIOS_CONFIG_SET             538
+#define SYS_WINIOS_LOG_LEVELED            539
+#define SYS_WINIOS_DIAG_SUMMARY           540
+#define SYS_WINIOS_IPC_PORT_CREATE_V2     541
+#define SYS_WINIOS_IPC_SEND_V2            542
+#define SYS_WINIOS_IPC_RECV_V2            543
+#define SYS_WINIOS_IPC_LOOKUP_PORT        544
+#define SYS_WINIOS_IPC_REGISTER_PORT      545
 
 // -----------------------------------------------------------------------------
 // Core UI & Window Types
@@ -127,7 +140,7 @@ typedef struct {
 } winios_window_list_t;
 
 // -----------------------------------------------------------------------------
-// ABI v1.2 Storage, IPC, and Preference Types
+// ABI Storage, IPC, Preference and Platform Types
 // -----------------------------------------------------------------------------
 typedef struct {
     uint64_t path_ptr;     // Pointer to UTF-8 path string
@@ -168,6 +181,38 @@ typedef struct {
     uint32_t reserved;     // Alignment padding
 } winios_msg_header_t;
 
+// ABI v1.8 Typed Configuration Request
+typedef struct {
+    uint64_t key_ptr;      // Pointer to UTF-8 key string
+    uint32_t key_len;      // Key length
+    uint32_t val_type;     // 0=String, 1=Int64, 2=Double, 3=Bool
+    uint64_t val_buf_ptr;  // Pointer to buffer
+    uint32_t val_buf_size; // Buffer size
+    uint32_t out_len;      // Output data length
+} winios_config_req_t;
+
+// ABI v1.8 64-bit Generation-Tagged IPC Message
+typedef struct {
+    uint64_t target_port;  // 64-bit generation handle
+    uint64_t data_ptr;     // Pointer to message payload
+    uint32_t data_size;    // Payload length
+    uint32_t message_id;   // Application message code
+    uint32_t sender_pid;   // Authenticated sender PID
+    uint32_t reserved;     // Padding
+} winios_ipc_msg_v2_t;
+
+// ABI v1.8 Platform Diagnostics Summary
+typedef struct {
+    uint32_t active_processes;
+    uint32_t installed_apps;
+    uint32_t open_windows;
+    uint32_t ipc_ports;
+    uint32_t total_crashes;
+    uint32_t total_security_checks;
+    uint32_t total_security_denials;
+    uint32_t reserved;
+} winios_diag_summary_t;
+
 #pragma pack(pop)
 
 #ifdef __cplusplus
@@ -180,6 +225,9 @@ static_assert(sizeof(winios_ipc_msg_desc_t) == 24, "winios_ipc_msg_desc_t must b
 static_assert(sizeof(winios_pref_entry_t) == 32, "winios_pref_entry_t must be 32 bytes");
 static_assert(sizeof(winios_runtime_info_t) == 24, "winios_runtime_info_t must be 24 bytes");
 static_assert(sizeof(winios_msg_header_t) == 24, "winios_msg_header_t must be 24 bytes");
+static_assert(sizeof(winios_config_req_t) == 32, "winios_config_req_t must be 32 bytes");
+static_assert(sizeof(winios_ipc_msg_v2_t) == 32, "winios_ipc_msg_v2_t must be 32 bytes");
+static_assert(sizeof(winios_diag_summary_t) == 32, "winios_diag_summary_t must be 32 bytes");
 #endif
 
 // -----------------------------------------------------------------------------

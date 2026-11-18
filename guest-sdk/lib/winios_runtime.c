@@ -1493,4 +1493,175 @@ void* winios_focus_get_active(const winios_focus_manager_t* fm) {
     return fm->controls[fm->active_index];
 }
 
+// -----------------------------------------------------------------------------
+// SDK v1.8 Configuration API Implementation
+// -----------------------------------------------------------------------------
+int winios_config_get_string(const char* key, char* out_buf, size_t max_len, const char* default_val) {
+    if (!key || !out_buf || max_len == 0) return -1;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 0; // String
+    req.val_buf_ptr = (uint64_t)(uintptr_t)out_buf;
+    req.val_buf_size = (uint32_t)max_len;
+
+    int64_t ret = (int64_t)winios_syscall1(WINIOS_SYS_CONFIG_GET, (uint64_t)(uintptr_t)&req);
+    if (ret != 0 || req.out_len == 0) {
+        if (default_val) {
+            size_t dlen = winios_strlen(default_val);
+            if (dlen >= max_len) dlen = max_len - 1;
+            winios_memcpy(out_buf, default_val, dlen);
+            out_buf[dlen] = '\0';
+        } else {
+            out_buf[0] = '\0';
+        }
+        return -1;
+    }
+    return 0;
+}
+
+int winios_config_set_string(const char* key, const char* val) {
+    if (!key || !val) return -1;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 0;
+    req.val_buf_ptr = (uint64_t)(uintptr_t)val;
+    req.val_buf_size = (uint32_t)winios_strlen(val);
+    return (int)winios_syscall1(WINIOS_SYS_CONFIG_SET, (uint64_t)(uintptr_t)&req);
+}
+
+int64_t winios_config_get_int(const char* key, int64_t default_val) {
+    if (!key) return default_val;
+    int64_t val = 0;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 1; // Int64
+    req.val_buf_ptr = (uint64_t)(uintptr_t)&val;
+    req.val_buf_size = sizeof(val);
+
+    int64_t ret = (int64_t)winios_syscall1(WINIOS_SYS_CONFIG_GET, (uint64_t)(uintptr_t)&req);
+    if (ret != 0 || req.out_len == 0) return default_val;
+    return val;
+}
+
+int winios_config_set_int(const char* key, int64_t val) {
+    if (!key) return -1;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 1;
+    req.val_buf_ptr = (uint64_t)(uintptr_t)&val;
+    req.val_buf_size = sizeof(val);
+    return (int)winios_syscall1(WINIOS_SYS_CONFIG_SET, (uint64_t)(uintptr_t)&req);
+}
+
+double winios_config_get_double(const char* key, double default_val) {
+    if (!key) return default_val;
+    double val = 0.0;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 2; // Double
+    req.val_buf_ptr = (uint64_t)(uintptr_t)&val;
+    req.val_buf_size = sizeof(val);
+
+    int64_t ret = (int64_t)winios_syscall1(WINIOS_SYS_CONFIG_GET, (uint64_t)(uintptr_t)&req);
+    if (ret != 0 || req.out_len == 0) return default_val;
+    return val;
+}
+
+int winios_config_set_double(const char* key, double val) {
+    if (!key) return -1;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 2;
+    req.val_buf_ptr = (uint64_t)(uintptr_t)&val;
+    req.val_buf_size = sizeof(val);
+    return (int)winios_syscall1(WINIOS_SYS_CONFIG_SET, (uint64_t)(uintptr_t)&req);
+}
+
+int winios_config_get_bool(const char* key, int default_val) {
+    if (!key) return default_val;
+    uint32_t val = 0;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 3; // Bool
+    req.val_buf_ptr = (uint64_t)(uintptr_t)&val;
+    req.val_buf_size = sizeof(val);
+
+    int64_t ret = (int64_t)winios_syscall1(WINIOS_SYS_CONFIG_GET, (uint64_t)(uintptr_t)&req);
+    if (ret != 0 || req.out_len == 0) return default_val;
+    return val != 0 ? 1 : 0;
+}
+
+int winios_config_set_bool(const char* key, int val) {
+    if (!key) return -1;
+    uint32_t bval = val ? 1 : 0;
+    winios_config_req_t req;
+    winios_memset(&req, 0, sizeof(req));
+    req.key_ptr = (uint64_t)(uintptr_t)key;
+    req.key_len = (uint32_t)winios_strlen(key);
+    req.val_type = 3;
+    req.val_buf_ptr = (uint64_t)(uintptr_t)&bval;
+    req.val_buf_size = sizeof(bval);
+    return (int)winios_syscall1(WINIOS_SYS_CONFIG_SET, (uint64_t)(uintptr_t)&req);
+}
+
+// -----------------------------------------------------------------------------
+// SDK v1.8 Diagnostics API Implementation
+// -----------------------------------------------------------------------------
+int winios_diagnostics_get_summary(winios_platform_diagnostics_t* out_summary) {
+    if (!out_summary) return -1;
+    return (int)winios_syscall1(WINIOS_SYS_DIAG_SUMMARY, (uint64_t)(uintptr_t)out_summary);
+}
+
+// -----------------------------------------------------------------------------
+// SDK v1.8 IPC v2 API Implementation
+// -----------------------------------------------------------------------------
+uint64_t winios_ipc_port_create_v2(const char* name) {
+    uint64_t name_ptr = name ? (uint64_t)(uintptr_t)name : 0;
+    return (uint64_t)winios_syscall1(WINIOS_SYS_IPC_PORT_CREATE_V2, name_ptr);
+}
+
+int32_t winios_ipc_send_v2(uint64_t target_port, uint32_t message_id, const void* data, size_t size) {
+    winios_ipc_msg_v2_t msg;
+    winios_memset(&msg, 0, sizeof(msg));
+    msg.target_port = target_port;
+    msg.message_id = message_id;
+    msg.data_ptr = (uint64_t)(uintptr_t)data;
+    msg.data_size = (uint32_t)size;
+    return (int32_t)winios_syscall1(WINIOS_SYS_IPC_SEND_V2, (uint64_t)(uintptr_t)&msg);
+}
+
+int32_t winios_ipc_recv_v2(uint64_t port_handle, void* buf, size_t buf_size, uint32_t* out_sender_pid, uint32_t* out_msg_id) {
+    winios_ipc_msg_v2_t desc;
+    winios_memset(&desc, 0, sizeof(desc));
+    int64_t ret = (int64_t)winios_syscall4(WINIOS_SYS_IPC_RECV_V2, port_handle, (uint64_t)(uintptr_t)buf, (uint64_t)buf_size, (uint64_t)(uintptr_t)&desc);
+    if (ret <= 0) return 0;
+    if (out_sender_pid) *out_sender_pid = desc.sender_pid;
+    if (out_msg_id) *out_msg_id = desc.message_id;
+    return (int32_t)ret;
+}
+
+uint64_t winios_ipc_lookup_port(const char* name) {
+    if (!name) return 0;
+    return (uint64_t)winios_syscall1(WINIOS_SYS_IPC_LOOKUP_PORT, (uint64_t)(uintptr_t)name);
+}
+
+int32_t winios_ipc_register_port(uint64_t port_handle, const char* name) {
+    if (!name) return -1;
+    return (int32_t)winios_syscall2(WINIOS_SYS_IPC_REGISTER_PORT, port_handle, (uint64_t)(uintptr_t)name);
+}
+
 

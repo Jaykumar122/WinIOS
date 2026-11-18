@@ -2,7 +2,7 @@
 #define WINIOS_GUEST_SDK_H
 
 /**
- * WinIOS Guest SDK v1.7
+ * WinIOS Guest SDK v1.8
  * Public Umbrella Header for ARM64 Freestanding Guest Applications
  */
 
@@ -20,5 +20,7 @@
 #include "winios/app/app.h"
 #include "winios/ipc/ipc.h"
 #include "winios/logging/log.h"
+#include "winios/config/config.h"
+#include "winios/diagnostics/diagnostics.h"
 
 #endif // WINIOS_GUEST_SDK_H

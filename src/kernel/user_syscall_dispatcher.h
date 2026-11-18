@@ -33,11 +33,17 @@ class AppPreferences;
 class SystemClipboard;
 }
 
+namespace winios::services {
+class ConfigurationService;
+class DiagnosticsService;
+}
+
 namespace winios::kernel {
 
 class KernelThreadManager;
 class MultiProcessScheduler;
 class AppLifecycleManager;
+class AppSupervisor;
 }
 
 namespace winios::security {
@@ -111,7 +117,17 @@ inline constexpr std::uint64_t kSysWiniosWindowSetVisibility = 533;
 inline constexpr std::uint64_t kSysWiniosClipboardGet        = 534;
 inline constexpr std::uint64_t kSysWiniosClipboardSet        = 535;
 inline constexpr std::uint64_t kSysWiniosAppSupervisorNotify = 536;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC        = 536;
+// Category C ABI v1.8 Extensions (Campaign 224)
+inline constexpr std::uint64_t kSysWiniosConfigGet         = 537;
+inline constexpr std::uint64_t kSysWiniosConfigSet         = 538;
+inline constexpr std::uint64_t kSysWiniosLogLeveled        = 539;
+inline constexpr std::uint64_t kSysWiniosDiagSummary       = 540;
+inline constexpr std::uint64_t kSysWiniosIpcCreatePortV2   = 541;
+inline constexpr std::uint64_t kSysWiniosIpcSendV2         = 542;
+inline constexpr std::uint64_t kSysWiniosIpcRecvV2         = 543;
+inline constexpr std::uint64_t kSysWiniosIpcLookupPort     = 544;
+inline constexpr std::uint64_t kSysWiniosIpcRegisterPort   = 545;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC      = 545;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;
@@ -231,6 +247,15 @@ public:
     void set_lifecycle_manager(AppLifecycleManager* lm) noexcept { lifecycle_mgr_ = lm; }
     [[nodiscard]] AppLifecycleManager* lifecycle_manager() noexcept { return lifecycle_mgr_; }
 
+    void set_configuration_service(services::ConfigurationService* cs) noexcept { config_service_ = cs; }
+    [[nodiscard]] services::ConfigurationService* configuration_service() noexcept { return config_service_; }
+
+    void set_diagnostics_service(services::DiagnosticsService* ds) noexcept { diag_service_ = ds; }
+    [[nodiscard]] services::DiagnosticsService* diagnostics_service() noexcept { return diag_service_; }
+
+    void set_app_supervisor(AppSupervisor* as) noexcept { supervisor_ = as; }
+    [[nodiscard]] AppSupervisor* app_supervisor() noexcept { return supervisor_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -274,6 +299,9 @@ private:
     packaging::ApplicationRegistry* app_reg_{nullptr};
     runtime::SystemClipboard* clipboard_{nullptr};
     AppLifecycleManager* lifecycle_mgr_{nullptr};
+    services::ConfigurationService* config_service_{nullptr};
+    services::DiagnosticsService* diag_service_{nullptr};
+    AppSupervisor* supervisor_{nullptr};
     std::unordered_map<std::uint64_t, MutexRecord> mutex_table_;
 };
 

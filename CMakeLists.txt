@@ -144,6 +144,10 @@ add_library(winios_core STATIC
     src/packaging/app_registry.cpp
     src/packaging/package_installer.cpp
     src/security/capability_manager.cpp
+    src/kernel/app_supervisor.cpp
+    src/services/configuration_service.cpp
+    src/services/diagnostics_service.cpp
+    src/graphics/desktop_launcher.cpp
     src/runtime/system_clipboard.cpp
     src/apps/sample_apps.cpp
     src/runtime/userspace_coordinator.cpp
@@ -5167,6 +5171,116 @@ target_include_directories(stage223_23_security_fuzzing_tests PRIVATE guest-sdk/
 target_link_libraries(stage223_23_security_fuzzing_tests PRIVATE winios_core)
 winios_set_warnings(stage223_23_security_fuzzing_tests)
 add_test(NAME stage223_23_security_fuzzing_tests COMMAND stage223_23_security_fuzzing_tests)
+
+# ============================================================================
+# Campaign 224: Guest Application Platform Services, Package Management,
+# Permissions, Sandboxed Storage, IPC v2, Supervisor, Configuration & Launch
+# ============================================================================
+
+add_executable(stage224_3_package_validation_tests
+    tests/unit/stage224_3_package_validation_tests.cpp
+)
+target_include_directories(stage224_3_package_validation_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_3_package_validation_tests PRIVATE winios_core)
+winios_set_warnings(stage224_3_package_validation_tests)
+add_test(NAME stage224_3_package_validation_tests COMMAND stage224_3_package_validation_tests)
+
+add_executable(stage224_5_app_registry_tests
+    tests/unit/stage224_5_app_registry_tests.cpp
+)
+target_include_directories(stage224_5_app_registry_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_5_app_registry_tests PRIVATE winios_core)
+winios_set_warnings(stage224_5_app_registry_tests)
+add_test(NAME stage224_5_app_registry_tests COMMAND stage224_5_app_registry_tests)
+
+add_executable(stage224_6_package_installer_tests
+    tests/unit/stage224_6_package_installer_tests.cpp
+)
+target_include_directories(stage224_6_package_installer_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_6_package_installer_tests PRIVATE winios_core)
+winios_set_warnings(stage224_6_package_installer_tests)
+add_test(NAME stage224_6_package_installer_tests COMMAND stage224_6_package_installer_tests)
+
+add_executable(stage224_9_permissions_identity_tests
+    tests/unit/stage224_9_permissions_identity_tests.cpp
+)
+target_include_directories(stage224_9_permissions_identity_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_9_permissions_identity_tests PRIVATE winios_core)
+winios_set_warnings(stage224_9_permissions_identity_tests)
+add_test(NAME stage224_9_permissions_identity_tests COMMAND stage224_9_permissions_identity_tests)
+
+add_executable(stage224_11_storage_quota_recovery_tests
+    tests/unit/stage224_11_storage_quota_recovery_tests.cpp
+)
+target_include_directories(stage224_11_storage_quota_recovery_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_11_storage_quota_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage224_11_storage_quota_recovery_tests)
+add_test(NAME stage224_11_storage_quota_recovery_tests COMMAND stage224_11_storage_quota_recovery_tests)
+
+add_executable(stage224_13_ipc_reliability_tests
+    tests/unit/stage224_13_ipc_reliability_tests.cpp
+)
+target_include_directories(stage224_13_ipc_reliability_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_13_ipc_reliability_tests PRIVATE winios_core)
+winios_set_warnings(stage224_13_ipc_reliability_tests)
+add_test(NAME stage224_13_ipc_reliability_tests COMMAND stage224_13_ipc_reliability_tests)
+
+add_executable(stage224_15_supervisor_crash_tests
+    tests/unit/stage224_15_supervisor_crash_tests.cpp
+)
+target_include_directories(stage224_15_supervisor_crash_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_15_supervisor_crash_tests PRIVATE winios_core)
+winios_set_warnings(stage224_15_supervisor_crash_tests)
+add_test(NAME stage224_15_supervisor_crash_tests COMMAND stage224_15_supervisor_crash_tests)
+
+add_executable(stage224_17_configuration_tests
+    tests/unit/stage224_17_configuration_tests.cpp
+)
+target_include_directories(stage224_17_configuration_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_17_configuration_tests PRIVATE winios_core)
+winios_set_warnings(stage224_17_configuration_tests)
+add_test(NAME stage224_17_configuration_tests COMMAND stage224_17_configuration_tests)
+
+add_executable(stage224_18_diagnostics_logging_tests
+    tests/unit/stage224_18_diagnostics_logging_tests.cpp
+)
+target_include_directories(stage224_18_diagnostics_logging_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_18_diagnostics_logging_tests PRIVATE winios_core)
+winios_set_warnings(stage224_18_diagnostics_logging_tests)
+add_test(NAME stage224_18_diagnostics_logging_tests COMMAND stage224_18_diagnostics_logging_tests)
+
+add_executable(stage224_19_desktop_launcher_tests
+    tests/unit/stage224_19_desktop_launcher_tests.cpp
+)
+target_include_directories(stage224_19_desktop_launcher_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_19_desktop_launcher_tests PRIVATE winios_core)
+winios_set_warnings(stage224_19_desktop_launcher_tests)
+add_test(NAME stage224_19_desktop_launcher_tests COMMAND stage224_19_desktop_launcher_tests)
+
+add_executable(stage224_22_platform_settings_tests
+    tests/unit/stage224_22_platform_settings_tests.cpp
+)
+target_include_directories(stage224_22_platform_settings_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_22_platform_settings_tests PRIVATE winios_core)
+winios_set_warnings(stage224_22_platform_settings_tests)
+add_test(NAME stage224_22_platform_settings_tests COMMAND stage224_22_platform_settings_tests)
+
+add_executable(stage224_22_ipc_messenger_tests
+    tests/unit/stage224_22_ipc_messenger_tests.cpp
+)
+target_include_directories(stage224_22_ipc_messenger_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_22_ipc_messenger_tests PRIVATE winios_core)
+winios_set_warnings(stage224_22_ipc_messenger_tests)
+add_test(NAME stage224_22_ipc_messenger_tests COMMAND stage224_22_ipc_messenger_tests)
+
+add_executable(stage224_23_security_fuzzing_tests
+    tests/unit/stage224_23_security_fuzzing_tests.cpp
+)
+target_include_directories(stage224_23_security_fuzzing_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage224_23_security_fuzzing_tests PRIVATE winios_core)
+winios_set_warnings(stage224_23_security_fuzzing_tests)
+add_test(NAME stage224_23_security_fuzzing_tests COMMAND stage224_23_security_fuzzing_tests)
+
 
 
 

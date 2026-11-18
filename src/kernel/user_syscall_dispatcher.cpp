@@ -20,6 +20,9 @@
 #include "packaging/app_registry.h"
 #include "runtime/system_clipboard.h"
 #include "kernel/app_lifecycle_manager.h"
+#include "kernel/app_supervisor.h"
+#include "services/configuration_service.h"
+#include "services/diagnostics_service.h"
 
 #include <algorithm>
 #include <cstring>
@@ -1658,6 +1661,213 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         else if (state_val == 7) new_state = AppState::Terminated;
 
         bool ok = lifecycle_mgr_->transition_to(proc.pid(), new_state);
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosConfigGet: {
+        if (!config_service_) return record_error(kErrnoENOSYS);
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::ConfigAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        winios_config_req_t req{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string key;
+        if (!read_user_string(uas, req.key_ptr, key, req.key_len > 0 ? req.key_len : 64)) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string bundle = cap_mgr_ ? cap_mgr_->get_bundle_id(proc.pid()) : "";
+        if (bundle.empty()) bundle = "com.winios.app";
+
+        if (req.val_type == 0) { // String
+            std::string val = config_service_->get_string(bundle, key, "");
+            req.out_len = static_cast<uint32_t>(val.size());
+            if (req.val_buf_ptr != 0 && req.val_buf_size > 0) {
+                size_t to_copy = (val.size() < req.val_buf_size) ? val.size() : (req.val_buf_size - 1);
+                uas.copyin(req.val_buf_ptr, val.data(), to_copy);
+                char null_byte = 0;
+                uas.copyin(req.val_buf_ptr + to_copy, &null_byte, 1);
+            }
+        } else if (req.val_type == 1) { // Int64
+            int64_t val = config_service_->get_int(bundle, key, 0);
+            req.out_len = sizeof(int64_t);
+            if (req.val_buf_ptr != 0 && req.val_buf_size >= sizeof(int64_t)) {
+                uas.copyin(req.val_buf_ptr, &val, sizeof(val));
+            }
+        } else if (req.val_type == 2) { // Double
+            double val = config_service_->get_double(bundle, key, 0.0);
+            req.out_len = sizeof(double);
+            if (req.val_buf_ptr != 0 && req.val_buf_size >= sizeof(double)) {
+                uas.copyin(req.val_buf_ptr, &val, sizeof(val));
+            }
+        } else if (req.val_type == 3) { // Bool
+            bool val = config_service_->get_bool(bundle, key, false);
+            uint32_t bval = val ? 1 : 0;
+            req.out_len = sizeof(uint32_t);
+            if (req.val_buf_ptr != 0 && req.val_buf_size >= sizeof(uint32_t)) {
+                uas.copyin(req.val_buf_ptr, &bval, sizeof(bval));
+            }
+        }
+        uas.copyin(arg0, &req, sizeof(req));
+        return record_success(0);
+    }
+
+    case kSysWiniosConfigSet: {
+        if (!config_service_) return record_error(kErrnoENOSYS);
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::ConfigAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        winios_config_req_t req{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string key;
+        if (!read_user_string(uas, req.key_ptr, key, req.key_len > 0 ? req.key_len : 64)) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string bundle = cap_mgr_ ? cap_mgr_->get_bundle_id(proc.pid()) : "";
+        if (bundle.empty()) bundle = "com.winios.app";
+
+        bool ok = false;
+        if (req.val_type == 0) { // String
+            std::string val;
+            if (req.val_buf_ptr != 0 && read_user_string(uas, req.val_buf_ptr, val, req.val_buf_size > 0 ? req.val_buf_size : 1024)) {
+                ok = config_service_->set_string(bundle, key, val);
+            }
+        } else if (req.val_type == 1) { // Int64
+            int64_t val = 0;
+            if (uas.copyout(reinterpret_cast<const void*>(req.val_buf_ptr), &val, sizeof(val))) {
+                ok = config_service_->set_int(bundle, key, val);
+            }
+        } else if (req.val_type == 2) { // Double
+            double val = 0.0;
+            if (uas.copyout(reinterpret_cast<const void*>(req.val_buf_ptr), &val, sizeof(val))) {
+                ok = config_service_->set_double(bundle, key, val);
+            }
+        } else if (req.val_type == 3) { // Bool
+            uint32_t val = 0;
+            if (uas.copyout(reinterpret_cast<const void*>(req.val_buf_ptr), &val, sizeof(val))) {
+                ok = config_service_->set_bool(bundle, key, val != 0);
+            }
+        }
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosLogLeveled: {
+        uint32_t lvl = static_cast<uint32_t>(arg0);
+        std::string msg;
+        if (!read_user_string(uas, arg1, msg, arg2 > 0 ? arg2 : 1024)) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::string bundle = cap_mgr_ ? cap_mgr_->get_bundle_id(proc.pid()) : "";
+        if (diag_service_) {
+            diag_service_->log(bundle, proc.pid(), static_cast<services::LogLevel>(lvl), msg);
+        }
+        console_.write_bytes(msg.data(), msg.size());
+        console_.write_bytes("\n", 1);
+        return record_success(0);
+    }
+
+    case kSysWiniosDiagSummary: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DiagnosticsAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        winios_diag_summary_t sum{};
+        if (diag_service_) {
+            auto s = diag_service_->get_summary();
+            sum.active_processes = static_cast<uint32_t>(s.active_processes);
+            sum.installed_apps = static_cast<uint32_t>(s.installed_apps);
+            sum.open_windows = static_cast<uint32_t>(s.open_windows);
+            sum.ipc_ports = static_cast<uint32_t>(s.ipc_ports);
+            sum.total_crashes = static_cast<uint32_t>(s.total_crashes);
+            sum.total_security_checks = static_cast<uint32_t>(s.security_stats.total_checks);
+            sum.total_security_denials = static_cast<uint32_t>(s.security_stats.total_denials);
+        }
+        if (!uas.copyin(arg0, &sum, sizeof(sum))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosIpcCreatePortV2: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::IpcAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        std::string port_name;
+        if (arg0 != 0) {
+            read_user_string(uas, arg0, port_name, 64);
+        }
+        uint64_t handle = runtime::GuestIpcRouter::Get().CreatePortV2(proc.pid(), port_name);
+        return record_success(handle);
+    }
+
+    case kSysWiniosIpcSendV2: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::IpcAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        winios_ipc_msg_v2_t desc{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &desc, sizeof(desc))) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (desc.data_size > runtime::kMaxIpcMessageSize) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<uint8_t> payload(desc.data_size);
+        if (desc.data_size > 0 && desc.data_ptr != 0) {
+            if (!uas.copyout(reinterpret_cast<const void*>(desc.data_ptr), payload.data(), desc.data_size)) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        bool ok = runtime::GuestIpcRouter::Get().SendV2(proc.pid(), desc.target_port, payload.data(), payload.size(), desc.message_id);
+        return record_success(ok ? 0 : 1);
+    }
+
+    case kSysWiniosIpcRecvV2: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::IpcAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+        uint64_t port_handle = arg0;
+        uint64_t buf_ptr = arg1;
+        uint32_t max_len = static_cast<uint32_t>(arg2);
+        uint64_t out_desc_ptr = arg3;
+
+        runtime::IpcMessage msg{};
+        bool ok = runtime::GuestIpcRouter::Get().ReceiveV2(proc.pid(), port_handle, &msg);
+        if (!ok) {
+            return record_success(0); // Queue empty
+        }
+        uint32_t to_write = (msg.data_size < max_len) ? msg.data_size : max_len;
+        if (to_write > 0 && buf_ptr != 0) {
+            uas.copyin(buf_ptr, msg.data.data(), to_write);
+        }
+        if (out_desc_ptr != 0) {
+            winios_ipc_msg_v2_t out_desc{};
+            out_desc.target_port = msg.target_port;
+            out_desc.sender_pid = msg.sender_pid;
+            out_desc.message_id = msg.message_id;
+            out_desc.data_size = to_write;
+            uas.copyin(out_desc_ptr, &out_desc, sizeof(out_desc));
+        }
+        return record_success(to_write);
+    }
+
+    case kSysWiniosIpcLookupPort: {
+        std::string name;
+        if (!read_user_string(uas, arg0, name, 64)) {
+            return record_error(kErrnoEFAULT);
+        }
+        uint64_t handle = runtime::GuestIpcRouter::Get().LookupPortName(name);
+        return record_success(handle);
+    }
+
+    case kSysWiniosIpcRegisterPort: {
+        uint64_t port_handle = arg0;
+        std::string name;
+        if (!read_user_string(uas, arg1, name, 64)) {
+            return record_error(kErrnoEFAULT);
+        }
+        bool ok = runtime::GuestIpcRouter::Get().RegisterPortName(name, port_handle, proc.pid());
         return record_success(ok ? 0 : 1);
     }
 

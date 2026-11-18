@@ -7,6 +7,43 @@
 
 namespace winios::packaging {
 
+enum class PackageValidationResult : std::uint32_t {
+    Valid = 0,
+    InvalidMagic = 1,
+    CorruptedHeader = 2,
+    ManifestTooLarge = 3,
+    InvalidManifest = 4,
+    FileCountExceeded = 5,
+    PayloadTruncated = 6,
+    PathTraversalAttempt = 7,
+    DuplicateFileEntry = 8,
+    ExecutableNotFound = 9,
+    ExecutableInvalid = 10,
+    ChecksumMismatch = 11,
+    IntegerOverflow = 12,
+    UnsupportedArchitecture = 13
+};
+
+inline const char* package_validation_result_to_string(PackageValidationResult res) noexcept {
+    switch (res) {
+    case PackageValidationResult::Valid: return "Valid";
+    case PackageValidationResult::InvalidMagic: return "InvalidMagic";
+    case PackageValidationResult::CorruptedHeader: return "CorruptedHeader";
+    case PackageValidationResult::ManifestTooLarge: return "ManifestTooLarge";
+    case PackageValidationResult::InvalidManifest: return "InvalidManifest";
+    case PackageValidationResult::FileCountExceeded: return "FileCountExceeded";
+    case PackageValidationResult::PayloadTruncated: return "PayloadTruncated";
+    case PackageValidationResult::PathTraversalAttempt: return "PathTraversalAttempt";
+    case PackageValidationResult::DuplicateFileEntry: return "DuplicateFileEntry";
+    case PackageValidationResult::ExecutableNotFound: return "ExecutableNotFound";
+    case PackageValidationResult::ExecutableInvalid: return "ExecutableInvalid";
+    case PackageValidationResult::ChecksumMismatch: return "ChecksumMismatch";
+    case PackageValidationResult::IntegerOverflow: return "IntegerOverflow";
+    case PackageValidationResult::UnsupportedArchitecture: return "UnsupportedArchitecture";
+    default: return "UnknownValidationResult";
+    }
+}
+
 struct FileEntry {
     std::string path; // Relative path inside bundle, e.g. "bin/calc", "res/icon.png"
     std::uint64_t size{0};
@@ -26,6 +63,9 @@ struct PackageManifest {
     std::uint64_t storage_quota_bytes{10 * 1024 * 1024}; // 10 MB default
     std::string signature_sha256;
     std::vector<std::string> permissions;
+    std::vector<std::string> optional_permissions;
+    std::string icon_path;
+    std::string startup_config;
     std::vector<FileEntry> files;
 
     [[nodiscard]] bool is_valid() const noexcept;
@@ -44,6 +84,11 @@ struct AppPackage {
 
     // Deserialization from package payload
     static bool unpack(const std::uint8_t* data, std::size_t size, AppPackage& out_pkg);
+
+    // Strict validation with detailed error diagnosis
+    static PackageValidationResult validate_package_data(const std::uint8_t* data,
+                                                         std::size_t size,
+                                                         AppPackage* out_pkg = nullptr);
 };
 
 } // namespace winios::packaging

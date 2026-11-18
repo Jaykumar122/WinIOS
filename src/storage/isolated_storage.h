@@ -65,15 +65,18 @@ public:
     // Check if file exists
     [[nodiscard]] bool exists(const std::string& rel_path) const;
 
-    // Clean up any stale .tmp files from crashed transactions
+    // Clean up any stale .tmp files from crashed transactions (recursive)
     std::size_t recover_transactions();
 
-    // Usage and quota
+    // Usage and quota (recursive)
     [[nodiscard]] std::size_t current_usage_bytes() const;
     [[nodiscard]] std::size_t quota_bytes() const noexcept { return quota_bytes_; }
     [[nodiscard]] const std::string& app_id() const noexcept { return app_id_; }
 
 private:
+    std::size_t calculate_dir_usage(const std::string& dir) const;
+    std::size_t recover_dir_transactions(const std::string& dir);
+
     std::shared_ptr<vfs::VirtualFileSystem> vfs_;
     std::string                             app_id_;
     std::string                             root_path_;
