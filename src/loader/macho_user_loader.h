@@ -46,6 +46,9 @@ public:
     static std::vector<std::uint8_t> get_embedded_first_app();
     static std::vector<std::uint8_t> get_embedded_init_app();
     static std::vector<std::uint8_t> get_embedded_test_workload();
+    static std::vector<std::uint8_t> get_embedded_campaign219_supervisor();
+    static std::vector<std::uint8_t> get_embedded_campaign219_worker();
+    static std::vector<std::uint8_t> get_embedded_campaign219_threaded_math();
 };
 
 } // namespace winios::loader

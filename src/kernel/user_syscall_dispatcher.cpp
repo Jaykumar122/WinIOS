@@ -1,5 +1,7 @@
 #include "kernel/user_syscall_dispatcher.h"
 #include "kernel/pipe.h"
+#include "kernel/thread.h"
+#include "kernel/multi_process_scheduler.h"
 #include "vfs/vfs.h"
 #include "graphics/window_manager.h"
 #include "graphics/display_surface.h"
@@ -330,6 +332,18 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         return record_success(nbyte);
     }
 
+    case kSysDup: {
+        const int old_fd = static_cast<int>(arg0);
+        if (!proc.fd_table().is_valid_fd(old_fd)) {
+            return record_error(kErrnoEBADF);
+        }
+        const int new_fd = proc.fd_table().duplicate_fd(old_fd);
+        if (new_fd < 0) {
+            return record_error(24 /* EMFILE */);
+        }
+        return record_success(static_cast<std::uint64_t>(new_fd));
+    }
+
     case kSysPipe: {
         auto pipe = std::make_shared<Pipe>();
 
@@ -492,9 +506,33 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         return record_success(0);
     }
 
+    case kSysWiniosMsgTrap:
     case kSysMachMsg: {
         ++stats_.total_ipc_traps;
-        return record_success(0); // KERN_SUCCESS
+        if (arg0 == 0) {
+            return record_success(0); // KERN_SUCCESS
+        }
+        const std::uint64_t msg_va = arg0;
+        winios_msg_header_t hdr{};
+        if (!uas.copyout(reinterpret_cast<const void*>(msg_va), &hdr, sizeof(hdr))) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+        if (hdr.msg_size < sizeof(hdr) || hdr.msg_size > 4096) {
+            return record_error(kErrnoEINVAL);
+        }
+        const std::size_t payload_len = hdr.msg_size - sizeof(hdr);
+        std::vector<std::uint8_t> payload(payload_len);
+        if (payload_len > 0) {
+            if (!uas.copyout(reinterpret_cast<const void*>(msg_va + sizeof(hdr)), payload.data(), payload_len)) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        if (hdr.dst_port != 0) {
+            runtime::GuestIpcRouter::Get().Send(proc.pid(), hdr.dst_port, payload.data(), payload_len, hdr.msg_id);
+        }
+        return record_success(0);
     }
 
     case kSysWiniosWindowCreate: {
@@ -1121,6 +1159,100 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_success(0);
         }
         return record_error(kErrnoEINVAL);
+    }
+
+    case kSysWiniosMutexLock: {
+        const std::uint64_t mutex_va = arg0;
+        if (!uas.validate_user_buffer(mutex_va, sizeof(std::uint32_t), true)) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+        std::uint32_t val = 0;
+        if (!uas.copyout(reinterpret_cast<const void*>(mutex_va), &val, sizeof(val))) {
+            return record_error(kErrnoEFAULT);
+        }
+        if (val == 0) {
+            val = 1;
+            if (!uas.copyin(mutex_va, &val, sizeof(val))) {
+                return record_error(kErrnoEFAULT);
+            }
+            return record_success(0);
+        } else {
+            return record_error(16 /* EBUSY */);
+        }
+    }
+
+    case kSysWiniosMutexUnlock: {
+        const std::uint64_t mutex_va = arg0;
+        if (!uas.validate_user_buffer(mutex_va, sizeof(std::uint32_t), true)) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+        std::uint32_t val = 0;
+        if (!uas.copyin(mutex_va, &val, sizeof(val))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosThreadCreate: {
+        if (!thread_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+        const std::uint64_t entry_va = arg0;
+        const std::uint64_t thread_arg = arg1;
+        const std::uint64_t stack_base = arg2;
+        const std::uint64_t stack_size = arg3 != 0 ? arg3 : 0x10000ULL;
+
+        if (entry_va == 0 || stack_base == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        KernelThread* new_th = thread_mgr_->create_thread(
+            "guest_worker", entry_va, thread_arg, stack_base, stack_size, kDefaultPriority, true);
+        if (!new_th) {
+            return record_error(kErrnoENOMEM);
+        }
+        new_th->set_owner_pid(proc.pid());
+        proc.add_thread(new_th);
+
+        if (multi_sched_) {
+            multi_sched_->enqueue_thread(new_th);
+        }
+        return record_success(new_th->tid());
+    }
+
+    case kSysWiniosThreadExit: {
+        const std::int32_t exit_code = static_cast<std::int32_t>(arg0);
+        if (multi_sched_ && multi_sched_->current_thread()) {
+            multi_sched_->current_thread()->terminate(exit_code);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosThreadJoin: {
+        if (!thread_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+        const std::uint64_t target_tid = arg0;
+        const std::uint64_t exit_status_va = arg1;
+
+        KernelThread* th = thread_mgr_->get_thread(target_tid);
+        if (!th || th->owner_pid() != proc.pid()) {
+            return record_error(kErrnoESRCH);
+        }
+
+        if (th->state() == ThreadState::Terminated) {
+            if (exit_status_va != 0) {
+                const std::int32_t code = th->exit_code();
+                if (!uas.copyin(exit_status_va, &code, sizeof(code))) {
+                    return record_error(kErrnoEFAULT);
+                }
+            }
+            return record_success(0);
+        }
+
+        return record_error(16 /* EBUSY */);
     }
 
     default: {

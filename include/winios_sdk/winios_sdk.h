@@ -137,6 +137,15 @@ typedef struct {
     uint64_t total_instructions_retired;
 } winios_runtime_info_t;
 
+typedef struct {
+    uint32_t msg_size;     // Size of header + payload in bytes
+    uint32_t msg_id;       // User message ID or function code
+    uint32_t src_port;     // Sending port capability
+    uint32_t dst_port;     // Destination port capability
+    uint32_t flags;        // Message flags
+    uint32_t reserved;     // Alignment padding
+} winios_msg_header_t;
+
 #pragma pack(pop)
 
 #ifdef __cplusplus
@@ -148,6 +157,7 @@ static_assert(sizeof(winios_storage_req_t) == 16, "winios_storage_req_t must be 
 static_assert(sizeof(winios_ipc_msg_desc_t) == 24, "winios_ipc_msg_desc_t must be 24 bytes");
 static_assert(sizeof(winios_pref_entry_t) == 32, "winios_pref_entry_t must be 32 bytes");
 static_assert(sizeof(winios_runtime_info_t) == 24, "winios_runtime_info_t must be 24 bytes");
+static_assert(sizeof(winios_msg_header_t) == 24, "winios_msg_header_t must be 24 bytes");
 #endif
 
 // -----------------------------------------------------------------------------

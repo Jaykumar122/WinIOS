@@ -53,7 +53,9 @@ struct GuestTcb {
     std::uint64_t total_runtime_ticks{0};     // 0x158: Cumulative execution ticks
     std::int32_t exit_code{0};                // 0x160: Thread termination return value
     char name[kMaxThreadNameLen]{0};          // 0x164 - 0x184: Human-readable name
-    std::uint8_t reserved[124]{0};            // 0x184 - 0x200: Pad to exactly 512 bytes
+    std::uint64_t tpidr_el0{0};               // 0x184 - 0x18C: Thread-local storage pointer
+    std::uint64_t instructions_retired{0};    // 0x18C - 0x194: Instructions executed by this thread
+    std::uint8_t reserved[108]{0};            // 0x194 - 0x200: Pad to exactly 512 bytes
 };
 #pragma pack(pop)
 static_assert(sizeof(GuestTcb) == 512, "GuestTcb must be exactly 512 bytes");
@@ -78,6 +80,10 @@ public:
     [[nodiscard]] std::int32_t exit_code() const noexcept { return tcb_.exit_code; }
     [[nodiscard]] std::uint64_t cpu_affinity() const noexcept { return tcb_.cpu_affinity; }
     [[nodiscard]] std::uint64_t total_runtime_ticks() const noexcept { return tcb_.total_runtime_ticks; }
+    [[nodiscard]] std::uint64_t tpidr_el0() const noexcept { return tcb_.tpidr_el0; }
+    void set_tpidr_el0(std::uint64_t val) noexcept { tcb_.tpidr_el0 = val; }
+    [[nodiscard]] std::uint64_t instructions_retired() const noexcept { return tcb_.instructions_retired; }
+    void set_instructions_retired(std::uint64_t count) noexcept { tcb_.instructions_retired = count; }
     [[nodiscard]] std::int32_t owner_pid() const noexcept { return owner_pid_; }
     void set_owner_pid(std::int32_t pid) noexcept { owner_pid_ = pid; }
     [[nodiscard]] const GuestTcb& tcb() const noexcept { return tcb_; }

@@ -105,6 +105,7 @@ bool MultiProcessScheduler::perform_context_switch(
         prev_thread->tcb().pc = cpu.get_program_counter();
         prev_thread->tcb().sp_el0 = cpu.get_sp_el0();
         prev_thread->tcb().spsr_el1 = cpu.get_spsr_el1();
+        prev_thread->tcb().tpidr_el0 = cpu.get_tpidr_el0();
         for (std::size_t i = 0; i < 31; ++i) {
             prev_thread->tcb().gpr[i] = cpu.read_register(static_cast<unsigned>(i));
         }
@@ -127,6 +128,7 @@ bool MultiProcessScheduler::perform_context_switch(
     cpu.set_program_counter(next_thread->tcb().pc);
     cpu.set_sp_el0(next_thread->tcb().sp_el0);
     cpu.set_spsr_el1(static_cast<std::uint32_t>(next_thread->tcb().spsr_el1));
+    cpu.set_tpidr_el0(next_thread->tcb().tpidr_el0);
     cpu.set_current_el(0); // Mode EL0 (userspace)
     for (std::size_t i = 0; i < 31; ++i) {
         cpu.write_register(static_cast<unsigned>(i), next_thread->tcb().gpr[i]);

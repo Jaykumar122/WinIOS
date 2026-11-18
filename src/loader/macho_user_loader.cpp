@@ -1,6 +1,7 @@
 #include "loader/macho_user_loader.h"
 #include "loader/embedded_user_apps_211.inl"
 #include "loader/embedded_guest_workloads_218.inl"
+#include "loader/embedded_campaign219_apps.inl"
 
 #include <cstring>
 #include <iostream>
@@ -17,6 +18,18 @@ std::vector<std::uint8_t> MachoUserLoader::get_embedded_init_app() {
 
 std::vector<std::uint8_t> MachoUserLoader::get_embedded_test_workload() {
     return std::vector<std::uint8_t>(kGuestTestWorkloadMacho_data, kGuestTestWorkloadMacho_data + kGuestTestWorkloadMacho_len);
+}
+
+std::vector<std::uint8_t> MachoUserLoader::get_embedded_campaign219_supervisor() {
+    return std::vector<std::uint8_t>(kCampaign219SupervisorMacho_data, kCampaign219SupervisorMacho_data + kCampaign219SupervisorMacho_len);
+}
+
+std::vector<std::uint8_t> MachoUserLoader::get_embedded_campaign219_worker() {
+    return std::vector<std::uint8_t>(kCampaign219WorkerMacho_data, kCampaign219WorkerMacho_data + kCampaign219WorkerMacho_len);
+}
+
+std::vector<std::uint8_t> MachoUserLoader::get_embedded_campaign219_threaded_math() {
+    return std::vector<std::uint8_t>(kCampaign219ThreadedMathMacho_data, kCampaign219ThreadedMathMacho_data + kCampaign219ThreadedMathMacho_len);
 }
 
 bool MachoUserLoader::validate_header(const std::uint8_t* data, std::size_t size, std::string* out_err) {

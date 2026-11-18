@@ -26,6 +26,19 @@ int FileDescriptorTable::allocate_fd(FileType type, bool readable, bool writable
     return -1; // Exhausted
 }
 
+int FileDescriptorTable::duplicate_fd(int old_fd) {
+    if (!is_valid_fd(old_fd)) {
+        return -1;
+    }
+    for (int i = 0; i < kMaxFiles; ++i) {
+        if (!fds_[static_cast<std::size_t>(i)].is_open) {
+            fds_[static_cast<std::size_t>(i)] = fds_[static_cast<std::size_t>(old_fd)];
+            return i;
+        }
+    }
+    return -1; // Table full
+}
+
 bool FileDescriptorTable::install_fd(int fd, FileType type, bool readable, bool writable, const std::string& path) {
     if (fd < 0 || fd >= kMaxFiles) {
         return false;
@@ -198,6 +211,12 @@ void BsdProcess::terminate(int exit_code) {
             t->terminate(exit_code);
         }
     }
+    // Release open file descriptors upon termination
+    for (int i = 0; i < FileDescriptorTable::kMaxFiles; ++i) {
+        if (fd_table_.is_valid_fd(i)) {
+            fd_table_.close_fd(i);
+        }
+    }
 }
 
 void BsdProcess::serialize(std::vector<std::uint8_t>& dst) const {
@@ -318,7 +337,7 @@ bool BsdProcessManager::initialize(KernelTask* kernel_task) {
     return true;
 }
 
-BsdProcess* BsdProcessManager::create_process(const std::string& name, pid_t ppid, KernelTask* task) {
+BsdProcess* BsdProcessManager::create_process(const std::string& name, pid_t ppid, KernelTask* task, memory::UserAddressSpace* uas) {
     // Find next available PID
     pid_t pid = next_pid_++;
     if (next_pid_ >= kMaxPids) {
@@ -334,6 +353,9 @@ BsdProcess* BsdProcessManager::create_process(const std::string& name, pid_t ppi
 
     auto proc = std::make_unique<BsdProcess>(pid, ppid, name, task);
     proc->set_state(ProcessState::Runnable);
+    if (uas) {
+        proc->set_address_space(uas);
+    }
 
     // Register with parent if ppid exists
     if (ppid != 0) {

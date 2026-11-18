@@ -33,6 +33,9 @@ class AppPreferences;
 
 namespace winios::kernel {
 
+class KernelThreadManager;
+class MultiProcessScheduler;
+
 // Pinned Darwin/XNU Syscall Numbers (xnu-10002.1.13 bsd/sys/syscall.h)
 inline constexpr std::uint64_t kSysExit       = 1;
 inline constexpr std::uint64_t kSysFork       = 2;
@@ -77,9 +80,16 @@ inline constexpr std::uint64_t kSysWiniosIpcCreatePort    = 518;
 inline constexpr std::uint64_t kSysWiniosIpcSend          = 519;
 inline constexpr std::uint64_t kSysWiniosIpcRecv          = 520;
 inline constexpr std::uint64_t kSysWiniosPrefGetSet       = 521;
+// Category C ABI v1.3 Extensions (Multi-Thread, Mutex & Message Trap)
+inline constexpr std::uint64_t kSysWiniosMutexLock        = 522;
+inline constexpr std::uint64_t kSysWiniosMutexUnlock      = 523;
+inline constexpr std::uint64_t kSysWiniosThreadCreate     = 524;
+inline constexpr std::uint64_t kSysWiniosThreadExit       = 525;
+inline constexpr std::uint64_t kSysWiniosThreadJoin       = 526;
+inline constexpr std::uint64_t kSysWiniosMsgTrap          = 527;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
-    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosPrefGetSet;
+    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMsgTrap;
 }
 
 // Pinned Darwin/XNU Errno Numbers (xnu-10002.1.13 bsd/sys/errno.h)
@@ -172,6 +182,12 @@ public:
     void set_preferences(runtime::AppPreferences* prefs) noexcept { preferences_ = prefs; }
     [[nodiscard]] runtime::AppPreferences* preferences() noexcept { return preferences_; }
 
+    void set_thread_manager(KernelThreadManager* tm) noexcept { thread_mgr_ = tm; }
+    [[nodiscard]] KernelThreadManager* thread_manager() noexcept { return thread_mgr_; }
+
+    void set_multi_process_scheduler(MultiProcessScheduler* sched) noexcept { multi_sched_ = sched; }
+    [[nodiscard]] MultiProcessScheduler* multi_process_scheduler() noexcept { return multi_sched_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -199,6 +215,8 @@ private:
     runtime::GuestStorageApi* storage_api_{nullptr};
     runtime::GuestAllocator* allocator_{nullptr};
     runtime::AppPreferences* preferences_{nullptr};
+    KernelThreadManager* thread_mgr_{nullptr};
+    MultiProcessScheduler* multi_sched_{nullptr};
 };
 
 } // namespace winios::kernel

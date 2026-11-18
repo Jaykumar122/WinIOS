@@ -15,6 +15,10 @@ namespace winios::vfs {
 struct VfsDescriptor;
 }
 
+namespace winios::memory {
+class UserAddressSpace;
+}
+
 namespace winios::kernel {
 
 class Pipe;
@@ -57,6 +61,7 @@ public:
     ~FileDescriptorTable() = default;
 
     int allocate_fd(FileType type = FileType::Regular, bool readable = true, bool writable = true, const std::string& path = "");
+    int duplicate_fd(int old_fd);
     bool install_fd(int fd, FileType type, bool readable, bool writable, const std::string& path = "");
     bool close_fd(int fd);
     [[nodiscard]] const FileDescriptor* get_fd(int fd) const;
@@ -89,6 +94,13 @@ public:
     [[nodiscard]] ProcessIpcSpace& ipc_space() noexcept { return ipc_space_; }
     [[nodiscard]] const ProcessIpcSpace& ipc_space() const noexcept { return ipc_space_; }
 
+    [[nodiscard]] memory::UserAddressSpace* address_space() const noexcept { return address_space_; }
+    void set_address_space(memory::UserAddressSpace* uas) noexcept { address_space_ = uas; }
+    [[nodiscard]] std::size_t resident_page_count() const noexcept { return resident_page_count_; }
+    void set_resident_page_count(std::size_t count) noexcept { resident_page_count_ = count; }
+    [[nodiscard]] std::uint64_t virtual_memory_size() const noexcept { return virtual_memory_size_; }
+    void set_virtual_memory_size(std::uint64_t size) noexcept { virtual_memory_size_ = size; }
+
     [[nodiscard]] const std::vector<pid_t>& children() const noexcept { return children_; }
     void add_child(pid_t child_pid);
     bool remove_child(pid_t child_pid);
@@ -118,6 +130,9 @@ private:
     std::vector<KernelThread*> threads_{};
     FileDescriptorTable fd_table_{};
     ProcessIpcSpace ipc_space_{};
+    memory::UserAddressSpace* address_space_{nullptr};
+    std::size_t resident_page_count_{0};
+    std::uint64_t virtual_memory_size_{0};
     std::vector<pid_t> children_{};
     bool parent_notified_{false};
 };
@@ -133,7 +148,7 @@ public:
     bool initialize(KernelTask* kernel_task = nullptr);
 
     // Create a new process with allocated PID
-    BsdProcess* create_process(const std::string& name, pid_t ppid = 0, KernelTask* task = nullptr);
+    BsdProcess* create_process(const std::string& name, pid_t ppid = 0, KernelTask* task = nullptr, memory::UserAddressSpace* uas = nullptr);
 
     // Terminate process with exit code and handle orphan reparenting
     bool terminate_process(pid_t pid, int exit_code);
