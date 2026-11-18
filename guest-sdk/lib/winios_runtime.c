@@ -1846,5 +1846,53 @@ int winios_doc_get_recent(winios_recent_doc_t* out_recents, uint32_t max_count, 
     return (int)winios_syscall3(WINIOS_SYS_DOC_GET_RECENT, (uint64_t)(uintptr_t)out_recents, (uint64_t)max_count, (uint64_t)(uintptr_t)out_count);
 }
 
+// -----------------------------------------------------------------------------
+// Category C ABI v2.2 Settings, Multitasking & Accessibility Syscalls (Syscalls 581..590)
+// -----------------------------------------------------------------------------
+
+int winios_settings_get(winios_settings_snapshot_t* out_snap) {
+    if (!out_snap) return -1;
+    return (int)winios_syscall1(WINIOS_SYS_SETTINGS_GET, (uint64_t)(uintptr_t)out_snap);
+}
+
+int winios_settings_set(uint32_t key, uint64_t val) {
+    return (int)winios_syscall2(WINIOS_SYS_SETTINGS_SET, (uint64_t)key, val);
+}
+
+int winios_theme_get(uint32_t* out_theme, uint32_t* out_accent) {
+    return (int)winios_syscall2(WINIOS_SYS_THEME_GET, (uint64_t)(uintptr_t)out_theme, (uint64_t)(uintptr_t)out_accent);
+}
+
+int winios_theme_set(uint32_t theme, uint32_t accent) {
+    return (int)winios_syscall2(WINIOS_SYS_THEME_SET, (uint64_t)theme, (uint64_t)accent);
+}
+
+int winios_control_center_toggle(uint32_t action) {
+    return (int)winios_syscall1(WINIOS_SYS_CONTROL_CENTER_TOGGLE, (uint64_t)action);
+}
+
+int winios_task_enumerate(winios_task_entry_t* out_tasks, uint32_t max_count, uint32_t* out_count) {
+    if (!out_tasks || max_count == 0) return -1;
+    return (int)winios_syscall3(WINIOS_SYS_TASK_ENUMERATE, (uint64_t)(uintptr_t)out_tasks, (uint64_t)max_count, (uint64_t)(uintptr_t)out_count);
+}
+
+int winios_task_switch(uint32_t target_pid) {
+    return (int)winios_syscall1(WINIOS_SYS_TASK_SWITCH, (uint64_t)target_pid);
+}
+
+int winios_task_terminate(uint32_t target_pid, int graceful) {
+    return (int)winios_syscall2(WINIOS_SYS_TASK_TERMINATE, (uint64_t)target_pid, (uint64_t)graceful);
+}
+
+int winios_accessibility_get(winios_accessibility_info_t* out_a11y) {
+    if (!out_a11y) return -1;
+    return (int)winios_syscall1(WINIOS_SYS_ACCESSIBILITY_GET, (uint64_t)(uintptr_t)out_a11y);
+}
+
+int winios_accessibility_set(uint32_t text_scale, int high_contrast) {
+    return (int)winios_syscall2(WINIOS_SYS_ACCESSIBILITY_SET, (uint64_t)text_scale, (uint64_t)high_contrast);
+}
+
+
 
 

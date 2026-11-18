@@ -170,6 +170,55 @@ typedef struct {
     char     display_name[64];
     char     canonical_path[128];
 } winios_recent_doc_t;
+
+// ABI v2.2 Settings Snapshot (48 bytes)
+typedef struct {
+    uint32_t theme_mode;          // 0=Light, 1=Dark, 2=System
+    uint32_t accent_color;        // 0=Blue..7=Graphite
+    uint32_t display_width;
+    uint32_t display_height;
+    uint32_t display_scale;       // 100, 125, 150, 200
+    uint32_t display_orientation; // 0=Landscape, 1=Portrait
+    uint32_t master_volume;       // 0..100
+    uint32_t is_muted;            // 0 or 1
+    uint32_t low_power_mode;      // 0 or 1
+    uint32_t text_scale_percent;  // 100..200
+    uint32_t high_contrast;       // 0 or 1
+    uint32_t network_enabled;     // 0 or 1
+} winios_settings_snapshot_t;
+
+// ABI v2.2 Task Descriptor (120 bytes)
+typedef struct {
+    uint32_t pid;
+    uint32_t state;               // 0=Running, 1=Suspended, 2=Zombie, 3=Crashed
+    uint32_t is_foreground;       // 0 or 1
+    uint32_t pad;
+    uint64_t primary_window;
+    char     name[32];
+    char     bundle_id[64];
+} winios_task_entry_t;
+
+// ABI v2.2 Accessibility Descriptor (32 bytes)
+typedef struct {
+    uint32_t text_scale_percent;
+    uint32_t high_contrast;
+    uint32_t reduce_motion;
+    uint32_t focus_indicator_visible;
+    uint32_t screen_reader_active;
+    uint32_t pad[3];
+} winios_accessibility_info_t;
+
+#define WINIOS_SYS_SETTINGS_GET           581
+#define WINIOS_SYS_SETTINGS_SET           582
+#define WINIOS_SYS_THEME_GET              583
+#define WINIOS_SYS_THEME_SET              584
+#define WINIOS_SYS_CONTROL_CENTER_TOGGLE  585
+#define WINIOS_SYS_TASK_ENUMERATE         586
+#define WINIOS_SYS_TASK_SWITCH            587
+#define WINIOS_SYS_TASK_TERMINATE         588
+#define WINIOS_SYS_ACCESSIBILITY_GET      589
+#define WINIOS_SYS_ACCESSIBILITY_SET      590
+
 #pragma pack(pop)
 
 // Alignment helper

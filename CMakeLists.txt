@@ -212,6 +212,12 @@ add_library(winios_core STATIC
     src/documents/file_picker_service.cpp
     src/documents/recent_document_manager.cpp
     src/documents/desktop_session_manager.cpp
+    src/settings/settings_schema.cpp
+    src/settings/system_state_manager.cpp
+    src/settings/appearance_service.cpp
+    src/settings/control_center_service.cpp
+    src/settings/task_manager.cpp
+    src/settings/accessibility_service.cpp
     src/graphics/window_animator.cpp
     src/graphics/compositor.cpp
     src/graphics/frame_scheduler.cpp
@@ -5576,6 +5582,89 @@ target_include_directories(stage227_23_adversarial_tests PRIVATE guest-sdk/inclu
 target_link_libraries(stage227_23_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage227_23_adversarial_tests)
 add_test(NAME stage227_23_adversarial_tests COMMAND stage227_23_adversarial_tests)
+
+# ==============================================================================
+# CAMPAIGN 228 TESTS (Stages 228.0 - 228.24)
+# ==============================================================================
+add_executable(stage228_3_settings_schema_tests
+    tests/unit/stage228_3_settings_schema_tests.cpp
+)
+target_include_directories(stage228_3_settings_schema_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_3_settings_schema_tests PRIVATE winios_core)
+winios_set_warnings(stage228_3_settings_schema_tests)
+add_test(NAME stage228_3_settings_schema_tests COMMAND stage228_3_settings_schema_tests)
+
+add_executable(stage228_4_system_state_manager_tests
+    tests/unit/stage228_4_system_state_manager_tests.cpp
+)
+target_include_directories(stage228_4_system_state_manager_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_4_system_state_manager_tests PRIVATE winios_core)
+winios_set_warnings(stage228_4_system_state_manager_tests)
+add_test(NAME stage228_4_system_state_manager_tests COMMAND stage228_4_system_state_manager_tests)
+
+add_executable(stage228_5_appearance_service_tests
+    tests/unit/stage228_5_appearance_service_tests.cpp
+)
+target_include_directories(stage228_5_appearance_service_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_5_appearance_service_tests PRIVATE winios_core)
+winios_set_warnings(stage228_5_appearance_service_tests)
+add_test(NAME stage228_5_appearance_service_tests COMMAND stage228_5_appearance_service_tests)
+
+add_executable(stage228_11_control_center_tests
+    tests/unit/stage228_11_control_center_tests.cpp
+)
+target_include_directories(stage228_11_control_center_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_11_control_center_tests PRIVATE winios_core)
+winios_set_warnings(stage228_11_control_center_tests)
+add_test(NAME stage228_11_control_center_tests COMMAND stage228_11_control_center_tests)
+
+add_executable(stage228_14_task_manager_tests
+    tests/unit/stage228_14_task_manager_tests.cpp
+)
+target_include_directories(stage228_14_task_manager_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_14_task_manager_tests PRIVATE winios_core)
+winios_set_warnings(stage228_14_task_manager_tests)
+add_test(NAME stage228_14_task_manager_tests COMMAND stage228_14_task_manager_tests)
+
+add_executable(stage228_17_accessibility_service_tests
+    tests/unit/stage228_17_accessibility_service_tests.cpp
+)
+target_include_directories(stage228_17_accessibility_service_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_17_accessibility_service_tests PRIVATE winios_core)
+winios_set_warnings(stage228_17_accessibility_service_tests)
+add_test(NAME stage228_17_accessibility_service_tests COMMAND stage228_17_accessibility_service_tests)
+
+add_executable(stage228_12_settings_syscall_tests
+    tests/unit/stage228_12_settings_syscall_tests.cpp
+)
+target_include_directories(stage228_12_settings_syscall_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_12_settings_syscall_tests PRIVATE winios_core)
+winios_set_warnings(stage228_12_settings_syscall_tests)
+add_test(NAME stage228_12_settings_syscall_tests COMMAND stage228_12_settings_syscall_tests)
+
+add_executable(stage228_21_settings_workload_tests
+    tests/unit/stage228_21_settings_workload_tests.cpp
+)
+target_include_directories(stage228_21_settings_workload_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_21_settings_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage228_21_settings_workload_tests)
+add_test(NAME stage228_21_settings_workload_tests COMMAND stage228_21_settings_workload_tests)
+
+add_executable(stage228_22_multitasking_scenario_tests
+    tests/unit/stage228_22_multitasking_scenario_tests.cpp
+)
+target_include_directories(stage228_22_multitasking_scenario_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_22_multitasking_scenario_tests PRIVATE winios_core)
+winios_set_warnings(stage228_22_multitasking_scenario_tests)
+add_test(NAME stage228_22_multitasking_scenario_tests COMMAND stage228_22_multitasking_scenario_tests)
+
+add_executable(stage228_23_adversarial_tests
+    tests/unit/stage228_23_adversarial_tests.cpp
+)
+target_include_directories(stage228_23_adversarial_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage228_23_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage228_23_adversarial_tests)
+add_test(NAME stage228_23_adversarial_tests COMMAND stage228_23_adversarial_tests)
 
 
 

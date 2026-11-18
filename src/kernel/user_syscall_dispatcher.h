@@ -61,6 +61,13 @@ class FilePickerService;
 class RecentDocumentManager;
 }
 
+namespace winios::settings {
+class SystemStateManager;
+class ControlCenterService;
+class TaskManager;
+class AccessibilityService;
+}
+
 namespace winios::kernel {
 
 // Pinned Darwin/XNU Syscall Numbers (xnu-10002.1.13 bsd/sys/syscall.h)
@@ -173,7 +180,19 @@ inline constexpr std::uint64_t kSysWiniosDocStreamSeek        = 577;
 inline constexpr std::uint64_t kSysWiniosDocStreamClose       = 578;
 inline constexpr std::uint64_t kSysWiniosDocGrantAccess       = 579;
 inline constexpr std::uint64_t kSysWiniosDocGetRecent         = 580;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC          = 580;
+
+// Category C ABI v2.2 Extensions (Campaign 228)
+inline constexpr std::uint64_t kSysWiniosSettingsGet          = 581;
+inline constexpr std::uint64_t kSysWiniosSettingsSet          = 582;
+inline constexpr std::uint64_t kSysWiniosThemeGet             = 583;
+inline constexpr std::uint64_t kSysWiniosThemeSet             = 584;
+inline constexpr std::uint64_t kSysWiniosControlCenterToggle  = 585;
+inline constexpr std::uint64_t kSysWiniosTaskEnumerate        = 586;
+inline constexpr std::uint64_t kSysWiniosTaskSwitch           = 587;
+inline constexpr std::uint64_t kSysWiniosTaskTerminate        = 588;
+inline constexpr std::uint64_t kSysWiniosAccessibilityGet     = 589;
+inline constexpr std::uint64_t kSysWiniosAccessibilitySet     = 590;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC         = 590;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;
@@ -317,6 +336,18 @@ public:
     void set_recent_document_manager(documents::RecentDocumentManager* rdm) noexcept { recent_doc_mgr_ = rdm; }
     [[nodiscard]] documents::RecentDocumentManager* recent_document_manager() noexcept { return recent_doc_mgr_; }
 
+    void set_system_state_manager(settings::SystemStateManager* sm) noexcept { state_mgr_ = sm; }
+    [[nodiscard]] settings::SystemStateManager* system_state_manager() noexcept { return state_mgr_; }
+
+    void set_control_center_service(settings::ControlCenterService* ccs) noexcept { cc_svc_ = ccs; }
+    [[nodiscard]] settings::ControlCenterService* control_center_service() noexcept { return cc_svc_; }
+
+    void set_task_manager(settings::TaskManager* tm) noexcept { task_mgr_ = tm; }
+    [[nodiscard]] settings::TaskManager* task_manager() noexcept { return task_mgr_; }
+
+    void set_accessibility_service(settings::AccessibilityService* as) noexcept { a11y_svc_ = as; }
+    [[nodiscard]] settings::AccessibilityService* accessibility_service() noexcept { return a11y_svc_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -367,6 +398,10 @@ private:
     documents::DocumentStreamManager* doc_stream_mgr_{nullptr};
     documents::FilePickerService* file_picker_svc_{nullptr};
     documents::RecentDocumentManager* recent_doc_mgr_{nullptr};
+    settings::SystemStateManager* state_mgr_{nullptr};
+    settings::ControlCenterService* cc_svc_{nullptr};
+    settings::TaskManager* task_mgr_{nullptr};
+    settings::AccessibilityService* a11y_svc_{nullptr};
     std::unordered_map<std::uint64_t, MutexRecord> mutex_table_;
 };
 

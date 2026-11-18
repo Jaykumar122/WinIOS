@@ -27,5 +27,9 @@
 #include "winios/window/window.h"
 #include "winios/documents/documents.h"
 #include "winios/documents/document_streams.h"
+#include "winios/settings/settings.h"
+#include "winios/control_center/control_center.h"
+#include "winios/system/tasks.h"
+#include "winios/accessibility/accessibility.h"
 
 #endif // WINIOS_GUEST_SDK_H

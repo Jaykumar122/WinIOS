@@ -15,8 +15,11 @@ std::uint64_t DocumentRegistry::current_time_us() const {
 
 bool DocumentRegistry::sanitize_and_validate_path(const std::string& in_path, std::string& out_canonical) {
     if (in_path.empty()) return false;
-    // Disallow path traversal sequences
-    if (in_path.find("..") != std::string::npos || in_path.find('\\') != std::string::npos) {
+    // Disallow path traversal sequences and encoded variants
+    if (in_path.find("..") != std::string::npos || in_path.find('\\') != std::string::npos ||
+        in_path.find("%2e") != std::string::npos || in_path.find("%2E") != std::string::npos ||
+        in_path.find("%2f") != std::string::npos || in_path.find("%2F") != std::string::npos ||
+        in_path.find("%5c") != std::string::npos || in_path.find("%5C") != std::string::npos) {
         return false;
     }
     // Must begin with '/' and be in permitted virtual roots

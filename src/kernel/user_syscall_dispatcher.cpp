@@ -37,6 +37,10 @@
 #include "documents/document_stream_manager.h"
 #include "documents/file_picker_service.h"
 #include "documents/recent_document_manager.h"
+#include "settings/system_state_manager.h"
+#include "settings/control_center_service.h"
+#include "settings/task_manager.h"
+#include "settings/accessibility_service.h"
 
 #include <algorithm>
 #include <cstring>
@@ -2672,6 +2676,258 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             uas.copyin(arg2, &cnt32, sizeof(cnt32));
         }
         return record_success(count);
+    }
+
+    // -------------------------------------------------------------------------
+    // Category C ABI v2.2 Settings, Multitasking & Accessibility (Syscalls 581..590)
+    // -------------------------------------------------------------------------
+    case kSysWiniosSettingsGet: {
+        if (arg0 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        winios_settings_snapshot_t snap{};
+        if (state_mgr_) {
+            auto s = state_mgr_->get_settings();
+            snap.theme_mode = static_cast<std::uint32_t>(s.appearance.theme);
+            snap.accent_color = static_cast<std::uint32_t>(s.appearance.accent);
+            snap.display_width = s.display.width;
+            snap.display_height = s.display.height;
+            snap.display_scale = static_cast<std::uint32_t>(s.display.scale);
+            snap.display_orientation = static_cast<std::uint32_t>(s.display.orientation);
+            snap.master_volume = s.audio.master_volume;
+            snap.is_muted = s.audio.is_muted ? 1 : 0;
+            snap.low_power_mode = s.power.low_power_mode ? 1 : 0;
+            snap.text_scale_percent = s.accessibility.text_scale_percent;
+            snap.high_contrast = s.accessibility.high_contrast ? 1 : 0;
+            snap.network_enabled = s.network.adapter_enabled ? 1 : 0;
+        } else {
+            snap.theme_mode = 1; // Dark
+            snap.accent_color = 0; // Blue
+            snap.display_width = 800;
+            snap.display_height = 600;
+            snap.display_scale = 100;
+            snap.display_orientation = 0;
+            snap.master_volume = 80;
+            snap.is_muted = 0;
+            snap.low_power_mode = 0;
+            snap.text_scale_percent = 100;
+            snap.high_contrast = 0;
+            snap.network_enabled = 1;
+        }
+        if (!uas.copyin(arg0, &snap, sizeof(snap))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosSettingsSet: {
+        if (!state_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        const std::uint32_t key = static_cast<std::uint32_t>(arg0);
+        const std::uint64_t val = arg1;
+        bool ok = false;
+        switch (key) {
+            case 1: // Theme
+                if (val <= 2) ok = state_mgr_->set_theme(static_cast<settings::ThemeMode>(val));
+                break;
+            case 2: // Accent
+                if (val <= 7) ok = state_mgr_->set_accent(static_cast<settings::AccentColor>(val));
+                break;
+            case 3: // Display Scale
+                if (val == 100 || val == 125 || val == 150 || val == 200) {
+                    ok = state_mgr_->set_display_scale(static_cast<settings::DisplayScale>(val));
+                }
+                break;
+            case 4: // Display Orientation
+                if (val <= 1) ok = state_mgr_->set_display_orientation(static_cast<settings::DisplayOrientation>(val));
+                break;
+            case 5: // Volume
+                if (val <= 100) ok = state_mgr_->set_audio_volume(static_cast<std::uint32_t>(val));
+                break;
+            case 6: // Mute
+                ok = state_mgr_->set_audio_muted(val != 0);
+                break;
+            case 7: // Low Power Mode
+                ok = state_mgr_->set_low_power_mode(val != 0);
+                break;
+            case 8: // Network Adapter
+                ok = state_mgr_->set_network_adapter_enabled(val != 0);
+                break;
+            case 9: // Text Scale
+                if (val >= 100 && val <= 200) ok = state_mgr_->set_text_scale(static_cast<std::uint32_t>(val));
+                break;
+            case 10: // High Contrast
+                ok = state_mgr_->set_high_contrast(val != 0);
+                break;
+            default:
+                return record_error(kErrnoEINVAL);
+        }
+        return ok ? record_success(0) : record_error(kErrnoEINVAL);
+    }
+
+    case kSysWiniosThemeGet: {
+        if (!state_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        auto app = state_mgr_->get_appearance();
+        if (arg0 != 0) {
+            std::uint32_t th = static_cast<std::uint32_t>(app.theme);
+            if (!uas.copyin(arg0, &th, sizeof(th))) return record_error(kErrnoEFAULT);
+        }
+        if (arg1 != 0) {
+            std::uint32_t ac = static_cast<std::uint32_t>(app.accent);
+            if (!uas.copyin(arg1, &ac, sizeof(ac))) return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosThemeSet: {
+        if (!state_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 > 2 || arg1 > 7) {
+            return record_error(kErrnoEINVAL);
+        }
+        state_mgr_->set_theme(static_cast<settings::ThemeMode>(arg0));
+        state_mgr_->set_accent(static_cast<settings::AccentColor>(arg1));
+        return record_success(0);
+    }
+
+    case kSysWiniosControlCenterToggle: {
+        if (!cc_svc_) {
+            return record_error(kErrnoENODEV);
+        }
+        std::uint32_t action = static_cast<std::uint32_t>(arg0);
+        switch (action) {
+            case 0: cc_svc_->toggle(); break;
+            case 1: cc_svc_->show(); break;
+            case 2: cc_svc_->hide(); break;
+            case 3: break; // Query only
+            default: return record_error(kErrnoEINVAL);
+        }
+        return record_success(cc_svc_->is_visible() ? 1 : 0);
+    }
+
+    case kSysWiniosTaskEnumerate: {
+        if (arg0 == 0 || arg1 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<settings::TaskInfo> tasks;
+        if (task_mgr_) {
+            tasks = task_mgr_->enumerate_tasks();
+        } else {
+            // Fallback: report calling process
+            settings::TaskInfo self_t{};
+            self_t.pid = proc.pid();
+            self_t.name = proc.name();
+            self_t.state = settings::TaskState::Running;
+            self_t.is_foreground = true;
+            tasks.push_back(self_t);
+        }
+
+        const std::size_t count = std::min<std::size_t>(tasks.size(), arg1);
+        std::vector<winios_task_entry_t> out_list(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            out_list[i].pid = tasks[i].pid;
+            out_list[i].state = static_cast<std::uint32_t>(tasks[i].state);
+            out_list[i].is_foreground = tasks[i].is_foreground ? 1 : 0;
+            out_list[i].pad = 0;
+            out_list[i].primary_window = tasks[i].primary_window;
+            strncpy_s(out_list[i].name, sizeof(out_list[i].name), tasks[i].name.c_str(), _TRUNCATE);
+            strncpy_s(out_list[i].bundle_id, sizeof(out_list[i].bundle_id), tasks[i].bundle_id.c_str(), _TRUNCATE);
+        }
+        if (count > 0) {
+            if (!uas.copyin(arg0, out_list.data(), count * sizeof(winios_task_entry_t))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        if (arg2 != 0) {
+            std::uint32_t cnt32 = static_cast<std::uint32_t>(count);
+            uas.copyin(arg2, &cnt32, sizeof(cnt32));
+        }
+        return record_success(count);
+    }
+
+    case kSysWiniosTaskSwitch: {
+        if (!task_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        std::uint32_t target_pid = static_cast<std::uint32_t>(arg0);
+        if (target_pid == 0) {
+            // Cycle switcher
+            task_mgr_->cycle_next();
+            task_mgr_->activate_selected_task();
+            return record_success(task_mgr_->get_selected_pid());
+        }
+        if (!task_mgr_->set_foreground_task(target_pid)) {
+            return record_error(kErrnoESRCH);
+        }
+        return record_success(target_pid);
+    }
+
+    case kSysWiniosTaskTerminate: {
+        std::uint32_t target_pid = static_cast<std::uint32_t>(arg0);
+        bool graceful = (arg1 != 0);
+        if (target_pid == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (!task_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (!task_mgr_->terminate_task(target_pid, graceful)) {
+            return record_error(kErrnoESRCH);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosAccessibilityGet: {
+        if (arg0 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        winios_accessibility_info_t a11y{};
+        if (a11y_svc_) {
+            a11y.text_scale_percent = a11y_svc_->get_text_scale_percent();
+            a11y.high_contrast = a11y_svc_->is_high_contrast() ? 1 : 0;
+            a11y.reduce_motion = a11y_svc_->is_reduce_motion() ? 1 : 0;
+            a11y.focus_indicator_visible = a11y_svc_->is_focus_indicator_visible() ? 1 : 0;
+            a11y.screen_reader_active = 0;
+        } else if (state_mgr_) {
+            auto a = state_mgr_->get_accessibility();
+            a11y.text_scale_percent = a.text_scale_percent;
+            a11y.high_contrast = a.high_contrast ? 1 : 0;
+            a11y.reduce_motion = a.reduce_motion ? 1 : 0;
+            a11y.focus_indicator_visible = a.focus_indicator_visible ? 1 : 0;
+            a11y.screen_reader_active = 0;
+        } else {
+            a11y.text_scale_percent = 100;
+            a11y.high_contrast = 0;
+            a11y.reduce_motion = 0;
+            a11y.focus_indicator_visible = 1;
+            a11y.screen_reader_active = 0;
+        }
+        if (!uas.copyin(arg0, &a11y, sizeof(a11y))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosAccessibilitySet: {
+        std::uint32_t text_scale = static_cast<std::uint32_t>(arg0);
+        bool high_contrast = (arg1 != 0);
+        if (text_scale != 0 && (text_scale < 100 || text_scale > 200)) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (a11y_svc_) {
+            if (text_scale != 0) a11y_svc_->set_text_scale(text_scale);
+            a11y_svc_->set_high_contrast(high_contrast);
+        } else if (state_mgr_) {
+            if (text_scale != 0) state_mgr_->set_text_scale(text_scale);
+            state_mgr_->set_high_contrast(high_contrast);
+        } else {
+            return record_error(kErrnoENODEV);
+        }
+        return record_success(0);
     }
 
     default: {

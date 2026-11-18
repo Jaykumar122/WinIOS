@@ -222,7 +222,7 @@ bool DocumentStreamManager::flush_stream(StreamHandle stream_handle,
 
     // Stage atomic write to VFS
     if (vfs_) {
-        const std::string tmp_path = meta->canonical_path + ".tmp";
+        const std::string tmp_path = meta->canonical_path + ".tmp." + std::to_string(caller_pid) + "." + std::to_string(id);
         // 1. Write staging file
         if (!vfs_->write_file(tmp_path, it->second.buffer.data(), it->second.buffer.size())) {
             return false;
@@ -264,10 +264,17 @@ bool DocumentStreamManager::close_stream(StreamHandle stream_handle,
     if (it->second.is_dirty && has_access_flag(it->second.mode, DocumentAccessMode::Write)) {
         auto meta = registry_ ? registry_->get_metadata(it->second.doc_handle) : std::nullopt;
         if (meta && vfs_) {
-            vfs_->write_file(meta->canonical_path, it->second.buffer.data(), it->second.buffer.size());
-            if (registry_) {
-                registry_->update_file_size(it->second.doc_handle, it->second.buffer.size(), caller_pid);
-                registry_->update_modified_time(it->second.doc_handle, caller_pid);
+            const std::string tmp_path = meta->canonical_path + ".tmp." + std::to_string(caller_pid) + "." + std::to_string(id);
+            if (vfs_->write_file(tmp_path, it->second.buffer.data(), it->second.buffer.size())) {
+                if (vfs_->write_file(meta->canonical_path, it->second.buffer.data(), it->second.buffer.size())) {
+                    vfs_->unlink(tmp_path);
+                    if (registry_) {
+                        registry_->update_file_size(it->second.doc_handle, it->second.buffer.size(), caller_pid);
+                        registry_->update_modified_time(it->second.doc_handle, caller_pid);
+                    }
+                } else {
+                    vfs_->unlink(tmp_path);
+                }
             }
         }
     }
