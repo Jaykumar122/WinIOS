@@ -87,7 +87,9 @@ bool WindowManager::destroy_window(std::uint32_t caller_pid, std::uint32_t windo
     }
 
     it->second->state = WindowState::Closed;
-    generations_[window_id] = it->second->generation + 1;
+    std::uint32_t next_gen = it->second->generation + 1;
+    if (next_gen == 0) next_gen = 1;
+    generations_[window_id] = next_gen;
     windows_.erase(it);
 
     if (focused_window_id_ == window_id) {
@@ -113,7 +115,9 @@ bool WindowManager::destroy_window_by_handle(std::uint32_t caller_pid, std::uint
     }
 
     it->second->state = WindowState::Closed;
-    generations_[wid] = gen + 1;
+    std::uint32_t next_gen = gen + 1;
+    if (next_gen == 0) next_gen = 1;
+    generations_[wid] = next_gen;
     windows_.erase(it);
 
     if (focused_window_id_ == wid) {
@@ -635,7 +639,9 @@ void WindowManager::cleanup_process_windows(std::uint32_t pid) {
         auto it = windows_.find(wid);
         if (it != windows_.end()) {
             it->second->state = WindowState::Closed;
-            generations_[wid] = it->second->generation + 1;
+            std::uint32_t next_gen = it->second->generation + 1;
+            if (next_gen == 0) next_gen = 1;
+            generations_[wid] = next_gen;
             windows_.erase(it);
         }
     }

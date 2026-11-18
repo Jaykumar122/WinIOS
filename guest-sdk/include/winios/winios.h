@@ -25,5 +25,7 @@
 #include "winios/devices/device.h"
 #include "winios/window/events.h"
 #include "winios/window/window.h"
+#include "winios/documents/documents.h"
+#include "winios/documents/document_streams.h"
 
 #endif // WINIOS_GUEST_SDK_H

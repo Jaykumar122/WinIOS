@@ -1794,5 +1794,57 @@ int32_t winios_clipboard_set_v2(const char* text, size_t len) {
     return (int32_t)winios_syscall2(WINIOS_SYS_CLIPBOARD_SET_V2, (uint64_t)(uintptr_t)text, (uint64_t)len);
 }
 
+// -----------------------------------------------------------------------------
+// Category C ABI v2.1 Document Service Syscalls (Syscalls 571..580)
+// -----------------------------------------------------------------------------
+
+int winios_doc_open_picker(uint64_t caller_win, const char* filter_ext, uint32_t* out_req_id) {
+    return (int)winios_syscall3(WINIOS_SYS_DOC_OPEN_PICKER, caller_win, (uint64_t)(uintptr_t)filter_ext, (uint64_t)(uintptr_t)out_req_id);
+}
+
+int winios_doc_save_picker(uint64_t caller_win, const char* default_name, const char* filter_ext, uint32_t* out_req_id) {
+    return (int)winios_syscall4(WINIOS_SYS_DOC_SAVE_PICKER, caller_win, (uint64_t)(uintptr_t)default_name, (uint64_t)(uintptr_t)filter_ext, (uint64_t)(uintptr_t)out_req_id);
+}
+
+int winios_doc_get_metadata(uint64_t doc_handle, winios_doc_metadata_t* out_meta) {
+    if (doc_handle == 0 || !out_meta) return -1;
+    return (int)winios_syscall2(WINIOS_SYS_DOC_GET_METADATA, doc_handle, (uint64_t)(uintptr_t)out_meta);
+}
+
+int winios_doc_stream_open(uint64_t doc_handle, uint32_t mode, uint64_t* out_stream_h) {
+    if (doc_handle == 0 || !out_stream_h) return -1;
+    return (int)winios_syscall3(WINIOS_SYS_DOC_STREAM_OPEN, doc_handle, (uint64_t)mode, (uint64_t)(uintptr_t)out_stream_h);
+}
+
+int winios_doc_stream_read(uint64_t stream_h, void* dst, uint64_t len, uint64_t* out_read) {
+    if (stream_h == 0 || !dst) return -1;
+    return (int)winios_syscall4(WINIOS_SYS_DOC_STREAM_READ, stream_h, (uint64_t)(uintptr_t)dst, len, (uint64_t)(uintptr_t)out_read);
+}
+
+int winios_doc_stream_write(uint64_t stream_h, const void* src, uint64_t len, uint64_t* out_written) {
+    if (stream_h == 0 || !src) return -1;
+    return (int)winios_syscall4(WINIOS_SYS_DOC_STREAM_WRITE, stream_h, (uint64_t)(uintptr_t)src, len, (uint64_t)(uintptr_t)out_written);
+}
+
+int winios_doc_stream_seek(uint64_t stream_h, uint64_t offset, uint64_t* out_cursor) {
+    if (stream_h == 0) return -1;
+    return (int)winios_syscall3(WINIOS_SYS_DOC_STREAM_SEEK, stream_h, offset, (uint64_t)(uintptr_t)out_cursor);
+}
+
+int winios_doc_stream_close(uint64_t stream_h) {
+    if (stream_h == 0) return -1;
+    return (int)winios_syscall1(WINIOS_SYS_DOC_STREAM_CLOSE, stream_h);
+}
+
+int winios_doc_grant_access(uint64_t doc_handle, uint32_t grantee_pid, uint32_t mode, uint64_t* out_token) {
+    if (doc_handle == 0 || !out_token) return -1;
+    return (int)winios_syscall4(WINIOS_SYS_DOC_GRANT_ACCESS, doc_handle, (uint64_t)grantee_pid, (uint64_t)mode, (uint64_t)(uintptr_t)out_token);
+}
+
+int winios_doc_get_recent(winios_recent_doc_t* out_recents, uint32_t max_count, uint32_t* out_count) {
+    if (!out_recents || max_count == 0) return -1;
+    return (int)winios_syscall3(WINIOS_SYS_DOC_GET_RECENT, (uint64_t)(uintptr_t)out_recents, (uint64_t)max_count, (uint64_t)(uintptr_t)out_count);
+}
+
 
 

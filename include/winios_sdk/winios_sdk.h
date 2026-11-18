@@ -102,6 +102,20 @@ extern "C" {
 #define SYS_WINIOS_CLIPBOARD_GET_V2       569
 #define SYS_WINIOS_CLIPBOARD_SET_V2       570
 
+// Category C ABI v2.1 Document Service Extensions (Syscalls 571..580)
+#define SYS_WINIOS_DOC_OPEN_PICKER        571
+#define SYS_WINIOS_DOC_SAVE_PICKER        572
+#define SYS_WINIOS_DOC_GET_METADATA       573
+#define SYS_WINIOS_DOC_STREAM_OPEN        574
+#define SYS_WINIOS_DOC_STREAM_READ        575
+#define SYS_WINIOS_DOC_STREAM_WRITE       576
+#define SYS_WINIOS_DOC_STREAM_SEEK        577
+#define SYS_WINIOS_DOC_STREAM_CLOSE       578
+#define SYS_WINIOS_DOC_GRANT_ACCESS       579
+#define SYS_WINIOS_DOC_GET_RECENT         580
+
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_1 0x00020100
+
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_0 0x00020000
 
 // -----------------------------------------------------------------------------
@@ -275,6 +289,46 @@ typedef struct {
     uint32_t reserved;
 } winios_diag_summary_t;
 
+// ABI v2.1 Document Metadata (264 bytes)
+typedef struct {
+    uint64_t doc_handle;
+    uint32_t owner_pid;
+    uint32_t is_read_only;
+    uint64_t file_size;
+    uint64_t created_time_us;
+    uint64_t modified_time_us;
+    char     display_name[64];
+    char     canonical_path[128];
+    char     mime_type[32];
+} winios_doc_metadata_t;
+
+// ABI v2.1 Document Stream Description (40 bytes)
+typedef struct {
+    uint64_t stream_handle;
+    uint64_t doc_handle;
+    uint32_t mode; // 1=Read, 2=Write, 3=ReadWrite
+    uint32_t reserved;
+    uint64_t current_cursor;
+    uint64_t stream_size;
+} winios_doc_stream_info_t;
+
+// ABI v2.1 Document Access Grant Request (32 bytes)
+typedef struct {
+    uint64_t doc_handle;
+    uint32_t grantee_pid;
+    uint32_t mode; // 1=Read, 2=Write, 3=ReadWrite
+    uint64_t expiry_us;
+    uint64_t out_grant_token;
+} winios_doc_grant_req_t;
+
+// ABI v2.1 Recent Document Descriptor (208 bytes)
+typedef struct {
+    uint64_t doc_handle;
+    uint64_t last_opened_time_us;
+    char     display_name[64];
+    char     canonical_path[128];
+} winios_recent_doc_t;
+
 #pragma pack(pop)
 
 #ifdef __cplusplus
@@ -290,6 +344,10 @@ static_assert(sizeof(winios_msg_header_t) == 24, "winios_msg_header_t must be 24
 static_assert(sizeof(winios_config_req_t) == 32, "winios_config_req_t must be 32 bytes");
 static_assert(sizeof(winios_ipc_msg_v2_t) == 32, "winios_ipc_msg_v2_t must be 32 bytes");
 static_assert(sizeof(winios_diag_summary_t) == 32, "winios_diag_summary_t must be 32 bytes");
+static_assert(sizeof(winios_doc_metadata_t) == 264, "winios_doc_metadata_t must be 264 bytes");
+static_assert(sizeof(winios_doc_stream_info_t) == 40, "winios_doc_stream_info_t must be 40 bytes");
+static_assert(sizeof(winios_doc_grant_req_t) == 32, "winios_doc_grant_req_t must be 32 bytes");
+static_assert(sizeof(winios_recent_doc_t) == 208, "winios_recent_doc_t must be 208 bytes");
 #endif
 
 // -----------------------------------------------------------------------------

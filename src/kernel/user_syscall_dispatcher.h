@@ -54,6 +54,13 @@ namespace winios::packaging {
 class ApplicationRegistry;
 }
 
+namespace winios::documents {
+class DocumentRegistry;
+class DocumentStreamManager;
+class FilePickerService;
+class RecentDocumentManager;
+}
+
 namespace winios::kernel {
 
 // Pinned Darwin/XNU Syscall Numbers (xnu-10002.1.13 bsd/sys/syscall.h)
@@ -155,7 +162,18 @@ inline constexpr std::uint64_t kSysWiniosEventWait             = 567;
 inline constexpr std::uint64_t kSysWiniosTextInputSubmit      = 568;
 inline constexpr std::uint64_t kSysWiniosClipboardGetV2       = 569;
 inline constexpr std::uint64_t kSysWiniosClipboardSetV2       = 570;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC          = 570;
+// Category C ABI v2.1 Extensions (Campaign 227)
+inline constexpr std::uint64_t kSysWiniosDocOpenPicker        = 571;
+inline constexpr std::uint64_t kSysWiniosDocSavePicker        = 572;
+inline constexpr std::uint64_t kSysWiniosDocGetMetadata       = 573;
+inline constexpr std::uint64_t kSysWiniosDocStreamOpen        = 574;
+inline constexpr std::uint64_t kSysWiniosDocStreamRead        = 575;
+inline constexpr std::uint64_t kSysWiniosDocStreamWrite       = 576;
+inline constexpr std::uint64_t kSysWiniosDocStreamSeek        = 577;
+inline constexpr std::uint64_t kSysWiniosDocStreamClose       = 578;
+inline constexpr std::uint64_t kSysWiniosDocGrantAccess       = 579;
+inline constexpr std::uint64_t kSysWiniosDocGetRecent         = 580;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC          = 580;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;
@@ -165,9 +183,11 @@ inline constexpr std::uint64_t kSysWiniosMaxCategoryC          = 570;
 inline constexpr std::int32_t kErrnoEPERM   = 1;
 inline constexpr std::int32_t kErrnoENOENT  = 2;
 inline constexpr std::int32_t kErrnoESRCH   = 3;
+inline constexpr std::int32_t kErrnoEIO     = 5;
 inline constexpr std::int32_t kErrnoEBADF   = 9;
 inline constexpr std::int32_t kErrnoECHILD  = 10;
 inline constexpr std::int32_t kErrnoENOMEM  = 12;
+inline constexpr std::int32_t kErrnoEACCES  = 13;
 inline constexpr std::int32_t kErrnoEFAULT  = 14;
 inline constexpr std::int32_t kErrnoEEXIST  = 17;
 inline constexpr std::int32_t kErrnoENODEV  = 19;
@@ -285,6 +305,18 @@ public:
     void set_app_supervisor(AppSupervisor* as) noexcept { supervisor_ = as; }
     [[nodiscard]] AppSupervisor* app_supervisor() noexcept { return supervisor_; }
 
+    void set_document_registry(documents::DocumentRegistry* dr) noexcept { doc_registry_ = dr; }
+    [[nodiscard]] documents::DocumentRegistry* document_registry() noexcept { return doc_registry_; }
+
+    void set_document_stream_manager(documents::DocumentStreamManager* dsm) noexcept { doc_stream_mgr_ = dsm; }
+    [[nodiscard]] documents::DocumentStreamManager* document_stream_manager() noexcept { return doc_stream_mgr_; }
+
+    void set_file_picker_service(documents::FilePickerService* fps) noexcept { file_picker_svc_ = fps; }
+    [[nodiscard]] documents::FilePickerService* file_picker_service() noexcept { return file_picker_svc_; }
+
+    void set_recent_document_manager(documents::RecentDocumentManager* rdm) noexcept { recent_doc_mgr_ = rdm; }
+    [[nodiscard]] documents::RecentDocumentManager* recent_document_manager() noexcept { return recent_doc_mgr_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -331,6 +363,10 @@ private:
     services::ConfigurationService* config_service_{nullptr};
     services::DiagnosticsService* diag_service_{nullptr};
     AppSupervisor* supervisor_{nullptr};
+    documents::DocumentRegistry* doc_registry_{nullptr};
+    documents::DocumentStreamManager* doc_stream_mgr_{nullptr};
+    documents::FilePickerService* file_picker_svc_{nullptr};
+    documents::RecentDocumentManager* recent_doc_mgr_{nullptr};
     std::unordered_map<std::uint64_t, MutexRecord> mutex_table_;
 };
 

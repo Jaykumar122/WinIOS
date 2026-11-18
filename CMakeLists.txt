@@ -207,6 +207,11 @@ add_library(winios_core STATIC
     src/graphics/window_decorations.cpp
     src/graphics/multi_window_compositor.cpp
     src/graphics/desktop_controller.cpp
+    src/documents/document_registry.cpp
+    src/documents/document_stream_manager.cpp
+    src/documents/file_picker_service.cpp
+    src/documents/recent_document_manager.cpp
+    src/documents/desktop_session_manager.cpp
     src/graphics/window_animator.cpp
     src/graphics/compositor.cpp
     src/graphics/frame_scheduler.cpp
@@ -5487,6 +5492,90 @@ target_include_directories(stage226_22_adversarial_tests PRIVATE guest-sdk/inclu
 target_link_libraries(stage226_22_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage226_22_adversarial_tests)
 add_test(NAME stage226_22_adversarial_tests COMMAND stage226_22_adversarial_tests)
+
+# ==============================================================================
+# Campaign 227 - Document Services, File Picker, App Associations & Sessions
+# ==============================================================================
+
+add_executable(stage227_3_document_registry_tests
+    tests/unit/stage227_3_document_registry_tests.cpp
+)
+target_include_directories(stage227_3_document_registry_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_3_document_registry_tests PRIVATE winios_core)
+winios_set_warnings(stage227_3_document_registry_tests)
+add_test(NAME stage227_3_document_registry_tests COMMAND stage227_3_document_registry_tests)
+
+add_executable(stage227_4_app_association_tests
+    tests/unit/stage227_4_app_association_tests.cpp
+)
+target_include_directories(stage227_4_app_association_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_4_app_association_tests PRIVATE winios_core)
+winios_set_warnings(stage227_4_app_association_tests)
+add_test(NAME stage227_4_app_association_tests COMMAND stage227_4_app_association_tests)
+
+add_executable(stage227_6_file_picker_tests
+    tests/unit/stage227_6_file_picker_tests.cpp
+)
+target_include_directories(stage227_6_file_picker_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_6_file_picker_tests PRIVATE winios_core)
+winios_set_warnings(stage227_6_file_picker_tests)
+add_test(NAME stage227_6_file_picker_tests COMMAND stage227_6_file_picker_tests)
+
+add_executable(stage227_8_document_stream_tests
+    tests/unit/stage227_8_document_stream_tests.cpp
+)
+target_include_directories(stage227_8_document_stream_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_8_document_stream_tests PRIVATE winios_core)
+winios_set_warnings(stage227_8_document_stream_tests)
+add_test(NAME stage227_8_document_stream_tests COMMAND stage227_8_document_stream_tests)
+
+add_executable(stage227_11_recent_document_tests
+    tests/unit/stage227_11_recent_document_tests.cpp
+)
+target_include_directories(stage227_11_recent_document_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_11_recent_document_tests PRIVATE winios_core)
+winios_set_warnings(stage227_11_recent_document_tests)
+add_test(NAME stage227_11_recent_document_tests COMMAND stage227_11_recent_document_tests)
+
+add_executable(stage227_12_document_syscall_tests
+    tests/unit/stage227_12_document_syscall_tests.cpp
+)
+target_include_directories(stage227_12_document_syscall_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_12_document_syscall_tests PRIVATE winios_core)
+winios_set_warnings(stage227_12_document_syscall_tests)
+add_test(NAME stage227_12_document_syscall_tests COMMAND stage227_12_document_syscall_tests)
+
+add_executable(stage227_18_session_persistence_tests
+    tests/unit/stage227_18_session_persistence_tests.cpp
+)
+target_include_directories(stage227_18_session_persistence_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_18_session_persistence_tests PRIVATE winios_core)
+winios_set_warnings(stage227_18_session_persistence_tests)
+add_test(NAME stage227_18_session_persistence_tests COMMAND stage227_18_session_persistence_tests)
+
+add_executable(stage227_21_text_editor_workload_tests
+    tests/unit/stage227_21_text_editor_workload_tests.cpp
+)
+target_include_directories(stage227_21_text_editor_workload_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_21_text_editor_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage227_21_text_editor_workload_tests)
+add_test(NAME stage227_21_text_editor_workload_tests COMMAND stage227_21_text_editor_workload_tests)
+
+add_executable(stage227_22_multi_app_document_tests
+    tests/unit/stage227_22_multi_app_document_tests.cpp
+)
+target_include_directories(stage227_22_multi_app_document_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_22_multi_app_document_tests PRIVATE winios_core)
+winios_set_warnings(stage227_22_multi_app_document_tests)
+add_test(NAME stage227_22_multi_app_document_tests COMMAND stage227_22_multi_app_document_tests)
+
+add_executable(stage227_23_adversarial_tests
+    tests/unit/stage227_23_adversarial_tests.cpp
+)
+target_include_directories(stage227_23_adversarial_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage227_23_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage227_23_adversarial_tests)
+add_test(NAME stage227_23_adversarial_tests COMMAND stage227_23_adversarial_tests)
 
 
 

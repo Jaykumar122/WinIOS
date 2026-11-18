@@ -20,6 +20,7 @@ struct AppRegistration {
     std::uint64_t storage_quota_bytes{10 * 1024 * 1024};
     std::vector<std::string> permissions;
     std::vector<std::string> optional_permissions;
+    std::vector<std::string> supported_doc_types; // e.g. "text/plain", ".txt", ".md"
     std::uint64_t install_time_us{0};
     std::uint64_t update_time_us{0};
     bool is_active{true};
@@ -44,6 +45,11 @@ public:
     [[nodiscard]] std::vector<AppRegistration> list_apps(bool active_only = false) const;
     [[nodiscard]] std::size_t app_count(bool active_only = false) const;
 
+    // Document type associations
+    bool set_default_app_for_type(const std::string& doc_type, const std::string& bundle_id);
+    [[nodiscard]] std::string get_default_app_for_type(const std::string& doc_type) const;
+    [[nodiscard]] std::vector<AppRegistration> get_apps_for_type(const std::string& doc_type, bool active_only = true) const;
+
     void clear();
 
     // Persistence
@@ -53,6 +59,7 @@ public:
 private:
     mutable std::mutex                       lock_;
     std::map<std::string, AppRegistration>   apps_;
+    std::map<std::string, std::string>       default_associations_;
 };
 
 } // namespace winios::packaging

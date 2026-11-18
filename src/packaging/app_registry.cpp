@@ -87,9 +87,61 @@ std::size_t ApplicationRegistry::app_count(bool active_only) const {
     return cnt;
 }
 
+bool ApplicationRegistry::set_default_app_for_type(const std::string& doc_type, const std::string& bundle_id) {
+    if (doc_type.empty() || bundle_id.empty()) {
+        return false;
+    }
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = apps_.find(bundle_id);
+    if (it == apps_.end() || !it->second.is_active) {
+        return false;
+    }
+    default_associations_[doc_type] = bundle_id;
+    return true;
+}
+
+std::string ApplicationRegistry::get_default_app_for_type(const std::string& doc_type) const {
+    if (doc_type.empty()) return {};
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = default_associations_.find(doc_type);
+    if (it != default_associations_.end()) {
+        auto app_it = apps_.find(it->second);
+        if (app_it != apps_.end() && app_it->second.is_active) {
+            return it->second;
+        }
+    }
+    // Safe fallback to first active app that supports doc_type
+    for (const auto& [bid, app] : apps_) {
+        if (!app.is_active) continue;
+        for (const auto& stype : app.supported_doc_types) {
+            if (stype == doc_type) {
+                return bid;
+            }
+        }
+    }
+    return {};
+}
+
+std::vector<AppRegistration> ApplicationRegistry::get_apps_for_type(const std::string& doc_type, bool active_only) const {
+    if (doc_type.empty()) return {};
+    std::lock_guard<std::mutex> guard(lock_);
+    std::vector<AppRegistration> result;
+    for (const auto& [_, app] : apps_) {
+        if (active_only && !app.is_active) continue;
+        for (const auto& stype : app.supported_doc_types) {
+            if (stype == doc_type) {
+                result.push_back(app);
+                break;
+            }
+        }
+    }
+    return result;
+}
+
 void ApplicationRegistry::clear() {
     std::lock_guard<std::mutex> guard(lock_);
     apps_.clear();
+    default_associations_.clear();
 }
 
 std::string ApplicationRegistry::serialize() const {
@@ -121,6 +173,17 @@ std::string ApplicationRegistry::serialize() const {
             ss << app.optional_permissions[i];
         }
         ss << "\n";
+        ss << "supported_doc_types=";
+        for (std::size_t i = 0; i < app.supported_doc_types.size(); ++i) {
+            if (i > 0) ss << ",";
+            ss << app.supported_doc_types[i];
+        }
+        ss << "\n";
+    }
+    for (const auto& [dtype, bid] : default_associations_) {
+        ss << "[association]\n";
+        ss << "doc_type=" << dtype << "\n";
+        ss << "bundle_id=" << bid << "\n";
     }
     return ss.str();
 }
@@ -128,10 +191,14 @@ std::string ApplicationRegistry::serialize() const {
 bool ApplicationRegistry::deserialize(const std::string& data) {
     std::lock_guard<std::mutex> guard(lock_);
     apps_.clear();
+    default_associations_.clear();
     std::istringstream ss(data);
     std::string line;
     AppRegistration current{};
     bool in_app = false;
+    bool in_assoc = false;
+    std::string assoc_type;
+    std::string assoc_bid;
 
     auto finish_app = [&]() {
         if (in_app && !current.bundle_id.empty()) {
@@ -141,17 +208,39 @@ bool ApplicationRegistry::deserialize(const std::string& data) {
         in_app = false;
     };
 
+    auto finish_assoc = [&]() {
+        if (in_assoc && !assoc_type.empty() && !assoc_bid.empty()) {
+            default_associations_[assoc_type] = assoc_bid;
+        }
+        assoc_type.clear();
+        assoc_bid.clear();
+        in_assoc = false;
+    };
+
     while (std::getline(ss, line)) {
         if (line.empty()) continue;
         if (line == "[app]") {
+            finish_assoc();
             finish_app();
             in_app = true;
+            continue;
+        }
+        if (line == "[association]") {
+            finish_app();
+            finish_assoc();
+            in_assoc = true;
             continue;
         }
         const auto eq = line.find('=');
         if (eq == std::string::npos) continue;
         const std::string key = line.substr(0, eq);
         const std::string val = line.substr(eq + 1);
+
+        if (in_assoc) {
+            if (key == "doc_type") assoc_type = val;
+            else if (key == "bundle_id") assoc_bid = val;
+            continue;
+        }
 
         if (key == "bundle_id") current.bundle_id = val;
         else if (key == "name") current.name = val;
@@ -184,8 +273,16 @@ bool ApplicationRegistry::deserialize(const std::string& data) {
                 if (!p.empty()) current.optional_permissions.push_back(p);
             }
         }
+        else if (key == "supported_doc_types") {
+            std::istringstream pss(val);
+            std::string p;
+            while (std::getline(pss, p, ',')) {
+                if (!p.empty()) current.supported_doc_types.push_back(p);
+            }
+        }
     }
     finish_app();
+    finish_assoc();
     return true;
 }
 

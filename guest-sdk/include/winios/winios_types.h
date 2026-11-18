@@ -122,6 +122,55 @@ typedef enum {
 #define WINIOS_SYS_TEXT_INPUT_SUBMIT     568
 #define WINIOS_SYS_CLIPBOARD_GET_V2      569
 #define WINIOS_SYS_CLIPBOARD_SET_V2      570
+// Category C ABI v2.1 Extensions (Campaign 227)
+#define WINIOS_SYS_DOC_OPEN_PICKER       571
+#define WINIOS_SYS_DOC_SAVE_PICKER       572
+#define WINIOS_SYS_DOC_GET_METADATA      573
+#define WINIOS_SYS_DOC_STREAM_OPEN       574
+#define WINIOS_SYS_DOC_STREAM_READ       575
+#define WINIOS_SYS_DOC_STREAM_WRITE      576
+#define WINIOS_SYS_DOC_STREAM_SEEK       577
+#define WINIOS_SYS_DOC_STREAM_CLOSE      578
+#define WINIOS_SYS_DOC_GRANT_ACCESS      579
+#define WINIOS_SYS_DOC_GET_RECENT        580
+
+#pragma pack(push, 4)
+typedef struct {
+    uint64_t doc_handle;
+    uint32_t owner_pid;
+    uint32_t is_read_only;
+    uint64_t file_size;
+    uint64_t created_time_us;
+    uint64_t modified_time_us;
+    char     display_name[64];
+    char     canonical_path[128];
+    char     mime_type[32];
+} winios_doc_metadata_t;
+
+typedef struct {
+    uint64_t stream_handle;
+    uint64_t doc_handle;
+    uint32_t mode;
+    uint32_t reserved;
+    uint64_t current_cursor;
+    uint64_t stream_size;
+} winios_doc_stream_info_t;
+
+typedef struct {
+    uint64_t doc_handle;
+    uint32_t grantee_pid;
+    uint32_t mode;
+    uint64_t expiry_us;
+    uint64_t out_grant_token;
+} winios_doc_grant_req_t;
+
+typedef struct {
+    uint64_t doc_handle;
+    uint64_t last_opened_time_us;
+    char     display_name[64];
+    char     canonical_path[128];
+} winios_recent_doc_t;
+#pragma pack(pop)
 
 // Alignment helper
 #define WINIOS_ALIGNED(n) __attribute__((aligned(n)))

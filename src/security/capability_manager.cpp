@@ -25,6 +25,12 @@ Capability CapabilityManager::parse_capability_name(const std::string& name) noe
     if (name == "sensor" || name == "sensors") return Capability::SensorAccess;
     if (name == "network" || name == "net") return Capability::NetworkAccess;
     if (name == "notification" || name == "notify") return Capability::NotificationPost;
+    if (name == "document.read" || name == "doc.read") return Capability::DocumentRead;
+    if (name == "document.write" || name == "doc.write") return Capability::DocumentWrite;
+    if (name == "document.create" || name == "doc.create") return Capability::DocumentCreate;
+    if (name == "document.delete" || name == "doc.delete") return Capability::DocumentDelete;
+    if (name == "document.share" || name == "doc.share") return Capability::DocumentShare;
+    if (name == "document.enum" || name == "doc.enum" || name == "document" || name == "doc") return Capability::DocumentEnumerate;
     return Capability::None;
 }
 

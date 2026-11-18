@@ -32,6 +32,11 @@
 #include "devices/clock_service.h"
 #include "devices/lifecycle_service.h"
 #include "devices/notification_service.h"
+#include "documents/document_types.h"
+#include "documents/document_registry.h"
+#include "documents/document_stream_manager.h"
+#include "documents/file_picker_service.h"
+#include "documents/recent_document_manager.h"
 
 #include <algorithm>
 #include <cstring>
@@ -2397,7 +2402,10 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
         std::string clip_text;
         bool ok = clipboard_->get_text(proc.pid(), clip_text);
-        if (!ok || clip_text.empty()) {
+        if (!ok) {
+            return record_error(kErrnoEPERM);
+        }
+        if (clip_text.empty()) {
             if (arg2 != 0) {
                 size_t zero = 0;
                 uas.copyin(arg2, &zero, sizeof(zero));
@@ -2427,7 +2435,243 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
         std::string clip_str(buf.data(), arg1);
         bool ok = clipboard_->set_text(proc.pid(), clip_str);
-        return record_success(ok ? 0 : 1);
+        if (!ok) {
+            return record_error(kErrnoEPERM);
+        }
+        return record_success(0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Category C ABI v2.1 Document Services (Syscalls 571..580)
+    // -------------------------------------------------------------------------
+    case kSysWiniosDocOpenPicker: {
+        if (!file_picker_svc_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DocumentRead)) {
+            return record_error(kErrnoEPERM);
+        }
+        std::string filter_ext;
+        if (arg1 != 0) {
+            read_user_string(uas, arg1, filter_ext, 32);
+        }
+        std::uint32_t req_id = 0;
+        if (!file_picker_svc_->request_open(proc.pid(), arg0, filter_ext, req_id)) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (arg2 != 0) {
+            if (!uas.copyin(arg2, &req_id, sizeof(req_id))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        return record_success(req_id);
+    }
+
+    case kSysWiniosDocSavePicker: {
+        if (!file_picker_svc_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::DocumentWrite)) {
+            return record_error(kErrnoEPERM);
+        }
+        std::string default_name;
+        if (arg1 != 0) {
+            read_user_string(uas, arg1, default_name, 64);
+        }
+        std::string filter_ext;
+        if (arg2 != 0) {
+            read_user_string(uas, arg2, filter_ext, 32);
+        }
+        std::uint32_t req_id = 0;
+        if (!file_picker_svc_->request_save(proc.pid(), arg0, default_name, filter_ext, req_id)) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (arg3 != 0) {
+            if (!uas.copyin(arg3, &req_id, sizeof(req_id))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        return record_success(req_id);
+    }
+
+    case kSysWiniosDocGetMetadata: {
+        if (!doc_registry_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (!doc_registry_->check_access(arg0, proc.pid(), documents::DocumentAccessMode::Read)) {
+            return record_error(kErrnoEPERM);
+        }
+        auto meta = doc_registry_->get_metadata(arg0);
+        if (!meta) {
+            return record_error(kErrnoENOENT);
+        }
+        winios_doc_metadata_t out_meta{};
+        out_meta.doc_handle = meta->handle;
+        out_meta.owner_pid = meta->owner_pid;
+        out_meta.is_read_only = meta->is_read_only ? 1 : 0;
+        out_meta.file_size = meta->file_size;
+        out_meta.created_time_us = meta->created_time_us;
+        out_meta.modified_time_us = meta->modified_time_us;
+        strncpy_s(out_meta.display_name, sizeof(out_meta.display_name), meta->display_name.c_str(), _TRUNCATE);
+        strncpy_s(out_meta.canonical_path, sizeof(out_meta.canonical_path), meta->canonical_path.c_str(), _TRUNCATE);
+        strncpy_s(out_meta.mime_type, sizeof(out_meta.mime_type), meta->mime_type.c_str(), _TRUNCATE);
+
+        if (!uas.copyin(arg1, &out_meta, sizeof(out_meta))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDocStreamOpen: {
+        if (!doc_stream_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg2 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        auto mode = static_cast<documents::DocumentAccessMode>(arg1);
+        documents::StreamHandle stream_h = doc_stream_mgr_->open_stream(arg0, proc.pid(), mode);
+        if (stream_h == documents::kInvalidStreamHandle) {
+            return record_error(kErrnoEPERM);
+        }
+        if (!uas.copyin(arg2, &stream_h, sizeof(stream_h))) {
+            doc_stream_mgr_->close_stream(stream_h, proc.pid());
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDocStreamRead: {
+        if (!doc_stream_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0 || arg2 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (arg2 > documents::kMaxDocumentSizeBytes) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<std::uint8_t> tmp_buf(arg2);
+        std::size_t bytes_read = 0;
+        if (!doc_stream_mgr_->read_stream(arg0, proc.pid(), tmp_buf.data(), arg2, bytes_read)) {
+            return record_error(kErrnoEIO);
+        }
+        if (bytes_read > 0) {
+            if (!uas.copyin(arg1, tmp_buf.data(), bytes_read)) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        if (arg3 != 0) {
+            std::uint64_t bread64 = bytes_read;
+            uas.copyin(arg3, &bread64, sizeof(bread64));
+        }
+        return record_success(bytes_read);
+    }
+
+    case kSysWiniosDocStreamWrite: {
+        if (!doc_stream_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0 || arg2 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (arg2 > documents::kMaxDocumentSizeBytes) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::vector<std::uint8_t> tmp_buf(arg2);
+        if (!uas.copyout(reinterpret_cast<const void*>(arg1), tmp_buf.data(), arg2)) {
+            return record_error(kErrnoEFAULT);
+        }
+        std::size_t bytes_written = 0;
+        if (!doc_stream_mgr_->write_stream(arg0, proc.pid(), tmp_buf.data(), arg2, bytes_written)) {
+            return record_error(kErrnoEIO);
+        }
+        if (arg3 != 0) {
+            std::uint64_t bwritten64 = bytes_written;
+            uas.copyin(arg3, &bwritten64, sizeof(bwritten64));
+        }
+        return record_success(bytes_written);
+    }
+
+    case kSysWiniosDocStreamSeek: {
+        if (!doc_stream_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::uint64_t new_cursor = 0;
+        if (!doc_stream_mgr_->seek_stream(arg0, proc.pid(), arg1, new_cursor)) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (arg2 != 0) {
+            uas.copyin(arg2, &new_cursor, sizeof(new_cursor));
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDocStreamClose: {
+        if (!doc_stream_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        if (!doc_stream_mgr_->close_stream(arg0, proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDocGrantAccess: {
+        if (!doc_registry_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg3 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        auto mode = static_cast<documents::DocumentAccessMode>(arg2);
+        auto grant = doc_registry_->create_grant(arg0, proc.pid(), static_cast<std::uint32_t>(arg1), "", mode, 0);
+        if (grant.grant_token == 0) {
+            return record_error(kErrnoEPERM);
+        }
+        if (!uas.copyin(arg3, &grant.grant_token, sizeof(grant.grant_token))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosDocGetRecent: {
+        if (!recent_doc_mgr_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+        std::string bid = cap_mgr_ ? cap_mgr_->get_bundle_id(proc.pid()) : "";
+        if (bid.empty()) bid = proc.name();
+        auto recents = recent_doc_mgr_->get_recent(bid);
+        const std::size_t count = std::min<std::size_t>(recents.size(), arg1);
+        std::vector<winios_recent_doc_t> out_list(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            out_list[i].doc_handle = recents[i].doc_handle;
+            out_list[i].last_opened_time_us = recents[i].last_opened_time_us;
+            strncpy_s(out_list[i].display_name, sizeof(out_list[i].display_name), recents[i].display_name.c_str(), _TRUNCATE);
+            strncpy_s(out_list[i].canonical_path, sizeof(out_list[i].canonical_path), recents[i].canonical_path.c_str(), _TRUNCATE);
+        }
+        if (count > 0) {
+            if (!uas.copyin(arg0, out_list.data(), count * sizeof(winios_recent_doc_t))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        if (arg2 != 0) {
+            std::uint32_t cnt32 = static_cast<std::uint32_t>(count);
+            uas.copyin(arg2, &cnt32, sizeof(cnt32));
+        }
+        return record_success(count);
     }
 
     default: {
