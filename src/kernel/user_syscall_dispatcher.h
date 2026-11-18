@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "cpu/cpu.h"
 #include "kernel/bsd_process.h"
@@ -141,6 +142,10 @@ struct SyscallStats {
     std::uint64_t total_invalid_pointers{0};
     std::uint64_t total_display_syscalls{0};
     std::uint64_t total_input_polls{0};
+    std::uint64_t total_mutex_locks{0};
+    std::uint64_t total_mutex_unlocks{0};
+    std::uint64_t total_mutex_contentions{0};
+    std::uint64_t total_mutex_errors{0};
 };
 
 class UserSyscallDispatcher {
@@ -197,6 +202,16 @@ public:
     [[nodiscard]] const SyscallStats& stats() const noexcept { return stats_; }
     [[nodiscard]] VirtualConsole& console() noexcept { return console_; }
 
+    struct MutexRecord {
+        std::uint64_t owner_tid{0};
+        pid_t owner_pid{0};
+        std::uint32_t contention_count{0};
+        bool locked{false};
+    };
+
+    [[nodiscard]] const std::unordered_map<std::uint64_t, MutexRecord>& mutex_table() const noexcept { return mutex_table_; }
+    void clear_mutexes_for_process(pid_t pid);
+
     void serialize(std::vector<std::uint8_t>& dst) const;
     bool deserialize(const std::uint8_t*& src, std::size_t& remaining);
 
@@ -217,6 +232,7 @@ private:
     runtime::AppPreferences* preferences_{nullptr};
     KernelThreadManager* thread_mgr_{nullptr};
     MultiProcessScheduler* multi_sched_{nullptr};
+    std::unordered_map<std::uint64_t, MutexRecord> mutex_table_;
 };
 
 } // namespace winios::kernel

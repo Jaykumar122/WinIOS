@@ -102,7 +102,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
     auto record_success = [&](std::uint64_t ret_val) -> bool {
         cpu.write_register(0, ret_val);
-        if (is_darwin_strict) {
+        if (abi_mode_ == SyscallAbi::DarwinStrict) {
             // In Darwin XNU, success clears Carry bit (PSTATE.C = 0)
             cpu.set_spsr_el1(cpu.get_spsr_el1() & ~(1u << 29));
             cpu.set_nzcv(cpu.get_nzcv() & ~0x2u);
@@ -111,7 +111,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     };
 
     auto record_error = [&](std::int32_t err) -> bool {
-        if (is_darwin_strict) {
+        if (abi_mode_ == SyscallAbi::DarwinStrict) {
             // Darwin XNU ABI: returns positive errno in X0, sets Carry bit (PSTATE.C = 1)
             cpu.write_register(0, static_cast<std::uint64_t>(err));
             cpu.set_spsr_el1(cpu.get_spsr_el1() | (1u << 29));
@@ -236,6 +236,11 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_success(0);
         }
 
+        if (buf_va + nbyte < buf_va || buf_va + nbyte >= 0x0001000000000000ULL || nbyte > 0x10000000ULL) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEINVAL);
+        }
+
         if (!uas.validate_user_buffer(buf_va, nbyte, true)) {
             ++stats_.total_invalid_pointers;
             return record_error(kErrnoEFAULT);
@@ -290,6 +295,11 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         if (nbyte > 0) {
+            if (buf_va + nbyte < buf_va || buf_va + nbyte >= 0x0001000000000000ULL || nbyte > 0x10000000ULL) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEINVAL);
+            }
+
             // Validate user pointer before accessing memory
             if (!uas.validate_user_buffer(buf_va, nbyte, false)) {
                 ++stats_.total_invalid_pointers;
@@ -345,6 +355,16 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     }
 
     case kSysPipe: {
+        const std::uint64_t fds_va = arg0;
+        if (fds_va != 0) {
+            if ((fds_va & 0x3) != 0 || fds_va + sizeof(int) * 2 < fds_va ||
+                fds_va + sizeof(int) * 2 >= 0x0001000000000000ULL ||
+                !uas.validate_user_buffer(fds_va, sizeof(int) * 2, true)) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+        }
+
         auto pipe = std::make_shared<Pipe>();
 
         const int read_fd = proc.fd_table().allocate_fd(FileType::MemoryPipe, true, false, "pipe:r");
@@ -513,6 +533,10 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_success(0); // KERN_SUCCESS
         }
         const std::uint64_t msg_va = arg0;
+        if ((msg_va & 0x3) != 0 || !uas.validate_user_buffer(msg_va, sizeof(winios_msg_header_t), false)) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
         winios_msg_header_t hdr{};
         if (!uas.copyout(reinterpret_cast<const void*>(msg_va), &hdr, sizeof(hdr))) {
             ++stats_.total_invalid_pointers;
@@ -524,13 +548,17 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         const std::size_t payload_len = hdr.msg_size - sizeof(hdr);
         std::vector<std::uint8_t> payload(payload_len);
         if (payload_len > 0) {
-            if (!uas.copyout(reinterpret_cast<const void*>(msg_va + sizeof(hdr)), payload.data(), payload_len)) {
+            if (!uas.validate_user_buffer(msg_va + sizeof(hdr), payload_len, false) ||
+                !uas.copyout(reinterpret_cast<const void*>(msg_va + sizeof(hdr)), payload.data(), payload_len)) {
                 ++stats_.total_invalid_pointers;
                 return record_error(kErrnoEFAULT);
             }
         }
         if (hdr.dst_port != 0) {
-            runtime::GuestIpcRouter::Get().Send(proc.pid(), hdr.dst_port, payload.data(), payload_len, hdr.msg_id);
+            bool ok = runtime::GuestIpcRouter::Get().Send(proc.pid(), hdr.dst_port, payload.data(), payload_len, hdr.msg_id);
+            if (!ok) {
+                return record_error(kErrnoENOENT);
+            }
         }
         return record_success(0);
     }
@@ -1163,35 +1191,80 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
     case kSysWiniosMutexLock: {
         const std::uint64_t mutex_va = arg0;
-        if (!uas.validate_user_buffer(mutex_va, sizeof(std::uint32_t), true)) {
+        if ((mutex_va & 0x3) != 0 || !uas.validate_user_buffer(mutex_va, sizeof(std::uint32_t), true)) {
             ++stats_.total_invalid_pointers;
+            ++stats_.total_mutex_errors;
             return record_error(kErrnoEFAULT);
         }
         std::uint32_t val = 0;
         if (!uas.copyout(reinterpret_cast<const void*>(mutex_va), &val, sizeof(val))) {
+            ++stats_.total_mutex_errors;
             return record_error(kErrnoEFAULT);
         }
-        if (val == 0) {
-            val = 1;
-            if (!uas.copyin(mutex_va, &val, sizeof(val))) {
-                return record_error(kErrnoEFAULT);
+
+        std::uint64_t caller_tid = 1;
+        if (multi_sched_ && multi_sched_->current_thread()) {
+            caller_tid = multi_sched_->current_thread()->tid();
+        } else if (cpu.get_tpidr_el0() != 0) {
+            caller_tid = cpu.get_tpidr_el0();
+        }
+
+        const std::uint64_t key = (static_cast<std::uint64_t>(proc.pid()) << 48) | (mutex_va & 0x0000FFFFFFFFFFFFULL);
+        auto& record = mutex_table_[key];
+
+        if (val != 0 || record.locked) {
+            ++record.contention_count;
+            ++stats_.total_mutex_contentions;
+            if (record.locked && record.owner_tid == caller_tid) {
+                ++stats_.total_mutex_errors;
+                return record_error(11 /* EDEADLK */);
             }
-            return record_success(0);
-        } else {
             return record_error(16 /* EBUSY */);
         }
+
+        val = 1;
+        if (!uas.copyin(mutex_va, &val, sizeof(val))) {
+            ++stats_.total_mutex_errors;
+            return record_error(kErrnoEFAULT);
+        }
+        record.locked = true;
+        record.owner_tid = caller_tid;
+        record.owner_pid = proc.pid();
+        ++stats_.total_mutex_locks;
+        return record_success(0);
     }
 
     case kSysWiniosMutexUnlock: {
         const std::uint64_t mutex_va = arg0;
-        if (!uas.validate_user_buffer(mutex_va, sizeof(std::uint32_t), true)) {
+        if ((mutex_va & 0x3) != 0 || !uas.validate_user_buffer(mutex_va, sizeof(std::uint32_t), true)) {
             ++stats_.total_invalid_pointers;
+            ++stats_.total_mutex_errors;
             return record_error(kErrnoEFAULT);
         }
+
+        std::uint64_t caller_tid = 1;
+        if (multi_sched_ && multi_sched_->current_thread()) {
+            caller_tid = multi_sched_->current_thread()->tid();
+        } else if (cpu.get_tpidr_el0() != 0) {
+            caller_tid = cpu.get_tpidr_el0();
+        }
+
+        const std::uint64_t key = (static_cast<std::uint64_t>(proc.pid()) << 48) | (mutex_va & 0x0000FFFFFFFFFFFFULL);
+        auto it = mutex_table_.find(key);
+
+        if (it == mutex_table_.end() || !it->second.locked || it->second.owner_tid != caller_tid) {
+            ++stats_.total_mutex_errors;
+            return record_error(kErrnoEPERM);
+        }
+
         std::uint32_t val = 0;
         if (!uas.copyin(mutex_va, &val, sizeof(val))) {
+            ++stats_.total_mutex_errors;
             return record_error(kErrnoEFAULT);
         }
+        it->second.locked = false;
+        it->second.owner_tid = 0;
+        ++stats_.total_mutex_unlocks;
         return record_success(0);
     }
 
@@ -1203,9 +1276,24 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         const std::uint64_t thread_arg = arg1;
         const std::uint64_t stack_base = arg2;
         const std::uint64_t stack_size = arg3 != 0 ? arg3 : 0x10000ULL;
+        const std::uint64_t stack_top = stack_base + stack_size;
 
-        if (entry_va == 0 || stack_base == 0) {
+        // Strict ARM64 ABI validation:
+        // Entry must be non-zero, 4-byte instruction aligned, and in user space
+        if (entry_va == 0 || (entry_va & 0x3) != 0 || entry_va >= 0x0001000000000000ULL) {
+            ++stats_.total_invalid_pointers;
             return record_error(kErrnoEINVAL);
+        }
+
+        // Stack must be non-zero, >= 4KB, 16-byte aligned at SP (stack_top), and in user space
+        if (stack_base == 0 || stack_size < 0x1000ULL || (stack_top & 0xF) != 0 || stack_top >= 0x0001000000000000ULL) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEINVAL);
+        }
+
+        // Process thread quota check
+        if (proc.thread_count() >= 64) {
+            return record_error(kErrnoENOMEM);
         }
 
         KernelThread* new_th = thread_mgr_->create_thread(
@@ -1225,7 +1313,13 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     case kSysWiniosThreadExit: {
         const std::int32_t exit_code = static_cast<std::int32_t>(arg0);
         if (multi_sched_ && multi_sched_->current_thread()) {
-            multi_sched_->current_thread()->terminate(exit_code);
+            multi_sched_->terminate_thread(multi_sched_->current_thread(), exit_code);
+        } else if (thread_mgr_) {
+            const std::uint64_t tid = (cpu.get_tpidr_el0() != 0) ? cpu.get_tpidr_el0() : 1;
+            KernelThread* th = thread_mgr_->get_thread(tid);
+            if (th) {
+                th->terminate(exit_code);
+            }
         }
         return record_success(0);
     }
@@ -1237,6 +1331,22 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         const std::uint64_t target_tid = arg0;
         const std::uint64_t exit_status_va = arg1;
 
+        if (target_tid == 0) {
+            return record_error(kErrnoESRCH);
+        }
+
+        std::uint64_t caller_tid = 1;
+        if (multi_sched_ && multi_sched_->current_thread()) {
+            caller_tid = multi_sched_->current_thread()->tid();
+        } else if (cpu.get_tpidr_el0() != 0) {
+            caller_tid = cpu.get_tpidr_el0();
+        }
+
+        // Cannot join oneself (detect deadlock)
+        if (target_tid == caller_tid) {
+            return record_error(11 /* EDEADLK */);
+        }
+
         KernelThread* th = thread_mgr_->get_thread(target_tid);
         if (!th || th->owner_pid() != proc.pid()) {
             return record_error(kErrnoESRCH);
@@ -1244,6 +1354,10 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
         if (th->state() == ThreadState::Terminated) {
             if (exit_status_va != 0) {
+                if ((exit_status_va & 0x3) != 0 || !uas.validate_user_buffer(exit_status_va, sizeof(std::int32_t), true)) {
+                    ++stats_.total_invalid_pointers;
+                    return record_error(kErrnoEFAULT);
+                }
                 const std::int32_t code = th->exit_code();
                 if (!uas.copyin(exit_status_va, &code, sizeof(code))) {
                     return record_error(kErrnoEFAULT);
@@ -1303,6 +1417,16 @@ bool UserSyscallDispatcher::deserialize(const std::uint8_t*& src, std::size_t& r
     console_.clear_output();
     console_.write_bytes(out.data(), out.size());
     return true;
+}
+
+void UserSyscallDispatcher::clear_mutexes_for_process(pid_t pid) {
+    for (auto it = mutex_table_.begin(); it != mutex_table_.end(); ) {
+        if (it->second.owner_pid == pid) {
+            it = mutex_table_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // namespace winios::kernel

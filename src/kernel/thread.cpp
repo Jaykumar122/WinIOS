@@ -106,6 +106,11 @@ void KernelThread::save_context_from_cpu(const CPU& cpu) {
     tcb_.sp_el1 = cpu.get_sp_el1();
     tcb_.spsr_el1 = cpu.get_spsr_el1();
     tcb_.tpidr_el0 = cpu.get_tpidr_el0();
+
+    for (std::size_t i = 0; i < CPU::kVectorRegisterCount; ++i) {
+        fp_regs_[i] = cpu.read_vector_register(i);
+    }
+    fp_valid_ = true;
 }
 
 void KernelThread::load_context_to_cpu(CPU& cpu) const {
@@ -117,6 +122,12 @@ void KernelThread::load_context_to_cpu(CPU& cpu) const {
     cpu.set_sp_el1(tcb_.sp_el1);
     cpu.set_spsr_el1(static_cast<std::uint32_t>(tcb_.spsr_el1));
     cpu.set_tpidr_el0(tcb_.tpidr_el0);
+
+    if (fp_valid_) {
+        for (std::size_t i = 0; i < CPU::kVectorRegisterCount; ++i) {
+            cpu.write_vector_register(i, fp_regs_[i]);
+        }
+    }
 
     // Set privilege level according to SPSR mode field
     if ((tcb_.spsr_el1 & 0xFULL) == 0x0ULL) {

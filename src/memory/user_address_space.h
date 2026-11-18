@@ -25,6 +25,19 @@ public:
     ~UserAddressSpace();
 
     [[nodiscard]] std::uint64_t root_table_pa() const noexcept { return root_l2_table_pa_; }
+    [[nodiscard]] std::uint64_t root_table_pa_with_asid() const noexcept {
+        return (static_cast<std::uint64_t>(asid_) << 48u) | (root_l2_table_pa_ & 0x0000FFFFFFFFFFFFULL);
+    }
+    [[nodiscard]] std::uint16_t asid() const noexcept { return asid_; }
+    void set_asid(std::uint16_t id) noexcept { asid_ = id; }
+    [[nodiscard]] std::int32_t owner_pid() const noexcept { return owner_pid_; }
+    void set_owner_pid(std::int32_t pid) noexcept { owner_pid_ = pid; }
+    [[nodiscard]] bool is_valid_for_process(std::int32_t pid) const noexcept {
+        return owner_pid_ == -1 || owner_pid_ == pid;
+    }
+    [[nodiscard]] std::size_t mapped_page_count() const noexcept { return mapped_page_count_; }
+    [[nodiscard]] std::size_t unmapped_page_count() const noexcept { return unmapped_page_count_; }
+    [[nodiscard]] bool owns_physical_page(std::uint64_t pa) const noexcept;
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
     [[nodiscard]] Memory& memory() noexcept { return mem_; }
     [[nodiscard]] const Memory& memory() const noexcept { return mem_; }
@@ -83,6 +96,10 @@ private:
     XnuVmMap vm_map_;
     std::vector<std::uint64_t> allocated_l3_tables_{};
     std::vector<std::uint64_t> allocated_physical_pages_{};
+    std::uint16_t asid_{1};
+    std::int32_t owner_pid_{-1};
+    std::size_t mapped_page_count_{0};
+    std::size_t unmapped_page_count_{0};
 };
 
 } // namespace winios::memory

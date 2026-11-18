@@ -26,13 +26,22 @@ UserAddressSpace::UserAddressSpace(Memory& mem,
 UserAddressSpace::~UserAddressSpace() {
     // Deallocate physical pages allocated for this address space
     for (std::uint64_t pa : allocated_physical_pages_) {
-        ppm_.free_page(pa);
+        if (pa != 0) {
+            ppm_.free_page(pa);
+        }
     }
     allocated_physical_pages_.clear();
     if (root_l2_table_pa_ != 0) {
         ppm_.free_page(root_l2_table_pa_);
         root_l2_table_pa_ = 0;
     }
+    mapped_page_count_ = 0;
+}
+
+bool UserAddressSpace::owns_physical_page(std::uint64_t pa) const noexcept {
+    if (pa == 0) return false;
+    if (pa == root_l2_table_pa_) return true;
+    return std::find(allocated_physical_pages_.begin(), allocated_physical_pages_.end(), pa) != allocated_physical_pages_.end();
 }
 
 void UserAddressSpace::record_allocated_page(std::uint64_t pa) {
@@ -44,7 +53,7 @@ void UserAddressSpace::record_allocated_page(std::uint64_t pa) {
 bool UserAddressSpace::map_user_page(std::uint64_t va,
                                      std::uint64_t pa,
                                      PagePermissions perms) {
-    if (va >= kUserSpaceLimitVa || (va % kPhysicalPageSize16KB) != 0) {
+    if (root_l2_table_pa_ == 0 || va >= kUserSpaceLimitVa || (va % kPhysicalPageSize16KB) != 0) {
         return false;
     }
 
@@ -64,6 +73,7 @@ bool UserAddressSpace::map_user_page(std::uint64_t va,
     }
 
     record_allocated_page(pa);
+    mapped_page_count_++;
 
     // Update VM map
     std::uint32_t vm_prot = kVmProtRead;
@@ -90,16 +100,32 @@ bool UserAddressSpace::map_user_range(std::uint64_t start_va,
 }
 
 bool UserAddressSpace::unmap_user_page(std::uint64_t va) {
-    if (va >= kUserSpaceLimitVa || (va % kPhysicalPageSize16KB) != 0) {
+    if (root_l2_table_pa_ == 0 || va >= kUserSpaceLimitVa || (va % kPhysicalPageSize16KB) != 0) {
+        return false;
+    }
+    const std::uint64_t pa = translate(va);
+    if (pa == 0) {
         return false;
     }
     std::string err;
     vm_map_.vm_map_remove(va, kPhysicalPageSize16KB, &err);
-    return vpt_.unmap_page(root_l2_table_pa_, va);
+    if (!vpt_.unmap_page(root_l2_table_pa_, va)) {
+        return false;
+    }
+    auto it = std::find(allocated_physical_pages_.begin(), allocated_physical_pages_.end(), pa);
+    if (it != allocated_physical_pages_.end()) {
+        allocated_physical_pages_.erase(it);
+        ppm_.free_page(pa);
+    }
+    if (mapped_page_count_ > 0) {
+        mapped_page_count_--;
+    }
+    unmapped_page_count_++;
+    return true;
 }
 
 std::uint64_t UserAddressSpace::translate(std::uint64_t va, PageDescriptorFields* out_fields) const {
-    if (va >= kUserSpaceLimitVa) {
+    if (root_l2_table_pa_ == 0 || va >= kUserSpaceLimitVa) {
         return 0;
     }
     return vpt_.translate(root_l2_table_pa_, va, out_fields);

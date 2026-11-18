@@ -159,6 +159,9 @@ bool GuestDynamicLoader::load_library(
                     const std::uint64_t pa = ppm_.allocate_page();
                     if (pa == 0) {
                         if (out_err) *out_err = "DRAM exhaustion during dylib mapping";
+                        for (std::uint64_t allocated_pa : info.allocated_pas) {
+                            ppm_.free_page(allocated_pa);
+                        }
                         return false;
                     }
 
@@ -185,6 +188,9 @@ bool GuestDynamicLoader::load_library(
 
                     if (!uas_.map_user_page(page_va, pa, perms)) {
                         if (out_err) *out_err = "Failed to map page into UserAddressSpace";
+                        for (std::uint64_t allocated_pa : info.allocated_pas) {
+                            ppm_.free_page(allocated_pa);
+                        }
                         return false;
                     }
                 }

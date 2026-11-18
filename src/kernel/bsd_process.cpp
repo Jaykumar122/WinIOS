@@ -39,6 +39,10 @@ int FileDescriptorTable::duplicate_fd(int old_fd) {
     return -1; // Table full
 }
 
+void FileDescriptorTable::clone_from(const FileDescriptorTable& other) {
+    fds_ = other.fds_;
+}
+
 bool FileDescriptorTable::install_fd(int fd, FileType type, bool readable, bool writable, const std::string& path) {
     if (fd < 0 || fd >= kMaxFiles) {
         return false;

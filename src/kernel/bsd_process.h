@@ -62,6 +62,7 @@ public:
 
     int allocate_fd(FileType type = FileType::Regular, bool readable = true, bool writable = true, const std::string& path = "");
     int duplicate_fd(int old_fd);
+    void clone_from(const FileDescriptorTable& other);
     bool install_fd(int fd, FileType type, bool readable, bool writable, const std::string& path = "");
     bool close_fd(int fd);
     [[nodiscard]] const FileDescriptor* get_fd(int fd) const;
@@ -89,6 +90,7 @@ public:
     [[nodiscard]] int exit_code() const noexcept { return exit_code_; }
     [[nodiscard]] KernelTask* task() const noexcept { return task_; }
     [[nodiscard]] const std::vector<KernelThread*>& threads() const noexcept { return threads_; }
+    [[nodiscard]] std::size_t thread_count() const noexcept { return threads_.size(); }
     [[nodiscard]] FileDescriptorTable& fd_table() noexcept { return fd_table_; }
     [[nodiscard]] const FileDescriptorTable& fd_table() const noexcept { return fd_table_; }
     [[nodiscard]] ProcessIpcSpace& ipc_space() noexcept { return ipc_space_; }

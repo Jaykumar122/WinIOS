@@ -19,6 +19,8 @@ namespace winios::kernel {
 struct MultiProcessSchedulerStats {
     std::size_t total_context_switches{0};
     std::size_t total_address_space_switches{0};
+    std::size_t same_process_context_switches{0};
+    std::size_t cross_process_context_switches{0};
     std::size_t total_preemptions{0};
     std::size_t total_yields{0};
 };
@@ -49,6 +51,17 @@ public:
     // Voluntary yield
     bool yield(CPU& cpu);
 
+    // Thread lifecycle & state management
+    void set_time_slice_quantum(std::uint32_t quantum) noexcept { default_quantum_ = quantum; }
+    [[nodiscard]] std::uint32_t time_slice_quantum() const noexcept { return default_quantum_; }
+    bool block_thread(KernelThread* thread, WaitReason reason);
+    bool unblock_thread(KernelThread* thread);
+    bool terminate_thread(KernelThread* thread, std::int32_t code);
+    std::size_t reap_zombies();
+
+    // Invariant consistency checks
+    [[nodiscard]] bool check_invariants() const noexcept;
+
     // State inspection
     [[nodiscard]] KernelThread* current_thread() const noexcept { return current_thread_; }
     [[nodiscard]] pid_t current_pid() const noexcept;
@@ -66,6 +79,7 @@ private:
     Memory&                                         mem_;
     KernelThread*                                   current_thread_{nullptr};
     std::uint64_t                                   current_ttbr0_{0};
+    std::uint32_t                                   default_quantum_{kDefaultTimeSliceQuantum};
     std::uint32_t                                   quantum_remaining_{kDefaultTimeSliceQuantum};
     std::deque<KernelThread*>                       ready_queue_;
     std::unordered_map<pid_t, memory::UserAddressSpace*> uas_map_;

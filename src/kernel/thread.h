@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <array>
 
 #include "cpu/cpu.h"
 #include "memory/memory.h"
@@ -121,12 +122,23 @@ public:
     void save_context_from_cpu(const CPU& cpu);
     void load_context_to_cpu(CPU& cpu) const;
 
+    [[nodiscard]] const std::array<CPU::VectorRegister, CPU::kVectorRegisterCount>& fp_regs() const noexcept { return fp_regs_; }
+    [[nodiscard]] bool is_fp_valid() const noexcept { return fp_valid_; }
+    void set_fp_reg(std::size_t idx, const CPU::VectorRegister& v) {
+        if (idx < CPU::kVectorRegisterCount) {
+            fp_regs_[idx] = v;
+            fp_valid_ = true;
+        }
+    }
+
     // Serialization to and from guest RAM
     bool write_to_guest_memory(Memory& mem, std::uint64_t guest_addr) const;
     bool read_from_guest_memory(const Memory& mem, std::uint64_t guest_addr);
 
 private:
     GuestTcb tcb_;
+    std::array<CPU::VectorRegister, CPU::kVectorRegisterCount> fp_regs_{};
+    bool fp_valid_{false};
     std::vector<ThreadState> state_history_{ThreadState::Ready};
     std::int32_t owner_pid_{0};
 };

@@ -50,16 +50,19 @@ std::uint64_t VirtualPageTable::make_page_descriptor(
             break;
         case PagePermissions::UserRead:
             desc |= (3ULL << 6); // AP = 0b11 (RO, EL0+EL1)
+            desc |= (1ULL << 11); // nG = 1 (non-global, tagged with ASID)
             desc |= (1ULL << 53); // PXN = 1
             desc |= (1ULL << 54); // UXN = 1
             break;
         case PagePermissions::UserReadWrite:
             desc |= (1ULL << 6); // AP = 0b01 (RW, EL0+EL1)
+            desc |= (1ULL << 11); // nG = 1 (non-global, tagged with ASID)
             desc |= (1ULL << 53); // PXN = 1
             desc |= (1ULL << 54); // UXN = 1
             break;
         case PagePermissions::UserExecute:
             desc |= (3ULL << 6); // AP = 0b11 (RO, EL0+EL1)
+            desc |= (1ULL << 11); // nG = 1 (non-global, tagged with ASID)
             desc |= (1ULL << 53); // PXN = 1
             desc |= (0ULL << 54); // UXN = 0 (Exec allowed at EL0)
             break;
@@ -100,16 +103,19 @@ std::uint64_t VirtualPageTable::make_block_descriptor(
             break;
         case PagePermissions::UserRead:
             desc |= (3ULL << 6);
+            desc |= (1ULL << 11);
             desc |= (1ULL << 53);
             desc |= (1ULL << 54);
             break;
         case PagePermissions::UserReadWrite:
             desc |= (1ULL << 6);
+            desc |= (1ULL << 11);
             desc |= (1ULL << 53);
             desc |= (1ULL << 54);
             break;
         case PagePermissions::UserExecute:
             desc |= (3ULL << 6);
+            desc |= (1ULL << 11);
             desc |= (1ULL << 53);
             desc |= (0ULL << 54);
             break;

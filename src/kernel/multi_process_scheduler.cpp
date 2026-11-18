@@ -69,7 +69,7 @@ bool MultiProcessScheduler::tick(CPU& cpu) {
             return perform_context_switch(cpu, current_thread_, next);
         } else {
             // No other thread ready: recharge quantum
-            quantum_remaining_ = kDefaultTimeSliceQuantum;
+            quantum_remaining_ = default_quantum_;
         }
     }
 
@@ -102,20 +102,14 @@ bool MultiProcessScheduler::perform_context_switch(
 
     // 1. Save state of previous thread
     if (prev_thread) {
-        prev_thread->tcb().pc = cpu.get_program_counter();
-        prev_thread->tcb().sp_el0 = cpu.get_sp_el0();
-        prev_thread->tcb().spsr_el1 = cpu.get_spsr_el1();
-        prev_thread->tcb().tpidr_el0 = cpu.get_tpidr_el0();
-        for (std::size_t i = 0; i < 31; ++i) {
-            prev_thread->tcb().gpr[i] = cpu.read_register(static_cast<unsigned>(i));
-        }
+        prev_thread->save_context_from_cpu(cpu);
     }
 
     // 2. Switch address space if moving to a different process
     const pid_t next_pid = next_thread->owner_pid();
     auto it = uas_map_.find(next_pid);
     if (it != uas_map_.end() && it->second) {
-        const std::uint64_t target_ttbr0 = it->second->root_table_pa();
+        const std::uint64_t target_ttbr0 = it->second->root_table_pa_with_asid();
         if (target_ttbr0 != current_ttbr0_) {
             cpu.get_mmu().set_ttbr0_el1(target_ttbr0);
             cpu.get_mmu().invalidate_tlb_all();
@@ -125,18 +119,16 @@ bool MultiProcessScheduler::perform_context_switch(
     }
 
     // 3. Restore architectural register state of next thread
-    cpu.set_program_counter(next_thread->tcb().pc);
-    cpu.set_sp_el0(next_thread->tcb().sp_el0);
-    cpu.set_spsr_el1(static_cast<std::uint32_t>(next_thread->tcb().spsr_el1));
-    cpu.set_tpidr_el0(next_thread->tcb().tpidr_el0);
-    cpu.set_current_el(0); // Mode EL0 (userspace)
-    for (std::size_t i = 0; i < 31; ++i) {
-        cpu.write_register(static_cast<unsigned>(i), next_thread->tcb().gpr[i]);
-    }
+    next_thread->load_context_to_cpu(cpu);
 
     next_thread->set_state(ThreadState::Running);
+    if (prev_thread && prev_thread->owner_pid() == next_thread->owner_pid()) {
+        ++stats_.same_process_context_switches;
+    } else {
+        ++stats_.cross_process_context_switches;
+    }
     current_thread_ = next_thread;
-    quantum_remaining_ = kDefaultTimeSliceQuantum;
+    quantum_remaining_ = default_quantum_;
     ++stats_.total_context_switches;
     return true;
 }
@@ -234,6 +226,75 @@ bool MultiProcessScheduler::deserialize(const std::uint8_t*& src, std::size_t& r
         }
     }
 
+    return true;
+}
+
+bool MultiProcessScheduler::block_thread(KernelThread* thread, WaitReason reason) {
+    if (!thread) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    thread->block(reason);
+    for (auto it = ready_queue_.begin(); it != ready_queue_.end();) {
+        if (*it == thread) {
+            it = ready_queue_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (current_thread_ == thread) {
+        current_thread_ = nullptr;
+    }
+    return true;
+}
+
+bool MultiProcessScheduler::unblock_thread(KernelThread* thread) {
+    if (!thread) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (thread->state() != ThreadState::Blocked) return false;
+    thread->unblock();
+    ready_queue_.push_back(thread);
+    return true;
+}
+
+bool MultiProcessScheduler::terminate_thread(KernelThread* thread, std::int32_t code) {
+    if (!thread) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    thread->terminate(code);
+    for (auto it = ready_queue_.begin(); it != ready_queue_.end();) {
+        if (*it == thread) {
+            it = ready_queue_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (current_thread_ == thread) {
+        current_thread_ = nullptr;
+    }
+    return true;
+}
+
+std::size_t MultiProcessScheduler::reap_zombies() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::size_t reaped = 0;
+    for (auto it = ready_queue_.begin(); it != ready_queue_.end();) {
+        if ((*it)->state() == ThreadState::Terminated) {
+            it = ready_queue_.erase(it);
+            ++reaped;
+        } else {
+            ++it;
+        }
+    }
+    return reaped;
+}
+
+bool MultiProcessScheduler::check_invariants() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (current_thread_ && current_thread_->state() != ThreadState::Running) {
+        return false;
+    }
+    for (const auto* th : ready_queue_) {
+        if (!th) return false;
+        if (th->state() != ThreadState::Ready) return false;
+    }
     return true;
 }
 
