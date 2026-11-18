@@ -10,6 +10,11 @@ Capability CapabilityManager::parse_capability_name(const std::string& name) noe
     if (name == "clipboard.write") return Capability::ClipboardWrite;
     if (name == "clipboard") return static_cast<Capability>(Capability::ClipboardRead | Capability::ClipboardWrite);
     if (name == "process.spawn" || name == "spawn") return Capability::ProcessSpawn;
+    if (name == "filesystem" || name == "fs") return Capability::FilesystemAccess;
+    if (name == "ipc") return Capability::IpcAccess;
+    if (name == "timer") return Capability::TimerAccess;
+    if (name == "logging" || name == "log") return Capability::LoggingAccess;
+    if (name == "resource" || name == "res") return Capability::ResourceAccess;
     return Capability::None;
 }
 

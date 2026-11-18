@@ -9,13 +9,18 @@
 namespace winios::security {
 
 enum class Capability : std::uint32_t {
-    None           = 0,
-    DisplayWindow  = 1 << 0,
-    StoragePrivate = 1 << 1,
-    StorageShared  = 1 << 2,
-    ClipboardRead  = 1 << 3,
-    ClipboardWrite = 1 << 4,
-    ProcessSpawn   = 1 << 5
+    None             = 0,
+    DisplayWindow    = 1 << 0,
+    StoragePrivate   = 1 << 1,
+    StorageShared    = 1 << 2,
+    ClipboardRead    = 1 << 3,
+    ClipboardWrite   = 1 << 4,
+    ProcessSpawn     = 1 << 5,
+    FilesystemAccess = 1 << 6,
+    IpcAccess        = 1 << 7,
+    TimerAccess      = 1 << 8,
+    LoggingAccess    = 1 << 9,
+    ResourceAccess   = 1 << 10
 };
 
 [[nodiscard]] constexpr std::uint32_t operator|(Capability a, Capability b) noexcept {

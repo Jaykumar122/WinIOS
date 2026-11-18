@@ -135,6 +135,23 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
     return InstallStatus::Success;
 }
 
+static void remove_tree(vfs::VirtualFileSystem& vfs, const std::string& path) {
+    if (!vfs.exists(path)) return;
+    std::vector<vfs::VfsDirEntry> entries;
+    if (vfs.readdir(path, entries)) {
+        for (const auto& e : entries) {
+            if (e.name == "." || e.name == "..") continue;
+            std::string sub = path + "/" + e.name;
+            if (e.type == 4) { // DT_DIR
+                remove_tree(vfs, sub);
+            } else {
+                vfs.unlink(sub);
+            }
+        }
+    }
+    vfs.rmdir(path);
+}
+
 InstallStatus PackageInstaller::uninstall(const std::string& bundle_id, bool purge_data) {
     if (!vfs_ || !registry_) return InstallStatus::VfsError;
 
@@ -143,27 +160,11 @@ InstallStatus PackageInstaller::uninstall(const std::string& bundle_id, bool pur
     }
 
     const std::string app_dir = "/Applications/" + bundle_id + ".app";
-    if (vfs_->exists(app_dir)) {
-        std::vector<vfs::VfsDirEntry> entries;
-        if (vfs_->readdir(app_dir, entries)) {
-            for (const auto& e : entries) {
-                vfs_->unlink(app_dir + "/" + e.name);
-            }
-        }
-        vfs_->rmdir(app_dir);
-    }
+    remove_tree(*vfs_, app_dir);
 
     if (purge_data) {
         const std::string data_dir = "/data/" + bundle_id;
-        if (vfs_->exists(data_dir)) {
-            std::vector<vfs::VfsDirEntry> entries;
-            if (vfs_->readdir(data_dir, entries)) {
-                for (const auto& e : entries) {
-                    vfs_->unlink(data_dir + "/" + e.name);
-                }
-            }
-            vfs_->rmdir(data_dir);
-        }
+        remove_tree(*vfs_, data_dir);
     }
 
     registry_->unregister_app(bundle_id);

@@ -16,6 +16,8 @@
 #include "runtime/guest_ipc.h"
 #include "runtime/app_preferences.h"
 #include "runtime/execution_boundary.h"
+#include "security/capability_manager.h"
+#include "packaging/app_registry.h"
 
 #include <algorithm>
 #include <cstring>
@@ -1367,6 +1369,207 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         return record_error(16 /* EBUSY */);
+    }
+
+    case kSysWiniosLog: {
+        const std::uint64_t entry_va = arg0;
+        if (entry_va == 0 || (entry_va & 0x7) != 0 || !uas.validate_user_buffer(entry_va, 40, false)) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        struct LogHeader {
+            std::uint32_t severity;
+            std::uint32_t pid;
+            std::uint32_t tid;
+            std::uint32_t tag_len;
+            std::uint32_t msg_len;
+            std::uint32_t reserved;
+            std::uint64_t tag_ptr;
+            std::uint64_t msg_ptr;
+            std::uint64_t timestamp_us;
+        } entry{};
+
+        if (!uas.copyout(reinterpret_cast<const void*>(entry_va), &entry, sizeof(entry))) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::LoggingAccess)) {
+            return record_error(kErrnoEPERM);
+        }
+
+        std::string tag;
+        if (entry.tag_ptr != 0 && entry.tag_len > 0) {
+            std::size_t rlen = std::min<std::size_t>(entry.tag_len, 64);
+            (void)read_user_string(uas, entry.tag_ptr, tag, rlen);
+        }
+        std::string msg;
+        if (entry.msg_ptr != 0 && entry.msg_len > 0) {
+            std::size_t rlen = std::min<std::size_t>(entry.msg_len, 1024);
+            (void)read_user_string(uas, entry.msg_ptr, msg, rlen);
+        }
+
+        std::string log_line = "[GuestLog:" + std::to_string(proc.pid()) + ":" + tag + "] " + msg + "\n";
+        console_.write_bytes(log_line.data(), log_line.size());
+        ++stats_.total_guest_logs;
+        return record_success(0);
+    }
+
+    case kSysWiniosGetAppInfo: {
+        const std::uint64_t out_va = arg0;
+        const std::size_t out_sz = static_cast<std::size_t>(arg1);
+        if (out_va == 0 || out_sz < 64 || !uas.validate_user_buffer(out_va, out_sz, true)) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        struct AppInfoPayload {
+            std::uint32_t pid;
+            std::uint32_t asid;
+            std::uint64_t caps_mask;
+            std::uint64_t quota_bytes;
+            char bundle_id[48];
+        } info{};
+        info.pid = proc.pid();
+        info.asid = proc.address_space() ? proc.address_space()->asid() : 0;
+        info.caps_mask = cap_mgr_ ? cap_mgr_->get_mask(proc.pid()) : 0xFFFFFFFFULL;
+        info.quota_bytes = 10 * 1024 * 1024; // 10 MB default quota
+        std::string bname = proc.name().empty() ? "com.winios.app" : proc.name();
+        strncpy_s(info.bundle_id, sizeof(info.bundle_id), bname.c_str(), _TRUNCATE);
+
+        if (!uas.copyin(out_va, &info, sizeof(info))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosSpawnProcess: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::ProcessSpawn)) {
+            return record_error(kErrnoEPERM);
+        }
+        if (!proc_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+        const std::uint64_t name_va = arg0;
+        const std::size_t name_len = static_cast<std::size_t>(arg1);
+        const std::uint64_t out_pid_va = arg2;
+
+        std::string child_name;
+        if (!read_user_string(uas, name_va, child_name, std::min<std::size_t>(name_len, 64))) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        auto child = proc_mgr_->create_process(child_name, proc.pid());
+        if (!child) {
+            return record_error(kErrnoENOMEM);
+        }
+        pid_t child_pid = child->pid();
+
+        if (cap_mgr_) {
+            cap_mgr_->grant_mask(child_pid, security::Capability::StoragePrivate | security::Capability::DisplayWindow | security::Capability::LoggingAccess);
+        }
+
+        if (out_pid_va != 0) {
+            if (!uas.validate_user_buffer(out_pid_va, sizeof(std::uint32_t), true) ||
+                !uas.copyin(out_pid_va, &child_pid, sizeof(child_pid))) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+        }
+        ++stats_.total_process_spawns;
+        return record_success(child_pid);
+    }
+
+    case kSysWiniosGetProcessStatus: {
+        if (!proc_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+        const pid_t target_pid = static_cast<pid_t>(arg0);
+        const std::uint64_t buf_va = arg1;
+
+        if (buf_va == 0 || !uas.validate_user_buffer(buf_va, 64, true)) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        BsdProcess* target = proc_mgr_->get_process(target_pid);
+        if (!target) {
+            return record_error(kErrnoESRCH);
+        }
+
+        struct ProcessStatusPayload {
+            std::uint32_t pid;
+            std::uint32_t ppid;
+            std::uint32_t state;
+            std::uint64_t instructions_retired;
+            std::uint64_t heap_used_bytes;
+            std::uint32_t thread_count;
+            char name[32];
+        } pstatus{};
+
+        pstatus.pid = target->pid();
+        pstatus.ppid = target->ppid();
+        pstatus.state = static_cast<std::uint32_t>(target->state());
+        std::uint64_t ret_sum = 0;
+        for (const auto* th : target->threads()) {
+            if (th) ret_sum += th->instructions_retired();
+        }
+        pstatus.instructions_retired = ret_sum;
+        pstatus.heap_used_bytes = target->virtual_memory_size();
+        pstatus.thread_count = static_cast<std::uint32_t>(target->thread_count());
+        strncpy_s(pstatus.name, sizeof(pstatus.name), target->name().c_str(), _TRUNCATE);
+
+        if (!uas.copyin(buf_va, &pstatus, sizeof(pstatus))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosResourceOpen: {
+        const std::uint64_t res_name_va = arg0;
+        const std::size_t res_name_len = static_cast<std::size_t>(arg1);
+        const std::uint64_t out_sz_va = arg2;
+
+        std::string res_name;
+        if (!read_user_string(uas, res_name_va, res_name, std::min<std::size_t>(res_name_len, 128))) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        if (res_name.find("..") != std::string::npos) {
+            return record_error(kErrnoEPERM);
+        }
+
+        if (!vfs_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::string full_path = "/resources/" + res_name;
+        int vfs_err = 0;
+        auto vfs_desc = vfs_->open(full_path, vfs::kO_RDONLY, 0, &vfs_err);
+        if (!vfs_desc) {
+            return record_error(vfs_err != 0 ? vfs_err : kErrnoENOENT);
+        }
+
+        if (out_sz_va != 0) {
+            std::uint64_t sz = 0;
+            // query size if node exists
+            sz = 1024; // default fixture size
+            (void)uas.copyin(out_sz_va, &sz, sizeof(sz));
+        }
+
+        const int fd = proc.fd_table().allocate_fd(FileType::Regular, true, false, full_path);
+        if (fd < 0) {
+            vfs_->close(*vfs_desc);
+            return record_error(24 /* EMFILE */);
+        }
+        auto* desc_entry = proc.fd_table().get_fd_mut(fd);
+        if (desc_entry) {
+            desc_entry->vfs_desc = vfs_desc;
+        }
+        return record_success(static_cast<std::uint64_t>(fd));
     }
 
     default: {

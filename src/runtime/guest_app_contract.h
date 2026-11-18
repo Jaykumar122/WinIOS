@@ -6,8 +6,12 @@
 
 namespace winios::runtime {
 
-// WinIOS Guest Application Execution Contract v1.2 (Campaign 217)
-constexpr uint32_t kGuestAppContractVersion = 0x00010200;
+// WinIOS Guest Application Execution Contract v1.5 (Campaign 221)
+constexpr uint32_t kGuestAppContractVersion_1_0 = 0x00010000;
+constexpr uint32_t kGuestAppContractVersion_1_1 = 0x00010100;
+constexpr uint32_t kGuestAppContractVersion_1_2 = 0x00010200;
+constexpr uint32_t kGuestAppContractVersion_1_5 = 0x00010500;
+constexpr uint32_t kGuestAppContractVersion     = 0x00010500;
 constexpr uint32_t kGuestAppMinSupportedContract = 0x00010000;
 
 #pragma pack(push, 8)

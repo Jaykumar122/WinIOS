@@ -7,13 +7,28 @@
 namespace winios::packaging {
 
 namespace {
-constexpr const char* kPkgMagic = "WIOSPKG1";
+constexpr const char* kPkgMagicV1 = "WIOSPKG1";
+constexpr const char* kPkgMagicV2 = "WIOSPKG2";
 constexpr std::size_t kMagicLen = 8;
 }
 
 bool PackageManifest::is_valid() const noexcept {
     if (bundle_id.empty() || name.empty() || version.empty() || executable_name.empty()) {
         return false;
+    }
+    // Check bundle_id for path traversal
+    if (bundle_id.find('/') != std::string::npos || bundle_id.find('\\') != std::string::npos || bundle_id.find("..") != std::string::npos) {
+        return false;
+    }
+    // Architecture validation (if specified, must be arm64)
+    if (!architecture.empty() && architecture != "arm64" && architecture != "aarch64") {
+        return false;
+    }
+    // Check file paths for path traversal
+    for (const auto& f : files) {
+        if (f.path.empty() || f.path.find("..") != std::string::npos || f.path.front() == '/' || f.path.front() == '\\') {
+            return false;
+        }
     }
     // Executable must be present in files
     bool exec_found = false;
@@ -28,11 +43,18 @@ bool PackageManifest::is_valid() const noexcept {
 
 std::string PackageManifest::serialize() const {
     std::ostringstream ss;
+    ss << "format_version=" << format_version << "\n";
     ss << "bundle_id=" << bundle_id << "\n";
     ss << "name=" << name << "\n";
     ss << "version=" << version << "\n";
     ss << "min_os_version=" << min_os_version << "\n";
+    ss << "architecture=" << architecture << "\n";
+    ss << "min_abi_version=" << min_abi_version << "\n";
     ss << "executable_name=" << executable_name << "\n";
+    ss << "storage_quota_bytes=" << storage_quota_bytes << "\n";
+    if (!signature_sha256.empty()) {
+        ss << "signature_sha256=" << signature_sha256 << "\n";
+    }
     ss << "permissions=";
     for (std::size_t i = 0; i < permissions.size(); ++i) {
         if (i > 0) ss << ",";
@@ -53,11 +75,18 @@ bool PackageManifest::deserialize(const std::string& text, PackageManifest& out)
         const std::string key = line.substr(0, eq);
         const std::string val = line.substr(eq + 1);
 
-        if (key == "bundle_id") out.bundle_id = val;
+        if (key == "format_version") out.format_version = val;
+        else if (key == "bundle_id") out.bundle_id = val;
         else if (key == "name") out.name = val;
         else if (key == "version") out.version = val;
         else if (key == "min_os_version") out.min_os_version = val;
+        else if (key == "architecture") out.architecture = val;
+        else if (key == "min_abi_version") out.min_abi_version = val;
         else if (key == "executable_name") out.executable_name = val;
+        else if (key == "storage_quota_bytes") {
+            try { out.storage_quota_bytes = std::stoull(val); } catch (...) {}
+        }
+        else if (key == "signature_sha256") out.signature_sha256 = val;
         else if (key == "permissions") {
             std::istringstream pss(val);
             std::string p;
@@ -82,7 +111,8 @@ std::vector<std::uint8_t> AppPackage::pack() const {
     std::vector<std::uint8_t> buf;
 
     // 1. Magic
-    buf.insert(buf.end(), kPkgMagic, kPkgMagic + kMagicLen);
+    const char* magic = (manifest.format_version == "2.0") ? kPkgMagicV2 : kPkgMagicV1;
+    buf.insert(buf.end(), magic, magic + kMagicLen);
 
     // 2. Manifest string
     const std::string manifest_str = manifest.serialize();
@@ -119,8 +149,11 @@ std::vector<std::uint8_t> AppPackage::pack() const {
 bool AppPackage::unpack(const std::uint8_t* data, std::size_t size, AppPackage& out_pkg) {
     if (!data || size < kMagicLen + 4 + 4) return false;
 
-    // Check magic
-    if (std::memcmp(data, kPkgMagic, kMagicLen) != 0) return false;
+    // Check magic (accept either V1 or V2)
+    if (std::memcmp(data, kPkgMagicV1, kMagicLen) != 0 &&
+        std::memcmp(data, kPkgMagicV2, kMagicLen) != 0) {
+        return false;
+    }
 
     std::size_t off = kMagicLen;
 

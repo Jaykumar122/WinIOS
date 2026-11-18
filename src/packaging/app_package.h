@@ -15,11 +15,16 @@ struct FileEntry {
 };
 
 struct PackageManifest {
+    std::string format_version{"2.0"};
     std::string bundle_id;
     std::string name;
     std::string version{"1.0.0"};
-    std::string min_os_version{"215.0"};
+    std::string min_os_version{"221.0"};
+    std::string architecture{"arm64"};
+    std::string min_abi_version{"1.5"};
     std::string executable_name;
+    std::uint64_t storage_quota_bytes{10 * 1024 * 1024}; // 10 MB default
+    std::string signature_sha256;
     std::vector<std::string> permissions;
     std::vector<FileEntry> files;
 

@@ -36,6 +36,17 @@ namespace winios::kernel {
 
 class KernelThreadManager;
 class MultiProcessScheduler;
+}
+
+namespace winios::security {
+class CapabilityManager;
+}
+
+namespace winios::packaging {
+class ApplicationRegistry;
+}
+
+namespace winios::kernel {
 
 // Pinned Darwin/XNU Syscall Numbers (xnu-10002.1.13 bsd/sys/syscall.h)
 inline constexpr std::uint64_t kSysExit       = 1;
@@ -88,9 +99,16 @@ inline constexpr std::uint64_t kSysWiniosThreadCreate     = 524;
 inline constexpr std::uint64_t kSysWiniosThreadExit       = 525;
 inline constexpr std::uint64_t kSysWiniosThreadJoin       = 526;
 inline constexpr std::uint64_t kSysWiniosMsgTrap          = 527;
+// Category C ABI v1.5 Extensions (Campaign 221)
+inline constexpr std::uint64_t kSysWiniosLog              = 528;
+inline constexpr std::uint64_t kSysWiniosGetAppInfo       = 529;
+inline constexpr std::uint64_t kSysWiniosSpawnProcess     = 530;
+inline constexpr std::uint64_t kSysWiniosGetProcessStatus = 531;
+inline constexpr std::uint64_t kSysWiniosResourceOpen     = 532;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC     = 532;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
-    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMsgTrap;
+    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;
 }
 
 // Pinned Darwin/XNU Errno Numbers (xnu-10002.1.13 bsd/sys/errno.h)
@@ -146,6 +164,8 @@ struct SyscallStats {
     std::uint64_t total_mutex_unlocks{0};
     std::uint64_t total_mutex_contentions{0};
     std::uint64_t total_mutex_errors{0};
+    std::uint64_t total_guest_logs{0};
+    std::uint64_t total_process_spawns{0};
 };
 
 class UserSyscallDispatcher {
@@ -193,6 +213,12 @@ public:
     void set_multi_process_scheduler(MultiProcessScheduler* sched) noexcept { multi_sched_ = sched; }
     [[nodiscard]] MultiProcessScheduler* multi_process_scheduler() noexcept { return multi_sched_; }
 
+    void set_capability_manager(security::CapabilityManager* cm) noexcept { cap_mgr_ = cm; }
+    [[nodiscard]] security::CapabilityManager* capability_manager() noexcept { return cap_mgr_; }
+
+    void set_app_registry(packaging::ApplicationRegistry* reg) noexcept { app_reg_ = reg; }
+    [[nodiscard]] packaging::ApplicationRegistry* app_registry() noexcept { return app_reg_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -232,6 +258,8 @@ private:
     runtime::AppPreferences* preferences_{nullptr};
     KernelThreadManager* thread_mgr_{nullptr};
     MultiProcessScheduler* multi_sched_{nullptr};
+    security::CapabilityManager* cap_mgr_{nullptr};
+    packaging::ApplicationRegistry* app_reg_{nullptr};
     std::unordered_map<std::uint64_t, MutexRecord> mutex_table_;
 };
 

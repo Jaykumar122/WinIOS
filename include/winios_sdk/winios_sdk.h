@@ -12,9 +12,12 @@ extern "C" {
 // -----------------------------------------------------------------------------
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_0 0x00010000
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_1 0x00010100
-#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010100
 #define WINIOS_CATEGORY_C_ABI_VERSION_1_2 0x00010200
-#define WINIOS_SDK_VERSION                0x00010200
+#define WINIOS_CATEGORY_C_ABI_VERSION_1_5 0x00010500
+#define WINIOS_CATEGORY_C_ABI_VERSION     0x00010500
+#define WINIOS_SDK_VERSION_1_2            0x00010200
+#define WINIOS_SDK_VERSION_1_5            0x00010500
+#define WINIOS_SDK_VERSION                0x00010500
 
 // Syscalls 500..512 (ABI v1.0 & v1.1)
 #define SYS_WINIOS_WINDOW_CREATE          500
