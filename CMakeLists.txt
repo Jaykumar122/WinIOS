@@ -190,10 +190,16 @@ add_library(winios_core STATIC
     src/graphics/virtual_display.cpp
     src/graphics/display_surface.cpp
     src/graphics/window_manager.cpp
+    src/graphics/window_decorations.cpp
+    src/graphics/multi_window_compositor.cpp
+    src/graphics/window_animator.cpp
     src/graphics/compositor.cpp
     src/graphics/frame_scheduler.cpp
     src/graphics/display_snapshot.cpp
     src/graphics/frame_accounting.cpp
+    src/renderer/software_renderer.cpp
+    src/renderer/d3d11_renderer.cpp
+    src/renderer/presentation_pacer.cpp
     src/input/virtual_input_device.cpp
     src/input/touch_event_queue.cpp
     src/input/host_input_queue.cpp
@@ -201,6 +207,7 @@ add_library(winios_core STATIC
     src/input/gesture_recognizer.cpp
     src/input/input_router.cpp
     src/runtime/guest_ui_runtime.cpp
+    src/runtime/guest_event_services.cpp
     src/runtime/ui/theme.cpp
     src/runtime/ui/render_context.cpp
     src/runtime/ui/text_renderer.cpp
@@ -264,6 +271,7 @@ add_library(winios_core STATIC
 
 target_include_directories(winios_core PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
 )
 
 if(WIN32)
@@ -4537,6 +4545,77 @@ add_executable(stage215_23_desktop_e2e_tests tests/unit/stage215_23_desktop_e2e_
 target_link_libraries(stage215_23_desktop_e2e_tests PRIVATE winios_core)
 winios_set_warnings(stage215_23_desktop_e2e_tests)
 add_test(NAME stage215_23_desktop_e2e_tests COMMAND stage215_23_desktop_e2e_tests)
+
+# Campaign 216 Tests
+add_executable(stage216_2_input_provenance_tests tests/unit/stage216_2_input_provenance_tests.cpp)
+target_link_libraries(stage216_2_input_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage216_2_input_provenance_tests)
+add_test(NAME stage216_2_input_provenance_tests COMMAND stage216_2_input_provenance_tests)
+
+add_executable(stage216_3_mouse_input_tests tests/unit/stage216_3_mouse_input_tests.cpp)
+target_link_libraries(stage216_3_mouse_input_tests PRIVATE winios_core)
+winios_set_warnings(stage216_3_mouse_input_tests)
+add_test(NAME stage216_3_mouse_input_tests COMMAND stage216_3_mouse_input_tests)
+
+add_executable(stage216_4_keyboard_input_tests tests/unit/stage216_4_keyboard_input_tests.cpp)
+target_link_libraries(stage216_4_keyboard_input_tests PRIVATE winios_core)
+winios_set_warnings(stage216_4_keyboard_input_tests)
+add_test(NAME stage216_4_keyboard_input_tests COMMAND stage216_4_keyboard_input_tests)
+
+add_executable(stage216_5_focus_capture_tests tests/unit/stage216_5_focus_capture_tests.cpp)
+target_link_libraries(stage216_5_focus_capture_tests PRIVATE winios_core)
+winios_set_warnings(stage216_5_focus_capture_tests)
+add_test(NAME stage216_5_focus_capture_tests COMMAND stage216_5_focus_capture_tests)
+
+add_executable(stage216_6_input_security_tests tests/unit/stage216_6_input_security_tests.cpp)
+target_link_libraries(stage216_6_input_security_tests PRIVATE winios_core)
+winios_set_warnings(stage216_6_input_security_tests)
+add_test(NAME stage216_6_input_security_tests COMMAND stage216_6_input_security_tests)
+
+add_executable(stage216_7_multi_window_tests tests/unit/stage216_7_multi_window_tests.cpp)
+target_link_libraries(stage216_7_multi_window_tests PRIVATE winios_core)
+winios_set_warnings(stage216_7_multi_window_tests)
+add_test(NAME stage216_7_multi_window_tests COMMAND stage216_7_multi_window_tests)
+
+add_executable(stage216_8_decorations_hit_test_tests tests/unit/stage216_8_decorations_hit_test_tests.cpp)
+target_link_libraries(stage216_8_decorations_hit_test_tests PRIVATE winios_core)
+winios_set_warnings(stage216_8_decorations_hit_test_tests)
+add_test(NAME stage216_8_decorations_hit_test_tests COMMAND stage216_8_decorations_hit_test_tests)
+
+add_executable(stage216_11_multi_window_compositor_damage_tests tests/unit/stage216_11_multi_window_compositor_damage_tests.cpp)
+target_link_libraries(stage216_11_multi_window_compositor_damage_tests PRIVATE winios_core)
+winios_set_warnings(stage216_11_multi_window_compositor_damage_tests)
+add_test(NAME stage216_11_multi_window_compositor_damage_tests COMMAND stage216_11_multi_window_compositor_damage_tests)
+
+add_executable(stage216_13_window_animator_tests tests/unit/stage216_13_window_animator_tests.cpp)
+target_link_libraries(stage216_13_window_animator_tests PRIVATE winios_core)
+winios_set_warnings(stage216_13_window_animator_tests)
+add_test(NAME stage216_13_window_animator_tests COMMAND stage216_13_window_animator_tests)
+
+add_executable(stage216_14_renderer_tests tests/unit/stage216_14_renderer_tests.cpp)
+target_link_libraries(stage216_14_renderer_tests PRIVATE winios_core)
+winios_set_warnings(stage216_14_renderer_tests)
+add_test(NAME stage216_14_renderer_tests COMMAND stage216_14_renderer_tests)
+
+add_executable(stage216_19_abi_v11_tests tests/unit/stage216_19_abi_v11_tests.cpp)
+target_link_libraries(stage216_19_abi_v11_tests PRIVATE winios_core)
+winios_set_warnings(stage216_19_abi_v11_tests)
+add_test(NAME stage216_19_abi_v11_tests COMMAND stage216_19_abi_v11_tests)
+
+add_executable(stage216_21_multi_window_app_tests tests/unit/stage216_21_multi_window_app_tests.cpp)
+target_link_libraries(stage216_21_multi_window_app_tests PRIVATE winios_core)
+winios_set_warnings(stage216_21_multi_window_app_tests)
+add_test(NAME stage216_21_multi_window_app_tests COMMAND stage216_21_multi_window_app_tests)
+
+add_executable(stage216_22_guest_event_services_tests tests/unit/stage216_22_guest_event_services_tests.cpp)
+target_link_libraries(stage216_22_guest_event_services_tests PRIVATE winios_core)
+winios_set_warnings(stage216_22_guest_event_services_tests)
+add_test(NAME stage216_22_guest_event_services_tests COMMAND stage216_22_guest_event_services_tests)
+
+add_executable(stage216_23_desktop_e2e_tests tests/unit/stage216_23_desktop_e2e_tests.cpp)
+target_link_libraries(stage216_23_desktop_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage216_23_desktop_e2e_tests)
+add_test(NAME stage216_23_desktop_e2e_tests COMMAND stage216_23_desktop_e2e_tests)
 
 
 

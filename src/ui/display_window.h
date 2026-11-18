@@ -9,6 +9,9 @@
 #include <vector>
 
 #include "device/apple_display.h"
+#include "input/host_input_queue.h"
+#include "input/input_provenance.h"
+#include "input/virtual_input_device.h"
 
 namespace winios::ui {
 
@@ -66,6 +69,7 @@ public:
     using TouchCallback = std::function<void(const TouchEvent& event)>;
     using KeyCallback = std::function<void(std::uint32_t key_code, bool is_down)>;
     using CharCallback = std::function<void(char32_t ch)>;
+    using EventCallback = std::function<void(const input::InputEvent& event)>;
 
     explicit DisplayWindow(const DisplayWindowConfig& config = {});
     ~DisplayWindow();
@@ -83,6 +87,11 @@ public:
     [[nodiscard]] bool is_open() const noexcept { return is_open_; }
     [[nodiscard]] bool is_headless() const noexcept { return config_.headless; }
     [[nodiscard]] DisplayLifecycleState lifecycle_state() const noexcept;
+    [[nodiscard]] void* native_handle() const noexcept { return hwnd_; }
+    [[nodiscard]] bool is_focused() const noexcept { return is_focused_; }
+    [[nodiscard]] bool has_mouse_capture() const noexcept { return has_mouse_capture_; }
+    void set_focused(bool focused);
+    void set_mouse_capture(bool capture);
 
     // Message Loop Processing
     bool pump_events();
@@ -102,10 +111,29 @@ public:
     void set_touch_callback(TouchCallback cb) { touch_callback_ = std::move(cb); }
     void set_key_callback(KeyCallback cb) { key_callback_ = std::move(cb); }
     void set_char_callback(CharCallback cb) { char_callback_ = std::move(cb); }
+    void set_event_callback(EventCallback cb) { event_callback_ = std::move(cb); }
+    void set_input_queue(std::shared_ptr<input::HostInputQueue> q) { input_queue_ = std::move(q); }
+    [[nodiscard]] std::shared_ptr<input::HostInputQueue> input_queue() const noexcept { return input_queue_; }
+
     [[nodiscard]] TouchEvent last_touch() const noexcept;
     void inject_touch(std::uint32_t x, std::uint32_t y, bool is_down);
     void inject_key(std::uint32_t key_code, bool is_down);
     void inject_char(char32_t ch);
+
+    // Stage 216 Rich Input Injection APIs (with provenance)
+    void inject_mouse_move(std::int32_t x, std::int32_t y, input::InputProvenance provenance = input::InputProvenance::TestInjected);
+    void inject_mouse_button(input::MouseButton btn, bool is_down, std::int32_t x, std::int32_t y, input::InputProvenance provenance = input::InputProvenance::TestInjected);
+    void inject_mouse_wheel(std::int32_t delta, std::int32_t x, std::int32_t y, input::InputProvenance provenance = input::InputProvenance::TestInjected);
+    void inject_key_event(std::uint32_t key_code, bool is_down, bool is_repeat, std::uint32_t modifiers, input::InputProvenance provenance = input::InputProvenance::TestInjected);
+    void inject_char_event(char32_t ch, input::InputProvenance provenance = input::InputProvenance::TestInjected);
+
+    // Win32 Message Handlers
+    void on_win32_mouse_move(int cx, int cy, int sx, int sy, std::uint64_t wparam, bool is_injected = false);
+    void on_win32_mouse_button(input::MouseButton btn, bool is_down, int cx, int cy, int sx, int sy, std::uint64_t wparam, bool is_injected = false);
+    void on_win32_mouse_wheel(int delta, int cx, int cy, int sx, int sy, std::uint64_t wparam, bool is_injected = false);
+    void on_win32_mouse_leave();
+    void on_win32_key(std::uint64_t wparam, std::uint64_t lparam, bool is_injected = false);
+    void on_win32_char(std::uint64_t wparam, std::uint64_t lparam, bool is_injected = false);
 
     // Screenshot Capture
     [[nodiscard]] bool save_screenshot_bmp(const std::string& path) const;
@@ -134,6 +162,10 @@ private:
     TouchCallback touch_callback_;
     KeyCallback key_callback_;
     CharCallback char_callback_;
+    EventCallback event_callback_;
+    std::shared_ptr<input::HostInputQueue> input_queue_;
+    bool is_focused_{false};
+    bool has_mouse_capture_{false};
 
     // Windows native handles (stored as opaque pointers to avoid leaking Windows.h)
     void* hwnd_{nullptr};

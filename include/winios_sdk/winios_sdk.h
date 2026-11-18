@@ -8,24 +8,31 @@ extern "C" {
 #endif
 
 // -----------------------------------------------------------------------------
-// WinIOS Category C ABI v1.0 Constants
+// WinIOS Category C ABI v1.1 Constants
 // -----------------------------------------------------------------------------
-#define WINIOS_CATEGORY_C_ABI_VERSION 0x00010000
+#define WINIOS_CATEGORY_C_ABI_VERSION 0x00010100
 
-#define SYS_WINIOS_WINDOW_CREATE     500
-#define SYS_WINIOS_WINDOW_DESTROY    501
-#define SYS_WINIOS_SURFACE_UPDATE    502
-#define SYS_WINIOS_SURFACE_PRESENT   503
-#define SYS_WINIOS_POLL_EVENT        504
-#define SYS_WINIOS_SURFACE_FILL      505
-#define SYS_WINIOS_SET_WINDOW_TITLE  506
-#define SYS_WINIOS_GET_ABI_VERSION   507
+#define SYS_WINIOS_WINDOW_CREATE       500
+#define SYS_WINIOS_WINDOW_DESTROY      501
+#define SYS_WINIOS_SURFACE_UPDATE      502
+#define SYS_WINIOS_SURFACE_PRESENT     503
+#define SYS_WINIOS_POLL_EVENT          504
+#define SYS_WINIOS_SURFACE_FILL        505
+#define SYS_WINIOS_SET_WINDOW_TITLE    506
+#define SYS_WINIOS_GET_ABI_VERSION     507
+#define SYS_WINIOS_WINDOW_GET_GEOMETRY 508
+#define SYS_WINIOS_WINDOW_SET_GEOMETRY 509
+#define SYS_WINIOS_WINDOW_SET_FOCUS    510
+#define SYS_WINIOS_WINDOW_LIST         511
+#define SYS_WINIOS_CREATE_TIMER        512
 
 // -----------------------------------------------------------------------------
 // Core UI Types
 // -----------------------------------------------------------------------------
 typedef uint32_t winios_wid_t;
 typedef uint32_t winios_color_t;
+
+#pragma pack(push, 8)
 
 typedef struct {
     uint32_t x;
@@ -35,25 +42,59 @@ typedef struct {
 } winios_rect_t;
 
 typedef enum {
-    WINIOS_EVENT_NONE        = 0,
-    WINIOS_EVENT_TOUCH_BEGIN = 1,
-    WINIOS_EVENT_TOUCH_MOVE  = 2,
-    WINIOS_EVENT_TOUCH_END   = 3,
-    WINIOS_EVENT_TOUCH_CANCEL= 4,
-    WINIOS_EVENT_KEY_DOWN    = 5,
-    WINIOS_EVENT_KEY_UP      = 6,
-    WINIOS_EVENT_KEY_CHAR    = 7
+    WINIOS_EVENT_NONE                 = 0,
+    WINIOS_EVENT_TOUCH_BEGIN          = 1,
+    WINIOS_EVENT_TOUCH_MOVE           = 2,
+    WINIOS_EVENT_TOUCH_END            = 3,
+    WINIOS_EVENT_TOUCH_CANCEL         = 4,
+    WINIOS_EVENT_KEY_DOWN             = 5,
+    WINIOS_EVENT_KEY_UP               = 6,
+    WINIOS_EVENT_KEY_CHAR             = 7,
+    WINIOS_EVENT_TIMER                = 8,
+    WINIOS_EVENT_WINDOW_FOCUS         = 9,
+    WINIOS_EVENT_WINDOW_DEFOCUS       = 10,
+    WINIOS_EVENT_WINDOW_CLOSE_REQUEST = 11
 } winios_event_type_t;
 
 typedef struct {
     uint32_t type;         // winios_event_type_t
-    uint32_t contact_id;   // 0..9
+    uint32_t contact_id;   // 0..9 or timer_id
     int32_t  x;            // Coordinate relative to window frame
     int32_t  y;            // Coordinate relative to window frame
     uint32_t key_code;     // Virtual key code or ASCII
     uint32_t window_id;    // Target window ID
     uint64_t timestamp_us; // Event timestamp in microseconds
 } winios_event_t;
+
+typedef enum {
+    WINIOS_WINDOW_STATE_NORMAL    = 0,
+    WINIOS_WINDOW_STATE_MINIMIZED = 1,
+    WINIOS_WINDOW_STATE_HIDDEN    = 2,
+    WINIOS_WINDOW_STATE_CLOSED    = 3
+} winios_window_state_t;
+
+typedef struct {
+    winios_rect_t frame;
+    int32_t       z_order;
+    uint32_t      state;          // winios_window_state_t
+    uint32_t      is_focused;     // 1 if focused, 0 otherwise
+    uint32_t      always_on_top;  // 1 if always on top, 0 otherwise
+} winios_window_geometry_t;
+
+typedef struct {
+    uint32_t count;
+    uint32_t max_count;
+    uint32_t window_ids[32];
+} winios_window_list_t;
+
+#pragma pack(pop)
+
+#ifdef __cplusplus
+static_assert(sizeof(winios_rect_t) == 16, "winios_rect_t must be 16 bytes");
+static_assert(sizeof(winios_event_t) == 32, "winios_event_t must be 32 bytes");
+static_assert(sizeof(winios_window_geometry_t) == 32, "winios_window_geometry_t must be 32 bytes");
+static_assert(sizeof(winios_window_list_t) == 136, "winios_window_list_t must be 136 bytes");
+#endif
 
 // -----------------------------------------------------------------------------
 // Color Helper Macros (ARGB 32-bit format)

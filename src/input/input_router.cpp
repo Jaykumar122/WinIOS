@@ -1,6 +1,8 @@
 #include "input/input_router.h"
 
 #include <algorithm>
+#include "input/input_provenance.h"
+#include "kernel/guest_trace_logger.h"
 
 namespace winios::input {
 
@@ -37,81 +39,212 @@ TouchPoint InputRouter::translate_host_coordinate(
 bool InputRouter::route_event(const InputEvent& event) {
     std::lock_guard<std::mutex> guard(lock_);
     InputEvent routed = event;
-    std::uint32_t target_pid = 0;
-    std::uint32_t target_wid = 0;
+    std::uint32_t target_pid = event.target_pid;
+    std::uint32_t target_wid = event.target_window_id;
 
-    switch (event.type) {
-    case InputEventType::TouchBegin: {
-        std::uint32_t cid = event.touch.contact_id;
-        if (cid < VirtualInputDevice::kMaxTouchContacts) {
-            std::uint32_t px = static_cast<std::uint32_t>(std::max(0, event.touch.x));
-            std::uint32_t py = static_cast<std::uint32_t>(std::max(0, event.touch.y));
+    if (target_wid > 0) {
+        if (window_mgr_) {
+            auto win = window_mgr_->get_window(target_wid);
+            if (!win) {
+                kernel::GuestTraceLogger::instance().log_input_provenance(routed, InputDeliveryStatus::RejectedWindowDestroyed);
+                return false;
+            }
+            target_pid = win->owner_pid;
+        }
+    } else {
+        switch (event.type) {
+        case InputEventType::TouchBegin: {
+            std::uint32_t cid = event.touch.contact_id;
+            if (cid < VirtualInputDevice::kMaxTouchContacts) {
+                std::uint32_t px = static_cast<std::uint32_t>(std::max(0, event.touch.x));
+                std::uint32_t py = static_cast<std::uint32_t>(std::max(0, event.touch.y));
 
+                std::shared_ptr<graphics::Window> win = nullptr;
+                if (window_mgr_) {
+                    win = window_mgr_->hit_test(px, py);
+                }
+
+                if (win) {
+                    target_pid = win->owner_pid;
+                    target_wid = win->id;
+                    captures_[cid].is_captured = true;
+                    captures_[cid].owner_pid = target_pid;
+                    captures_[cid].window_id = target_wid;
+
+                    // Bring clicked window to focus
+                    window_mgr_->set_focus(target_wid);
+                } else {
+                    // Background tap: route to PID 1 (Shell/System) if available
+                    target_pid = 1;
+                    target_wid = 0;
+                    captures_[cid].is_captured = true;
+                    captures_[cid].owner_pid = target_pid;
+                    captures_[cid].window_id = 0;
+                }
+            }
+            break;
+        }
+
+        case InputEventType::TouchMove: {
+            std::uint32_t cid = event.touch.contact_id;
+            if (cid < VirtualInputDevice::kMaxTouchContacts && captures_[cid].is_captured) {
+                target_pid = captures_[cid].owner_pid;
+                target_wid = captures_[cid].window_id;
+            }
+            break;
+        }
+
+        case InputEventType::TouchEnd:
+        case InputEventType::TouchCancel: {
+            std::uint32_t cid = event.touch.contact_id;
+            if (cid < VirtualInputDevice::kMaxTouchContacts && captures_[cid].is_captured) {
+                target_pid = captures_[cid].owner_pid;
+                target_wid = captures_[cid].window_id;
+                captures_[cid].is_captured = false;
+                captures_[cid].owner_pid = 0;
+                captures_[cid].window_id = 0;
+            }
+            break;
+        }
+
+        case InputEventType::MouseMove: {
+            if (mouse_capture_.is_captured) {
+                target_pid = mouse_capture_.owner_pid;
+                target_wid = mouse_capture_.window_id;
+            } else {
+                std::uint32_t px = static_cast<std::uint32_t>(std::max(0, event.mouse.x));
+                std::uint32_t py = static_cast<std::uint32_t>(std::max(0, event.mouse.y));
+                std::shared_ptr<graphics::Window> win = nullptr;
+                if (window_mgr_) {
+                    win = window_mgr_->hit_test(px, py);
+                }
+                if (win) {
+                    target_pid = win->owner_pid;
+                    target_wid = win->id;
+                } else if (window_mgr_) {
+                    target_pid = window_mgr_->focused_pid();
+                    target_wid = window_mgr_->focused_window_id();
+                    if (target_pid == 0) target_pid = 1;
+                } else {
+                    target_pid = 1;
+                }
+            }
+            break;
+        }
+
+        case InputEventType::MouseDown: {
+            std::uint32_t px = static_cast<std::uint32_t>(std::max(0, event.mouse.x));
+            std::uint32_t py = static_cast<std::uint32_t>(std::max(0, event.mouse.y));
             std::shared_ptr<graphics::Window> win = nullptr;
             if (window_mgr_) {
                 win = window_mgr_->hit_test(px, py);
             }
-
             if (win) {
                 target_pid = win->owner_pid;
                 target_wid = win->id;
-                captures_[cid].is_captured = true;
-                captures_[cid].owner_pid = target_pid;
-                captures_[cid].window_id = target_wid;
+                mouse_capture_.is_captured = true;
+                mouse_capture_.owner_pid = target_pid;
+                mouse_capture_.window_id = target_wid;
+                mouse_capture_.button = event.mouse.button;
 
-                // Bring clicked window to focus
                 window_mgr_->set_focus(target_wid);
             } else {
-                // Background tap: route to PID 1 (Shell/System) if available
                 target_pid = 1;
                 target_wid = 0;
-                captures_[cid].is_captured = true;
-                captures_[cid].owner_pid = target_pid;
-                captures_[cid].window_id = 0;
+                mouse_capture_.is_captured = true;
+                mouse_capture_.owner_pid = target_pid;
+                mouse_capture_.window_id = 0;
+                mouse_capture_.button = event.mouse.button;
             }
+            break;
         }
-        break;
-    }
 
-    case InputEventType::TouchMove: {
-        std::uint32_t cid = event.touch.contact_id;
-        if (cid < VirtualInputDevice::kMaxTouchContacts && captures_[cid].is_captured) {
-            target_pid = captures_[cid].owner_pid;
-            target_wid = captures_[cid].window_id;
+        case InputEventType::MouseUp: {
+            if (mouse_capture_.is_captured) {
+                target_pid = mouse_capture_.owner_pid;
+                target_wid = mouse_capture_.window_id;
+                mouse_capture_.is_captured = false;
+                mouse_capture_.owner_pid = 0;
+                mouse_capture_.window_id = 0;
+                mouse_capture_.button = MouseButton::None;
+            } else {
+                std::uint32_t px = static_cast<std::uint32_t>(std::max(0, event.mouse.x));
+                std::uint32_t py = static_cast<std::uint32_t>(std::max(0, event.mouse.y));
+                std::shared_ptr<graphics::Window> win = nullptr;
+                if (window_mgr_) {
+                    win = window_mgr_->hit_test(px, py);
+                }
+                if (win) {
+                    target_pid = win->owner_pid;
+                    target_wid = win->id;
+                } else {
+                    target_pid = 1;
+                }
+            }
+            break;
         }
-        break;
-    }
 
-    case InputEventType::TouchEnd:
-    case InputEventType::TouchCancel: {
-        std::uint32_t cid = event.touch.contact_id;
-        if (cid < VirtualInputDevice::kMaxTouchContacts && captures_[cid].is_captured) {
-            target_pid = captures_[cid].owner_pid;
-            target_wid = captures_[cid].window_id;
-            captures_[cid].is_captured = false;
-            captures_[cid].owner_pid = 0;
-            captures_[cid].window_id = 0;
+        case InputEventType::MouseWheel: {
+            std::uint32_t px = static_cast<std::uint32_t>(std::max(0, event.mouse.x));
+            std::uint32_t py = static_cast<std::uint32_t>(std::max(0, event.mouse.y));
+            std::shared_ptr<graphics::Window> win = nullptr;
+            if (window_mgr_) {
+                win = window_mgr_->hit_test(px, py);
+            }
+            if (win) {
+                target_pid = win->owner_pid;
+                target_wid = win->id;
+            } else if (window_mgr_) {
+                target_pid = window_mgr_->focused_pid();
+                target_wid = window_mgr_->focused_window_id();
+                if (target_pid == 0) target_pid = 1;
+            } else {
+                target_pid = 1;
+            }
+            break;
         }
-        break;
-    }
 
-    case InputEventType::KeyPress:
-    case InputEventType::KeyRelease:
-    case InputEventType::ButtonHome:
-    case InputEventType::ButtonLock: {
-        if (window_mgr_) {
-            target_wid = window_mgr_->focused_window_id();
-            target_pid = window_mgr_->focused_pid();
+        case InputEventType::KeyPress:
+        case InputEventType::KeyRelease:
+        case InputEventType::CharInput:
+        case InputEventType::ButtonHome:
+        case InputEventType::ButtonLock: {
+            if (window_mgr_) {
+                target_wid = window_mgr_->focused_window_id();
+                target_pid = window_mgr_->focused_pid();
+            }
+            if (target_pid == 0) {
+                target_pid = 1; // Default to Shell/PID 1
+            }
+            break;
         }
-        if (target_pid == 0) {
-            target_pid = 1; // Default to Shell/PID 1
+
+        case InputEventType::WindowFocus:
+        case InputEventType::WindowBlur: {
+            if (window_mgr_) {
+                target_wid = window_mgr_->focused_window_id();
+                target_pid = window_mgr_->focused_pid();
+            }
+            if (target_pid == 0) {
+                target_pid = 1;
+            }
+            break;
         }
-        break;
-    }
+        }
     }
 
     if (target_pid == 0) {
-        return false; // No routing target
+        kernel::GuestTraceLogger::instance().log_input_provenance(routed, InputDeliveryStatus::RejectedNoTargetWindow);
+        return false;
+    }
+
+    // Verify window still exists if target_wid > 0
+    if (target_wid > 0 && window_mgr_) {
+        auto win = window_mgr_->get_window(target_wid);
+        if (!win) {
+            kernel::GuestTraceLogger::instance().log_input_provenance(routed, InputDeliveryStatus::RejectedWindowDestroyed);
+            return false;
+        }
     }
 
     routed.target_pid = target_pid;
@@ -122,8 +255,13 @@ bool InputRouter::route_event(const InputEvent& event) {
     if (!q) {
         q = std::make_shared<TouchEventQueue>();
     }
-    q->push(routed);
+    const bool pushed = q->push(routed);
+    if (!pushed) {
+        kernel::GuestTraceLogger::instance().log_input_provenance(routed, InputDeliveryStatus::DroppedQueueFull);
+        return false;
+    }
 
+    kernel::GuestTraceLogger::instance().log_input_provenance(routed, InputDeliveryStatus::Delivered);
     total_routed_++;
     return true;
 }
@@ -135,6 +273,29 @@ bool InputRouter::poll_event(std::uint32_t caller_pid, InputEvent& out_event) {
         return false;
     }
     return it->second->pop(out_event);
+}
+
+bool InputRouter::is_mouse_captured() const noexcept {
+    std::lock_guard<std::mutex> guard(lock_);
+    return mouse_capture_.is_captured;
+}
+
+std::uint32_t InputRouter::mouse_captured_window_id() const noexcept {
+    std::lock_guard<std::mutex> guard(lock_);
+    return mouse_capture_.window_id;
+}
+
+std::uint32_t InputRouter::mouse_captured_pid() const noexcept {
+    std::lock_guard<std::mutex> guard(lock_);
+    return mouse_capture_.owner_pid;
+}
+
+void InputRouter::release_mouse_capture() {
+    std::lock_guard<std::mutex> guard(lock_);
+    mouse_capture_.is_captured = false;
+    mouse_capture_.owner_pid = 0;
+    mouse_capture_.window_id = 0;
+    mouse_capture_.button = MouseButton::None;
 }
 
 void InputRouter::on_window_destroyed(std::uint32_t window_id) {
@@ -158,6 +319,13 @@ void InputRouter::on_window_destroyed(std::uint32_t window_id) {
             captures_[i].window_id = 0;
         }
     }
+
+    if (mouse_capture_.is_captured && mouse_capture_.window_id == window_id) {
+        mouse_capture_.is_captured = false;
+        mouse_capture_.owner_pid = 0;
+        mouse_capture_.window_id = 0;
+        mouse_capture_.button = MouseButton::None;
+    }
 }
 
 void InputRouter::on_process_terminated(std::uint32_t pid) {
@@ -169,6 +337,14 @@ void InputRouter::on_process_terminated(std::uint32_t pid) {
             captures_[i].window_id = 0;
         }
     }
+
+    if (mouse_capture_.is_captured && mouse_capture_.owner_pid == pid) {
+        mouse_capture_.is_captured = false;
+        mouse_capture_.owner_pid = 0;
+        mouse_capture_.window_id = 0;
+        mouse_capture_.button = MouseButton::None;
+    }
+
     process_queues_.erase(pid);
 }
 

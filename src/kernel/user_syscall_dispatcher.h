@@ -24,6 +24,10 @@ namespace winios::input {
 class InputRouter;
 }
 
+namespace winios::runtime {
+class GuestEventServices;
+}
+
 namespace winios::kernel {
 
 // Pinned Darwin/XNU Syscall Numbers (xnu-10002.1.13 bsd/sys/syscall.h)
@@ -45,18 +49,24 @@ inline constexpr std::uint64_t kSysFstat64    = 338;
 inline constexpr std::uint64_t kSysStat64     = 339;
 
 // WinIOS Category C Display and Window System Calls
-inline constexpr std::uint32_t kWiniosCategoryCAbiVersion = 0x00010000; // v1.0
-inline constexpr std::uint64_t kSysWiniosWindowCreate    = 500;
-inline constexpr std::uint64_t kSysWiniosWindowDestroy   = 501;
-inline constexpr std::uint64_t kSysWiniosSurfaceUpdate   = 502;
-inline constexpr std::uint64_t kSysWiniosSurfacePresent  = 503;
-inline constexpr std::uint64_t kSysWiniosPollEvent       = 504;
-inline constexpr std::uint64_t kSysWiniosSurfaceFill     = 505;
-inline constexpr std::uint64_t kSysWiniosSetWindowTitle  = 506;
-inline constexpr std::uint64_t kSysWiniosGetAbiVersion   = 507;
+inline constexpr std::uint32_t kWiniosCategoryCAbiVersion = 0x00010100; // v1.1
+inline constexpr std::uint64_t kSysWiniosWindowCreate      = 500;
+inline constexpr std::uint64_t kSysWiniosWindowDestroy     = 501;
+inline constexpr std::uint64_t kSysWiniosSurfaceUpdate     = 502;
+inline constexpr std::uint64_t kSysWiniosSurfacePresent    = 503;
+inline constexpr std::uint64_t kSysWiniosPollEvent         = 504;
+inline constexpr std::uint64_t kSysWiniosSurfaceFill       = 505;
+inline constexpr std::uint64_t kSysWiniosSetWindowTitle    = 506;
+inline constexpr std::uint64_t kSysWiniosGetAbiVersion     = 507;
+// Category C ABI v1.1 Extensions
+inline constexpr std::uint64_t kSysWiniosWindowGetGeometry = 508;
+inline constexpr std::uint64_t kSysWiniosWindowSetGeometry = 509;
+inline constexpr std::uint64_t kSysWiniosWindowSetFocus    = 510;
+inline constexpr std::uint64_t kSysWiniosWindowList        = 511;
+inline constexpr std::uint64_t kSysWiniosCreateTimer       = 512;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
-    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosGetAbiVersion;
+    return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosCreateTimer;
 }
 
 // Pinned Darwin/XNU Errno Numbers (xnu-10002.1.13 bsd/sys/errno.h)
@@ -136,6 +146,9 @@ public:
     void set_input_router(input::InputRouter* router) noexcept { input_router_ = router; }
     [[nodiscard]] input::InputRouter* input_router() noexcept { return input_router_; }
 
+    void set_event_services(runtime::GuestEventServices* ev) noexcept { event_services_ = ev; }
+    [[nodiscard]] runtime::GuestEventServices* event_services() noexcept { return event_services_; }
+
     // Dispatches a system call invoked by an EL0 thread
     bool handle_syscall(CPU& cpu,
                         BsdProcess& proc,
@@ -159,6 +172,7 @@ private:
     graphics::SurfaceResourceManager* surface_mgr_{nullptr};
     graphics::Compositor* compositor_{nullptr};
     input::InputRouter* input_router_{nullptr};
+    runtime::GuestEventServices* event_services_{nullptr};
 };
 
 } // namespace winios::kernel

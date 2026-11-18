@@ -43,6 +43,25 @@ struct Rect {
     [[nodiscard]] bool contains(std::uint32_t px, std::uint32_t py) const noexcept {
         return px >= x && px < (x + width) && py >= y && py < (y + height);
     }
+
+    [[nodiscard]] Rect union_with(const Rect& o) const noexcept {
+        if (empty()) return o;
+        if (o.empty()) return *this;
+        std::uint32_t x0 = std::min(x, o.x);
+        std::uint32_t y0 = std::min(y, o.y);
+        std::uint32_t x1 = std::max(x + width, o.x + o.width);
+        std::uint32_t y1 = std::max(y + height, o.y + o.height);
+        return Rect{x0, y0, x1 - x0, y1 - y0};
+    }
+
+    [[nodiscard]] Rect intersect_with(const Rect& o) const noexcept {
+        std::uint32_t x0 = std::max(x, o.x);
+        std::uint32_t y0 = std::max(y, o.y);
+        std::uint32_t x1 = std::min(x + width, o.x + o.width);
+        std::uint32_t y1 = std::min(y + height, o.y + o.height);
+        if (x0 >= x1 || y0 >= y1) return Rect{0, 0, 0, 0};
+        return Rect{x0, y0, x1 - x0, y1 - y0};
+    }
 };
 
 // -----------------------------------------------------------------------------

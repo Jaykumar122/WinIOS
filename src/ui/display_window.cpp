@@ -6,6 +6,9 @@
 #include <fstream>
 #include <iostream>
 
+#include "input/input_provenance.h"
+#include "kernel/guest_trace_logger.h"
+
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -55,45 +58,117 @@ LRESULT CALLBACK DisplayWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
         return 0;
     }
 
+    case WM_SETFOCUS: {
+        if (win) {
+            win->set_focused(true);
+        }
+        return 0;
+    }
+
+    case WM_KILLFOCUS: {
+        if (win) {
+            win->set_focused(false);
+        }
+        return 0;
+    }
+
     case WM_KEYDOWN:
     case WM_KEYUP: {
         if (win) {
-            const bool is_down = (msg == WM_KEYDOWN);
-            win->inject_key(static_cast<std::uint32_t>(wParam), is_down);
+            const bool is_injected = (InSendMessage() != 0);
+            win->on_win32_key(static_cast<std::uint64_t>(wParam), static_cast<std::uint64_t>(lParam), is_injected);
         }
         return 0;
     }
 
     case WM_CHAR: {
         if (win) {
-            win->inject_char(static_cast<char32_t>(wParam));
+            const bool is_injected = (InSendMessage() != 0);
+            win->on_win32_char(static_cast<std::uint64_t>(wParam), static_cast<std::uint64_t>(lParam), is_injected);
+        }
+        return 0;
+    }
+
+    case WM_MOUSEMOVE: {
+        if (win) {
+            const int cx = GET_X_LPARAM(lParam);
+            const int cy = GET_Y_LPARAM(lParam);
+            POINT pt = { cx, cy };
+            ClientToScreen(hwnd, &pt);
+            const bool is_injected = (InSendMessage() != 0);
+
+            TRACKMOUSEEVENT tme{};
+            tme.cbSize = sizeof(TRACKMOUSEEVENT);
+            tme.dwFlags = TME_LEAVE;
+            tme.hwndTrack = hwnd;
+            TrackMouseEvent(&tme);
+
+            win->on_win32_mouse_move(cx, cy, pt.x, pt.y, static_cast<std::uint64_t>(wParam), is_injected);
         }
         return 0;
     }
 
     case WM_LBUTTONDOWN:
-    case WM_MOUSEMOVE:
-    case WM_LBUTTONUP: {
+    case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP: {
         if (win) {
-            const bool is_down = (msg != WM_LBUTTONUP) && ((wParam & MK_LBUTTON) != 0);
-            if (msg == WM_MOUSEMOVE && !is_down) break;
-
             const int cx = GET_X_LPARAM(lParam);
             const int cy = GET_Y_LPARAM(lParam);
+            POINT pt = { cx, cy };
+            ClientToScreen(hwnd, &pt);
+            const bool is_injected = (InSendMessage() != 0);
 
-            RECT rc;
-            GetClientRect(hwnd, &rc);
-            const int cw = std::max(1, static_cast<int>(rc.right - rc.left));
-            const int ch = std::max(1, static_cast<int>(rc.bottom - rc.top));
+            input::MouseButton btn = input::MouseButton::Left;
+            bool is_down = false;
+            if (msg == WM_LBUTTONDOWN) {
+                btn = input::MouseButton::Left;
+                is_down = true;
+                SetCapture(hwnd);
+                win->set_mouse_capture(true);
+            } else if (msg == WM_LBUTTONUP) {
+                btn = input::MouseButton::Left;
+                is_down = false;
+                ReleaseCapture();
+                win->set_mouse_capture(false);
+            } else if (msg == WM_RBUTTONDOWN) {
+                btn = input::MouseButton::Right;
+                is_down = true;
+            } else if (msg == WM_RBUTTONUP) {
+                btn = input::MouseButton::Right;
+                is_down = false;
+            } else if (msg == WM_MBUTTONDOWN) {
+                btn = input::MouseButton::Middle;
+                is_down = true;
+            } else if (msg == WM_MBUTTONUP) {
+                btn = input::MouseButton::Middle;
+                is_down = false;
+            }
 
-            const auto tx = static_cast<std::uint32_t>(
-                std::clamp(cx * static_cast<int>(win->config().native_width) / cw,
-                           0, static_cast<int>(win->config().native_width - 1)));
-            const auto ty = static_cast<std::uint32_t>(
-                std::clamp(cy * static_cast<int>(win->config().native_height) / ch,
-                           0, static_cast<int>(win->config().native_height - 1)));
+            win->on_win32_mouse_button(btn, is_down, cx, cy, pt.x, pt.y, static_cast<std::uint64_t>(wParam), is_injected);
+        }
+        return 0;
+    }
 
-            win->inject_touch(tx, ty, is_down);
+    case WM_MOUSEWHEEL: {
+        if (win) {
+            const int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            const int sx = GET_X_LPARAM(lParam);
+            const int sy = GET_Y_LPARAM(lParam);
+            POINT pt = { sx, sy };
+            ScreenToClient(hwnd, &pt);
+            const bool is_injected = (InSendMessage() != 0);
+
+            win->on_win32_mouse_wheel(delta, pt.x, pt.y, sx, sy, static_cast<std::uint64_t>(wParam), is_injected);
+        }
+        return 0;
+    }
+
+    case WM_MOUSELEAVE: {
+        if (win) {
+            win->on_win32_mouse_leave();
         }
         return 0;
     }
@@ -426,6 +501,330 @@ void DisplayWindow::inject_char(char32_t ch) {
     if (cb) {
         cb(ch);
     }
+}
+
+void DisplayWindow::set_focused(bool focused) {
+    bool changed = false;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
+        if (is_focused_ != focused) {
+            is_focused_ = focused;
+            changed = true;
+        }
+    }
+    if (changed) {
+        input::InputEvent ev{};
+        ev.type = focused ? input::InputEventType::WindowFocus : input::InputEventType::WindowBlur;
+        ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+        ev.provenance = input::InputProvenance::SyntheticHostEvent;
+        ev.win32_msg_id = focused ? 0x0007 : 0x0008; // WM_SETFOCUS : WM_KILLFOCUS
+        if (input_queue_) {
+            input_queue_->push(ev);
+        }
+        if (event_callback_) {
+            event_callback_(ev);
+        }
+    }
+}
+
+void DisplayWindow::set_mouse_capture(bool capture) {
+    std::lock_guard<std::mutex> lock(lock_);
+    has_mouse_capture_ = capture;
+}
+
+void DisplayWindow::inject_mouse_move(std::int32_t x, std::int32_t y, input::InputProvenance provenance) {
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::MouseMove;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = provenance;
+    ev.win32_msg_id = 0x0200; // WM_MOUSEMOVE
+    ev.mouse.x = x;
+    ev.mouse.y = y;
+    ev.mouse.client_x = x;
+    ev.mouse.client_y = y;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+}
+
+void DisplayWindow::inject_mouse_button(input::MouseButton btn, bool is_down, std::int32_t x, std::int32_t y, input::InputProvenance provenance) {
+    input::InputEvent ev{};
+    ev.type = is_down ? input::InputEventType::MouseDown : input::InputEventType::MouseUp;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = provenance;
+    ev.win32_msg_id = is_down ? (btn == input::MouseButton::Left ? 0x0201 : 0x0204)
+                              : (btn == input::MouseButton::Left ? 0x0202 : 0x0205);
+    ev.mouse.button = btn;
+    ev.mouse.x = x;
+    ev.mouse.y = y;
+    ev.mouse.client_x = x;
+    ev.mouse.client_y = y;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+
+    if (btn == input::MouseButton::Left) {
+        inject_touch(static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)), is_down);
+    }
+}
+
+void DisplayWindow::inject_mouse_wheel(std::int32_t delta, std::int32_t x, std::int32_t y, input::InputProvenance provenance) {
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::MouseWheel;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = provenance;
+    ev.win32_msg_id = 0x020A; // WM_MOUSEWHEEL
+    ev.mouse.wheel_delta = delta;
+    ev.mouse.x = x;
+    ev.mouse.y = y;
+    ev.mouse.client_x = x;
+    ev.mouse.client_y = y;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+}
+
+void DisplayWindow::inject_key_event(std::uint32_t key_code, bool is_down, bool is_repeat, std::uint32_t modifiers, input::InputProvenance provenance) {
+    input::InputEvent ev{};
+    ev.type = is_down ? input::InputEventType::KeyPress : input::InputEventType::KeyRelease;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = provenance;
+    ev.win32_msg_id = is_down ? 0x0100 : 0x0101; // WM_KEYDOWN : WM_KEYUP
+    ev.keyboard.virtual_key = key_code;
+    ev.keyboard.is_down = is_down;
+    ev.keyboard.is_repeat = is_repeat;
+    ev.keyboard.modifiers = modifiers;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+
+    inject_key(key_code, is_down);
+}
+
+void DisplayWindow::inject_char_event(char32_t ch, input::InputProvenance provenance) {
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::CharInput;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = provenance;
+    ev.win32_msg_id = 0x0102; // WM_CHAR
+    ev.keyboard.char_code = ch;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+
+    inject_char(ch);
+}
+
+void DisplayWindow::on_win32_mouse_move(int cx, int cy, int sx, int sy, std::uint64_t wparam, bool is_injected) {
+    (void)wparam;
+    const std::uint32_t cw = std::max(1u, window_width_);
+    const std::uint32_t ch = std::max(1u, window_height_);
+    const auto gx = static_cast<std::int32_t>(std::clamp(cx * static_cast<int>(config_.native_width) / static_cast<int>(cw),
+                                                          0, static_cast<int>(config_.native_width - 1)));
+    const auto gy = static_cast<std::int32_t>(std::clamp(cy * static_cast<int>(config_.native_height) / static_cast<int>(ch),
+                                                          0, static_cast<int>(config_.native_height - 1)));
+
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::MouseMove;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = is_injected ? input::InputProvenance::WindowsMessageInjected : input::InputProvenance::PhysicalWindowsInput;
+    ev.win32_msg_id = 0x0200; // WM_MOUSEMOVE
+    ev.mouse.x = gx;
+    ev.mouse.y = gy;
+    ev.mouse.screen_x = sx;
+    ev.mouse.screen_y = sy;
+    ev.mouse.client_x = cx;
+    ev.mouse.client_y = cy;
+    ev.mouse.button = input::MouseButton::None;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+}
+
+void DisplayWindow::on_win32_mouse_button(input::MouseButton btn, bool is_down, int cx, int cy, int sx, int sy, std::uint64_t wparam, bool is_injected) {
+    (void)wparam;
+    const std::uint32_t cw = std::max(1u, window_width_);
+    const std::uint32_t ch = std::max(1u, window_height_);
+    const auto gx = static_cast<std::int32_t>(std::clamp(cx * static_cast<int>(config_.native_width) / static_cast<int>(cw),
+                                                          0, static_cast<int>(config_.native_width - 1)));
+    const auto gy = static_cast<std::int32_t>(std::clamp(cy * static_cast<int>(config_.native_height) / static_cast<int>(ch),
+                                                          0, static_cast<int>(config_.native_height - 1)));
+
+    input::InputEvent ev{};
+    ev.type = is_down ? input::InputEventType::MouseDown : input::InputEventType::MouseUp;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = is_injected ? input::InputProvenance::WindowsMessageInjected : input::InputProvenance::PhysicalWindowsInput;
+    ev.win32_msg_id = is_down ? (btn == input::MouseButton::Left ? 0x0201 : (btn == input::MouseButton::Right ? 0x0204 : 0x0207))
+                              : (btn == input::MouseButton::Left ? 0x0202 : (btn == input::MouseButton::Right ? 0x0205 : 0x0208));
+    ev.mouse.x = gx;
+    ev.mouse.y = gy;
+    ev.mouse.screen_x = sx;
+    ev.mouse.screen_y = sy;
+    ev.mouse.client_x = cx;
+    ev.mouse.client_y = cy;
+    ev.mouse.button = btn;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+
+    if (btn == input::MouseButton::Left) {
+        inject_touch(static_cast<std::uint32_t>(std::max(0, gx)), static_cast<std::uint32_t>(std::max(0, gy)), is_down);
+    }
+}
+
+void DisplayWindow::on_win32_mouse_wheel(int delta, int cx, int cy, int sx, int sy, std::uint64_t wparam, bool is_injected) {
+    (void)wparam;
+    const std::uint32_t cw = std::max(1u, window_width_);
+    const std::uint32_t ch = std::max(1u, window_height_);
+    const auto gx = static_cast<std::int32_t>(std::clamp(cx * static_cast<int>(config_.native_width) / static_cast<int>(cw),
+                                                          0, static_cast<int>(config_.native_width - 1)));
+    const auto gy = static_cast<std::int32_t>(std::clamp(cy * static_cast<int>(config_.native_height) / static_cast<int>(ch),
+                                                          0, static_cast<int>(config_.native_height - 1)));
+
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::MouseWheel;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = is_injected ? input::InputProvenance::WindowsMessageInjected : input::InputProvenance::PhysicalWindowsInput;
+    ev.win32_msg_id = 0x020A; // WM_MOUSEWHEEL
+    ev.mouse.x = gx;
+    ev.mouse.y = gy;
+    ev.mouse.screen_x = sx;
+    ev.mouse.screen_y = sy;
+    ev.mouse.client_x = cx;
+    ev.mouse.client_y = cy;
+    ev.mouse.wheel_delta = delta;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+}
+
+void DisplayWindow::on_win32_mouse_leave() {
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::WindowBlur;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = input::InputProvenance::SyntheticHostEvent;
+    ev.win32_msg_id = 0x02A3; // WM_MOUSELEAVE
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+}
+
+void DisplayWindow::on_win32_key(std::uint64_t wparam, std::uint64_t lparam, bool is_injected) {
+    const bool is_down = ((lparam & (1ULL << 31)) == 0);
+    const bool is_repeat = is_down && ((lparam & (1ULL << 30)) != 0);
+    std::uint32_t modifiers = 0;
+#ifdef _WIN32
+    if (GetKeyState(VK_SHIFT) & 0x8000) modifiers |= 1;
+    if (GetKeyState(VK_CONTROL) & 0x8000) modifiers |= 2;
+    if (GetKeyState(VK_MENU) & 0x8000) modifiers |= 4;
+#endif
+
+    input::InputEvent ev{};
+    ev.type = is_down ? input::InputEventType::KeyPress : input::InputEventType::KeyRelease;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = is_injected ? input::InputProvenance::WindowsMessageInjected : input::InputProvenance::PhysicalWindowsInput;
+    ev.win32_msg_id = is_down ? 0x0100 : 0x0101; // WM_KEYDOWN : WM_KEYUP
+    ev.keyboard.virtual_key = static_cast<std::uint32_t>(wparam);
+    ev.keyboard.is_down = is_down;
+    ev.keyboard.is_repeat = is_repeat;
+    ev.keyboard.modifiers = modifiers;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+
+    inject_key(static_cast<std::uint32_t>(wparam), is_down);
+}
+
+void DisplayWindow::on_win32_char(std::uint64_t wparam, std::uint64_t lparam, bool is_injected) {
+    (void)lparam;
+    const auto ch = static_cast<char32_t>(wparam);
+
+    input::InputEvent ev{};
+    ev.type = input::InputEventType::CharInput;
+    ev.timestamp_us = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.provenance = is_injected ? input::InputProvenance::WindowsMessageInjected : input::InputProvenance::PhysicalWindowsInput;
+    ev.win32_msg_id = 0x0102; // WM_CHAR
+    ev.keyboard.char_code = ch;
+
+    kernel::GuestTraceLogger::instance().log_input_provenance(ev, input::InputDeliveryStatus::Delivered);
+
+    if (input_queue_) {
+        input_queue_->push(ev);
+    }
+    if (event_callback_) {
+        event_callback_(ev);
+    }
+
+    inject_char(ch);
 }
 
 bool DisplayWindow::capture_client_area_bmp(const std::string& path) const {

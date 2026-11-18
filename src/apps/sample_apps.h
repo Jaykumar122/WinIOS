@@ -106,8 +106,65 @@ private:
     std::string buffer_;
 };
 
+// -----------------------------------------------------------------------------
+// Interactive Multi-Window Editor Application (com.winios.multieditor)
+// -----------------------------------------------------------------------------
+class MultiWindowEditorApp {
+public:
+    MultiWindowEditorApp(std::uint32_t pid,
+                         std::shared_ptr<graphics::WindowManager> win_mgr,
+                         std::shared_ptr<graphics::SurfaceResourceManager> surf_mgr,
+                         std::shared_ptr<storage::IsolatedStorage> storage);
+    ~MultiWindowEditorApp();
+
+    bool launch();
+    void terminate();
+
+    // Interaction with Primary Editor
+    void handle_char(char32_t ch);
+    void handle_backspace();
+
+    // Interaction with Tool Palette
+    void select_tool(int tool_id);
+    bool handle_palette_tap(std::int32_t x, std::int32_t y);
+
+    // Document persistence
+    void save_document();
+    void load_document();
+
+    // Rendering
+    void render_editor();
+    void render_palette();
+    void render();
+
+    [[nodiscard]] std::string content() const { return buffer_; }
+    [[nodiscard]] int current_tool() const noexcept { return current_tool_; }
+    [[nodiscard]] std::uint32_t primary_window_id() const noexcept { return primary_wid_; }
+    [[nodiscard]] std::uint32_t palette_window_id() const noexcept { return palette_wid_; }
+    [[nodiscard]] bool is_running() const noexcept { return is_running_; }
+
+    [[nodiscard]] std::shared_ptr<graphics::DisplaySurface> primary_surface() const noexcept { return primary_surf_; }
+    [[nodiscard]] std::shared_ptr<graphics::DisplaySurface> palette_surface() const noexcept { return palette_surf_; }
+
+private:
+    std::uint32_t                                     pid_{4};
+    std::shared_ptr<graphics::WindowManager>          win_mgr_;
+    std::shared_ptr<graphics::SurfaceResourceManager> surf_mgr_;
+    std::shared_ptr<storage::IsolatedStorage>         storage_;
+
+    std::uint32_t                                     primary_wid_{0};
+    std::shared_ptr<graphics::DisplaySurface>         primary_surf_{nullptr};
+    std::uint32_t                                     palette_wid_{0};
+    std::shared_ptr<graphics::DisplaySurface>         palette_surf_{nullptr};
+    bool                                              is_running_{false};
+
+    std::string buffer_;
+    int         current_tool_{0}; // 0 = Pen, 1 = Eraser, 2 = Clear, 3 = Save
+};
+
 // Package generation utilities
 packaging::AppPackage create_calculator_package();
 packaging::AppPackage create_text_editor_package();
+packaging::AppPackage create_multi_window_editor_package();
 
 } // namespace winios::apps

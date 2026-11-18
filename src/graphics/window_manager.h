@@ -13,7 +13,7 @@
 namespace winios::graphics {
 
 // -----------------------------------------------------------------------------
-// Window Lifecycle States
+// Window Lifecycle States & Non-Client Zones
 // -----------------------------------------------------------------------------
 enum class WindowState : std::uint8_t {
     Normal = 0,
@@ -22,10 +22,26 @@ enum class WindowState : std::uint8_t {
     Closed = 3
 };
 
+enum class NonClientZone : std::uint8_t {
+    None           = 0,
+    Client         = 1,
+    TitleBar       = 2,
+    CloseButton    = 3,
+    MinimizeButton = 4,
+    MaximizeButton = 5,
+    Border         = 6
+};
+
 // -----------------------------------------------------------------------------
 // Window Metadata Structure
 // -----------------------------------------------------------------------------
 struct Window {
+    static constexpr std::uint32_t  kTitleBarHeight = 28;
+    static constexpr std::uint32_t  kBorderWidth = 1;
+    static constexpr std::uint32_t  kButtonWidth = 18;
+    static constexpr std::uint32_t  kButtonHeight = 18;
+    static constexpr std::uint32_t  kButtonMargin = 6;
+
     std::uint32_t                   id{0};
     std::uint32_t                   owner_pid{0};
     std::string                     title;
@@ -33,6 +49,13 @@ struct Window {
     std::int32_t                    z_order{0};
     WindowState                     state{WindowState::Normal};
     bool                            is_focused{false};
+    bool                            always_on_top{false};
+    std::uint32_t                   min_width{100};
+    std::uint32_t                   min_height{80};
+    std::uint32_t                   max_width{3840};
+    std::uint32_t                   max_height{2160};
+    bool                            is_dirty{true};
+    Rect                            dirty_rect{0, 0, 0, 0};
     std::shared_ptr<DisplaySurface> surface;
 
     [[nodiscard]] bool can_access(std::uint32_t caller_pid) const noexcept {
@@ -41,6 +64,20 @@ struct Window {
 
     [[nodiscard]] bool is_visible() const noexcept {
         return state == WindowState::Normal && surface && surface->is_visible();
+    }
+
+    [[nodiscard]] bool is_minimized() const noexcept {
+        return state == WindowState::Minimized;
+    }
+
+    [[nodiscard]] Rect client_frame() const noexcept {
+        const std::uint32_t bw = kBorderWidth;
+        const std::uint32_t tbh = kTitleBarHeight;
+        const std::uint32_t cx = frame.x + bw;
+        const std::uint32_t cy = frame.y + tbh;
+        const std::uint32_t cw = (frame.width > (bw * 2)) ? (frame.width - (bw * 2)) : 0;
+        const std::uint32_t ch = (frame.height > (tbh + bw)) ? (frame.height - (tbh + bw)) : 0;
+        return Rect{cx, cy, cw, ch};
     }
 };
 
@@ -73,6 +110,24 @@ public:
     bool set_window_state(std::uint32_t caller_pid, std::uint32_t window_id, WindowState state);
     bool set_window_frame(std::uint32_t caller_pid, std::uint32_t window_id, const Rect& frame);
     bool set_window_z_order(std::uint32_t caller_pid, std::uint32_t window_id, std::int32_t z);
+
+    // Stacking & Z-Order Management
+    bool raise_to_top(std::uint32_t window_id);
+    bool lower_to_bottom(std::uint32_t window_id);
+    bool set_always_on_top(std::uint32_t caller_pid, std::uint32_t window_id, bool on_top);
+
+    // Window Movement & Resizing
+    bool move_window(std::uint32_t caller_pid, std::uint32_t window_id, std::int32_t dx, std::int32_t dy);
+    bool resize_window(std::uint32_t caller_pid, std::uint32_t window_id, std::uint32_t new_width, std::uint32_t new_height);
+
+    // Non-Client Zone Hit-Testing
+    [[nodiscard]] NonClientZone hit_test_non_client(std::uint32_t window_id, std::uint32_t px, std::uint32_t py) const;
+
+    // Damage Tracking
+    void mark_window_dirty(std::uint32_t window_id, const Rect& damage);
+    void clear_window_dirty(std::uint32_t window_id);
+    [[nodiscard]] bool is_window_dirty(std::uint32_t window_id) const;
+    [[nodiscard]] Rect get_window_dirty_rect(std::uint32_t window_id) const;
 
     // Window Queries
     [[nodiscard]] std::shared_ptr<Window> get_window(std::uint32_t window_id) const;

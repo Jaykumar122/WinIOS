@@ -7,6 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "input/input_provenance.h"
+#include "input/virtual_input_device.h"
+
 namespace winios::kernel {
 
 enum class ExecutionDomain : std::uint8_t {
@@ -54,10 +57,14 @@ struct SyscallTraceRecord {
 };
 
 struct InputTraceRecord {
+    std::uint64_t sequence{0};
     std::uint32_t pid{0};
     std::uint32_t tid{0};
     std::uint32_t event_type{0}; // 1=Down, 2=Up, 3=Move
     std::string input_origin{"Win32Host"}; // "Win32Mouse", "Win32Keyboard", "TouchDigitizer", "SyntheticInjected"
+    input::InputProvenance provenance{input::InputProvenance::PhysicalWindowsInput};
+    std::uint32_t win32_msg_id{0};
+    input::InputDeliveryStatus delivery_status{input::InputDeliveryStatus::Delivered};
     std::int32_t raw_x{0};
     std::int32_t raw_y{0};
     std::int32_t window_x{0};
@@ -122,7 +129,14 @@ public:
     // Input logging
     void log_input(std::uint32_t pid, std::uint32_t evt_type, std::int32_t rx, std::int32_t ry,
                    std::int32_t wx, std::int32_t wy, std::uint32_t wid, std::uint64_t timestamp,
-                   const std::string& origin = "Win32Host", std::uint32_t tid = 0);
+                   const std::string& origin = "Win32Host", std::uint32_t tid = 0,
+                   input::InputProvenance provenance = input::InputProvenance::PhysicalWindowsInput,
+                   std::uint32_t win32_msg_id = 0,
+                   input::InputDeliveryStatus delivery_status = input::InputDeliveryStatus::Delivered);
+
+    void log_input_provenance(const input::InputProvenanceTelemetry& telemetry);
+    void log_input_provenance(const input::InputEvent& event,
+                              input::InputDeliveryStatus status = input::InputDeliveryStatus::Delivered);
 
     // Framebuffer logging
     void log_framebuffer(std::uint32_t surf_id, std::uint32_t wid, std::uint32_t pid,
@@ -140,6 +154,7 @@ public:
     [[nodiscard]] const std::vector<InstructionTraceRecord>& instruction_records() const { return instructions_; }
     [[nodiscard]] const std::vector<SyscallTraceRecord>& syscall_records() const { return syscalls_; }
     [[nodiscard]] const std::vector<InputTraceRecord>& input_records() const { return inputs_; }
+    [[nodiscard]] const std::vector<input::InputProvenanceTelemetry>& input_provenance_records() const { return input_telemetry_; }
     [[nodiscard]] const std::vector<FramebufferTraceRecord>& framebuffer_records() const { return framebuffers_; }
     [[nodiscard]] const std::vector<BoundaryTransitionRecord>& boundary_records() const { return boundaries_; }
     [[nodiscard]] const std::vector<ResourceOwnershipRecord>& resource_records() const { return resources_; }
@@ -159,9 +174,11 @@ private:
     std::vector<InstructionTraceRecord> instructions_;
     std::vector<SyscallTraceRecord> syscalls_;
     std::vector<InputTraceRecord> inputs_;
+    std::vector<input::InputProvenanceTelemetry> input_telemetry_;
     std::vector<FramebufferTraceRecord> framebuffers_;
     std::vector<BoundaryTransitionRecord> boundaries_;
     std::vector<ResourceOwnershipRecord> resources_;
+    std::uint64_t input_sequence_{0};
     std::uint64_t fb_sequence_{0};
     std::uint64_t boundary_sequence_{0};
     std::uint64_t resource_sequence_{0};

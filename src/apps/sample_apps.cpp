@@ -297,6 +297,202 @@ void TextEditorApp::render() {
 }
 
 // =============================================================================
+// MultiWindowEditorApp Implementation
+// =============================================================================
+MultiWindowEditorApp::MultiWindowEditorApp(std::uint32_t pid,
+                                           std::shared_ptr<graphics::WindowManager> win_mgr,
+                                           std::shared_ptr<graphics::SurfaceResourceManager> surf_mgr,
+                                           std::shared_ptr<storage::IsolatedStorage> storage)
+    : pid_(pid)
+    , win_mgr_(std::move(win_mgr))
+    , surf_mgr_(std::move(surf_mgr))
+    , storage_(std::move(storage)) {}
+
+MultiWindowEditorApp::~MultiWindowEditorApp() {
+    terminate();
+}
+
+bool MultiWindowEditorApp::launch() {
+    if (is_running_) return true;
+    if (!win_mgr_ || !surf_mgr_) return false;
+
+    // Create Primary Editor Window Surface
+    const std::uint32_t ew = 450;
+    const std::uint32_t eh = 350;
+    auto res1 = surf_mgr_->create_surface(pid_, ew, eh, graphics::PixelFormat::B8G8R8A8_UNORM, primary_surf_);
+    if (res1 != graphics::SurfaceResultCode::Success || !primary_surf_) {
+        return false;
+    }
+
+    // Create Secondary Tool Palette Window Surface
+    const std::uint32_t pw = 180;
+    const std::uint32_t ph = 260;
+    auto res2 = surf_mgr_->create_surface(pid_, pw, ph, graphics::PixelFormat::B8G8R8A8_UNORM, palette_surf_);
+    if (res2 != graphics::SurfaceResultCode::Success || !palette_surf_) {
+        surf_mgr_->destroy_surface(pid_, primary_surf_->id());
+        primary_surf_ = nullptr;
+        return false;
+    }
+
+    primary_wid_ = win_mgr_->create_window(pid_, "Editor Document", {40, 80, ew, eh}, primary_surf_);
+    palette_wid_ = win_mgr_->create_window(pid_, "Tool Palette", {510, 80, pw, ph}, palette_surf_);
+
+    // Set Palette Window as Always-on-Top floating window
+    win_mgr_->set_always_on_top(pid_, palette_wid_, true);
+
+    is_running_ = true;
+    load_document();
+    render();
+    return true;
+}
+
+void MultiWindowEditorApp::terminate() {
+    if (!is_running_) return;
+    save_document();
+
+    if (palette_surf_ && surf_mgr_) {
+        surf_mgr_->destroy_surface(pid_, palette_surf_->id());
+        palette_surf_ = nullptr;
+    }
+    if (palette_wid_ != 0 && win_mgr_) {
+        win_mgr_->destroy_window(pid_, palette_wid_);
+        palette_wid_ = 0;
+    }
+
+    if (primary_surf_ && surf_mgr_) {
+        surf_mgr_->destroy_surface(pid_, primary_surf_->id());
+        primary_surf_ = nullptr;
+    }
+    if (primary_wid_ != 0 && win_mgr_) {
+        win_mgr_->destroy_window(pid_, primary_wid_);
+        primary_wid_ = 0;
+    }
+
+    is_running_ = false;
+}
+
+void MultiWindowEditorApp::handle_char(char32_t ch) {
+    if (current_tool_ == 0) { // Pen
+        if (ch >= 32 && ch <= 126) {
+            buffer_.push_back(static_cast<char>(ch));
+            render_editor();
+        }
+    } else if (current_tool_ == 1) { // Eraser
+        handle_backspace();
+    }
+}
+
+void MultiWindowEditorApp::handle_backspace() {
+    if (!buffer_.empty()) {
+        buffer_.pop_back();
+        render_editor();
+    }
+}
+
+void MultiWindowEditorApp::select_tool(int tool_id) {
+    current_tool_ = tool_id;
+    if (current_tool_ == 2) { // Clear
+        buffer_.clear();
+        render_editor();
+    } else if (current_tool_ == 3) { // Save
+        save_document();
+    }
+    render_palette();
+}
+
+bool MultiWindowEditorApp::handle_palette_tap(std::int32_t x, std::int32_t y) {
+    if (x < 15 || x > 165) return false;
+    if (y >= 40 && y < 80) {
+        select_tool(0); // Pen
+        return true;
+    } else if (y >= 90 && y < 130) {
+        select_tool(1); // Eraser
+        return true;
+    } else if (y >= 140 && y < 180) {
+        select_tool(2); // Clear
+        return true;
+    } else if (y >= 190 && y < 230) {
+        select_tool(3); // Save
+        return true;
+    }
+    return false;
+}
+
+void MultiWindowEditorApp::save_document() {
+    if (storage_) {
+        storage_->atomic_write("document.txt", buffer_.data(), buffer_.size());
+    }
+}
+
+void MultiWindowEditorApp::load_document() {
+    if (storage_) {
+        std::vector<std::uint8_t> data;
+        if (storage_->read("document.txt", data) == storage::StorageResult::Success) {
+            buffer_ = std::string(reinterpret_cast<const char*>(data.data()), data.size());
+        }
+    }
+}
+
+void MultiWindowEditorApp::render_editor() {
+    if (!primary_surf_) return;
+    auto* pix = primary_surf_->raw_data();
+    const std::uint32_t w = primary_surf_->width();
+    const std::uint32_t h = primary_surf_->height();
+    const std::uint32_t stride = w * 4;
+
+    primary_surf_->fill_rect(pid_, {0, 0, w, h}, 0xFF1E1E1E);
+
+    runtime::GuestUiRuntime::draw_string_8x8(
+        pix, w, h, stride, graphics::PixelFormat::B8G8R8A8_UNORM,
+        20, 20, "Document Editor", 0xFF64D2FF, 2);
+
+    primary_surf_->fill_rect(pid_, {20, 50, w - 40, h - 70}, 0xFF2A2A2C);
+
+    if (!buffer_.empty()) {
+        runtime::GuestUiRuntime::draw_string_8x8(
+            pix, w, h, stride, graphics::PixelFormat::B8G8R8A8_UNORM,
+            30, 65, buffer_.c_str(), 0xFFFFFFFF, 2);
+    } else {
+        runtime::GuestUiRuntime::draw_string_8x8(
+            pix, w, h, stride, graphics::PixelFormat::B8G8R8A8_UNORM,
+            30, 65, "[Type to insert text...]", 0xFF8E8E93, 2);
+    }
+
+    primary_surf_->damage_tracker().mark_full_damage(w, h);
+}
+
+void MultiWindowEditorApp::render_palette() {
+    if (!palette_surf_) return;
+    auto* pix = palette_surf_->raw_data();
+    const std::uint32_t w = palette_surf_->width();
+    const std::uint32_t h = palette_surf_->height();
+    const std::uint32_t stride = w * 4;
+
+    palette_surf_->fill_rect(pid_, {0, 0, w, h}, 0xFF252526);
+
+    runtime::GuestUiRuntime::draw_string_8x8(
+        pix, w, h, stride, graphics::PixelFormat::B8G8R8A8_UNORM,
+        15, 15, "Tool Palette", 0xFFFFFFFF, 1);
+
+    static const char* tool_names[4] = {"Pen", "Eraser", "Clear", "Save"};
+    for (int i = 0; i < 4; ++i) {
+        graphics::Rect btn_rect{15, static_cast<std::uint32_t>(40 + i * 50), 150, 40};
+        bool is_selected = (current_tool_ == i);
+        std::uint32_t bg_col = is_selected ? 0xFF0A84FF : 0xFF3A3A3C;
+        runtime::GuestUiRuntime::draw_button(
+            pix, w, h, stride, graphics::PixelFormat::B8G8R8A8_UNORM,
+            btn_rect, tool_names[i], bg_col, 0xFFFFFFFF, is_selected);
+    }
+
+    palette_surf_->damage_tracker().mark_full_damage(w, h);
+}
+
+void MultiWindowEditorApp::render() {
+    render_editor();
+    render_palette();
+}
+
+// =============================================================================
 // Package Generation Helpers
 // =============================================================================
 packaging::AppPackage create_calculator_package() {
@@ -339,6 +535,28 @@ packaging::AppPackage create_text_editor_package() {
     pkg.add_file("editor.bin", std::move(exec_bytes));
 
     std::vector<std::uint8_t> icon_bytes = {0x89, 'P', 'N', 'G', 'E', 'D', 'I', 'T'};
+    pkg.add_file("res/icon.png", std::move(icon_bytes));
+
+    return pkg;
+}
+
+packaging::AppPackage create_multi_window_editor_package() {
+    packaging::AppPackage pkg;
+    pkg.manifest.bundle_id = "com.winios.multieditor";
+    pkg.manifest.name = "Multi-Window Editor";
+    pkg.manifest.version = "1.0.0";
+    pkg.manifest.min_os_version = "216.0";
+    pkg.manifest.executable_name = "multieditor.bin";
+    pkg.manifest.permissions = {"display.window", "storage.private", "event.timer"};
+
+    std::vector<std::uint8_t> exec_bytes = {
+        0xCF, 0xFA, 0xED, 0xFE, 0x0C, 0x00, 0x00, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+        'M', 'U', 'L', 'T', 'I', 'E', 'D', 'I', 'T', 'O', 'R'
+    };
+    pkg.add_file("multieditor.bin", std::move(exec_bytes));
+
+    std::vector<std::uint8_t> icon_bytes = {0x89, 'P', 'N', 'G', 'M', 'U', 'L', 'T', 'I'};
     pkg.add_file("res/icon.png", std::move(icon_bytes));
 
     return pkg;

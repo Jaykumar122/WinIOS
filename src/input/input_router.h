@@ -13,12 +13,19 @@
 namespace winios::input {
 
 // -----------------------------------------------------------------------------
-// TouchCaptureRecord: Touch Contact to Process/Window Mapping
+// TouchCaptureRecord & MouseCaptureRecord: Contact & Pointer Capture Mapping
 // -----------------------------------------------------------------------------
 struct TouchCaptureRecord {
     bool          is_captured{false};
     std::uint32_t owner_pid{0};
     std::uint32_t window_id{0};
+};
+
+struct MouseCaptureRecord {
+    bool          is_captured{false};
+    std::uint32_t owner_pid{0};
+    std::uint32_t window_id{0};
+    MouseButton   button{MouseButton::None};
 };
 
 // -----------------------------------------------------------------------------
@@ -46,6 +53,12 @@ public:
     // Guest Process API: retrieve next event intended for caller_pid
     bool poll_event(std::uint32_t caller_pid, InputEvent& out_event);
 
+    // Mouse Capture Management
+    [[nodiscard]] bool is_mouse_captured() const noexcept;
+    [[nodiscard]] std::uint32_t mouse_captured_window_id() const noexcept;
+    [[nodiscard]] std::uint32_t mouse_captured_pid() const noexcept;
+    void release_mouse_capture();
+
     // Lifecycle: release capture and queues when a window or process terminates
     void on_window_destroyed(std::uint32_t window_id);
     void on_process_terminated(std::uint32_t pid);
@@ -59,6 +72,7 @@ private:
     std::uint64_t                                total_routed_{0};
     mutable std::mutex                           lock_;
     TouchCaptureRecord                           captures_[VirtualInputDevice::kMaxTouchContacts]{};
+    MouseCaptureRecord                           mouse_capture_{};
     std::map<std::uint32_t, std::shared_ptr<TouchEventQueue>> process_queues_;
 };
 

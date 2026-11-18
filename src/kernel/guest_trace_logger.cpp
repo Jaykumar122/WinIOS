@@ -15,9 +15,11 @@ void GuestTraceLogger::reset() {
     instructions_.clear();
     syscalls_.clear();
     inputs_.clear();
+    input_telemetry_.clear();
     framebuffers_.clear();
     boundaries_.clear();
     resources_.clear();
+    input_sequence_ = 0;
     fb_sequence_ = 0;
     boundary_sequence_ = 0;
     resource_sequence_ = 0;
@@ -64,13 +66,21 @@ void GuestTraceLogger::log_syscall(std::uint32_t pid, const std::string& name, s
 
 void GuestTraceLogger::log_input(std::uint32_t pid, std::uint32_t evt_type, std::int32_t rx, std::int32_t ry,
                                  std::int32_t wx, std::int32_t wy, std::uint32_t wid, std::uint64_t timestamp,
-                                 const std::string& origin, std::uint32_t tid) {
+                                 const std::string& origin, std::uint32_t tid,
+                                 input::InputProvenance provenance,
+                                 std::uint32_t win32_msg_id,
+                                 input::InputDeliveryStatus delivery_status) {
     std::lock_guard<std::mutex> lock(mutex_);
+    ++input_sequence_;
     InputTraceRecord r;
+    r.sequence = input_sequence_;
     r.pid = pid;
     r.tid = tid;
     r.event_type = evt_type;
     r.input_origin = origin;
+    r.provenance = provenance;
+    r.win32_msg_id = win32_msg_id;
+    r.delivery_status = delivery_status;
     r.raw_x = rx;
     r.raw_y = ry;
     r.window_x = wx;
@@ -79,6 +89,52 @@ void GuestTraceLogger::log_input(std::uint32_t pid, std::uint32_t evt_type, std:
     r.timestamp_us = timestamp;
     r.host_time_ns = current_host_time_ns();
     inputs_.push_back(std::move(r));
+}
+
+void GuestTraceLogger::log_input_provenance(const input::InputProvenanceTelemetry& telemetry) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++input_sequence_;
+    input::InputProvenanceTelemetry t = telemetry;
+    if (t.sequence_number == 0) {
+        t.sequence_number = input_sequence_;
+    }
+    if (t.host_time_ns == 0) {
+        t.host_time_ns = current_host_time_ns();
+    }
+    input_telemetry_.push_back(std::move(t));
+}
+
+void GuestTraceLogger::log_input_provenance(const input::InputEvent& event, input::InputDeliveryStatus status) {
+    input::InputProvenanceTelemetry t{};
+    t.provenance = event.provenance;
+    t.win32_msg_id = event.win32_msg_id;
+    t.timestamp_us = event.timestamp_us;
+    t.host_time_ns = current_host_time_ns();
+    t.target_pid = event.target_pid;
+    t.target_window_id = event.target_window_id;
+    t.delivery_status = status;
+
+    if (event.type == input::InputEventType::MouseMove ||
+        event.type == input::InputEventType::MouseDown ||
+        event.type == input::InputEventType::MouseUp ||
+        event.type == input::InputEventType::MouseWheel) {
+        t.screen_x = event.mouse.screen_x;
+        t.screen_y = event.mouse.screen_y;
+        t.client_x = event.mouse.client_x;
+        t.client_y = event.mouse.client_y;
+        t.guest_x = event.mouse.x;
+        t.guest_y = event.mouse.y;
+    } else if (event.type == input::InputEventType::TouchBegin ||
+               event.type == input::InputEventType::TouchMove ||
+               event.type == input::InputEventType::TouchEnd ||
+               event.type == input::InputEventType::TouchCancel) {
+        t.guest_x = event.touch.x;
+        t.guest_y = event.touch.y;
+        t.client_x = event.touch.x;
+        t.client_y = event.touch.y;
+    }
+
+    log_input_provenance(t);
 }
 
 void GuestTraceLogger::log_framebuffer(std::uint32_t surf_id, std::uint32_t wid, std::uint32_t pid,

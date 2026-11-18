@@ -72,6 +72,15 @@ public:
     void set_z_order(std::int32_t z) noexcept { z_order_ = z; }
     void set_opacity(float alpha) noexcept { opacity_ = std::clamp(alpha, 0.0f, 1.0f); }
     void set_visible(bool visible) noexcept { is_visible_ = visible; }
+    void clear_damage() noexcept { damage_.clear(); }
+    void resize(std::uint32_t new_width, std::uint32_t new_height) {
+        if (new_width == 0 || new_height == 0) return;
+        width_ = new_width;
+        height_ = new_height;
+        stride_ = width_ * 4;
+        buffer_.assign(static_cast<std::size_t>(stride_) * height_, 0);
+        damage_.mark_full_damage(width_, height_);
+    }
 
     // Access Control Validation: owner_pid == caller_pid, or caller_pid == 0 (kernel/compositor)
     [[nodiscard]] bool can_access(std::uint32_t caller_pid) const noexcept {

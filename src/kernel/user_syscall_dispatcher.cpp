@@ -6,7 +6,9 @@
 #include "graphics/compositor.h"
 #include "input/input_router.h"
 #include "runtime/guest_ui_runtime.h"
+#include "runtime/guest_event_services.h"
 #include "memory/guest_memory_validator.h"
+#include "winios_sdk/winios_sdk.h"
 
 #include <algorithm>
 #include <cstring>
@@ -649,9 +651,46 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
         runtime::GuestInputEvent guest_evt{};
         guest_evt.type = static_cast<std::uint32_t>(raw_evt.type);
-        guest_evt.contact_id = raw_evt.touch.contact_id;
-        guest_evt.x = raw_evt.touch.x;
-        guest_evt.y = raw_evt.touch.y;
+        if (raw_evt.type == input::InputEventType::TimerTick) {
+            guest_evt.type = 8; // WINIOS_EVENT_TIMER
+            guest_evt.contact_id = raw_evt.touch.contact_id;
+        } else if (raw_evt.type == input::InputEventType::WindowFocus) {
+            guest_evt.type = 9; // WINIOS_EVENT_WINDOW_FOCUS
+            guest_evt.window_id = raw_evt.target_window_id;
+        } else if (raw_evt.type == input::InputEventType::WindowBlur) {
+            guest_evt.type = 10; // WINIOS_EVENT_WINDOW_DEFOCUS
+            guest_evt.window_id = raw_evt.target_window_id;
+        } else if (raw_evt.type == input::InputEventType::MouseDown) {
+            guest_evt.type = 1; // TouchBegin
+            guest_evt.contact_id = 0;
+            guest_evt.x = raw_evt.mouse.x;
+            guest_evt.y = raw_evt.mouse.y;
+        } else if (raw_evt.type == input::InputEventType::MouseMove) {
+            guest_evt.type = 2; // TouchMove
+            guest_evt.contact_id = 0;
+            guest_evt.x = raw_evt.mouse.x;
+            guest_evt.y = raw_evt.mouse.y;
+        } else if (raw_evt.type == input::InputEventType::MouseUp) {
+            guest_evt.type = 3; // TouchEnd
+            guest_evt.contact_id = 0;
+            guest_evt.x = raw_evt.mouse.x;
+            guest_evt.y = raw_evt.mouse.y;
+        } else if (raw_evt.type == input::InputEventType::CharInput) {
+            guest_evt.type = 7; // WINIOS_EVENT_KEY_CHAR
+            guest_evt.key_code = static_cast<std::uint32_t>(raw_evt.keyboard.char_code);
+        } else if (raw_evt.type == input::InputEventType::KeyPress) {
+            guest_evt.type = 5; // WINIOS_EVENT_KEY_DOWN
+            guest_evt.key_code = raw_evt.keyboard.virtual_key ? raw_evt.keyboard.virtual_key : raw_evt.key_code;
+        } else if (raw_evt.type == input::InputEventType::KeyRelease) {
+            guest_evt.type = 6; // WINIOS_EVENT_KEY_UP
+            guest_evt.key_code = raw_evt.keyboard.virtual_key ? raw_evt.keyboard.virtual_key : raw_evt.key_code;
+        } else {
+            guest_evt.contact_id = raw_evt.touch.contact_id;
+            guest_evt.x = raw_evt.touch.x;
+            guest_evt.y = raw_evt.touch.y;
+            guest_evt.key_code = raw_evt.key_code;
+        }
+
         if (raw_evt.target_window_id != 0 && window_mgr_) {
             auto win = window_mgr_->get_window(raw_evt.target_window_id);
             if (win) {
@@ -659,7 +698,6 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
                 guest_evt.y -= static_cast<std::int32_t>(win->frame.y);
             }
         }
-        guest_evt.key_code = raw_evt.key_code;
         guest_evt.window_id = raw_evt.target_window_id;
         guest_evt.timestamp_us = raw_evt.timestamp_us;
 
@@ -730,6 +768,180 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
     case kSysWiniosGetAbiVersion: {
         return record_success(static_cast<std::uint64_t>(kWiniosCategoryCAbiVersion));
+    }
+
+    case kSysWiniosWindowGetGeometry: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+
+        std::uint64_t geom_va = arg1;
+        auto vres = memory::GuestMemoryValidator::validate_buffer(
+            uas, geom_va, sizeof(winios_window_geometry_t), true, 8);
+        if (vres != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        winios_window_geometry_t geom{};
+        geom.frame.x = win->frame.x;
+        geom.frame.y = win->frame.y;
+        geom.frame.width = win->frame.width;
+        geom.frame.height = win->frame.height;
+        geom.z_order = win->z_order;
+        geom.state = static_cast<std::uint32_t>(win->state);
+        geom.is_focused = win->is_focused ? 1 : 0;
+        geom.always_on_top = win->always_on_top ? 1 : 0;
+
+        auto out_res = memory::GuestMemoryValidator::copyout(uas, &geom, geom_va, sizeof(geom), 8);
+        if (out_res != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        return record_success(0);
+    }
+
+    case kSysWiniosWindowSetGeometry: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+
+        std::uint64_t geom_va = arg1;
+        auto vres = memory::GuestMemoryValidator::validate_buffer(
+            uas, geom_va, sizeof(winios_window_geometry_t), false, 8);
+        if (vres != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        winios_window_geometry_t geom{};
+        auto in_res = memory::GuestMemoryValidator::copyin(uas, geom_va, &geom, sizeof(geom), 8);
+        if (in_res != memory::ValidationResult::Success) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
+        }
+
+        if (geom.frame.width > 0 && geom.frame.height > 0) {
+            graphics::Rect r{geom.frame.x, geom.frame.y, geom.frame.width, geom.frame.height};
+            window_mgr_->set_window_frame(proc.pid(), wid, r);
+        }
+        window_mgr_->set_window_z_order(proc.pid(), wid, geom.z_order);
+        if (geom.always_on_top != (win->always_on_top ? 1u : 0u)) {
+            window_mgr_->set_always_on_top(proc.pid(), wid, geom.always_on_top != 0);
+        }
+        if (compositor_) {
+            compositor_->invalidate_rect(win->frame);
+        }
+
+        return record_success(0);
+    }
+
+    case kSysWiniosWindowSetFocus: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t wid = static_cast<std::uint32_t>(arg0);
+        auto win = window_mgr_->get_window(wid);
+        if (!win || !win->can_access(proc.pid())) {
+            return record_error(kErrnoEBADF);
+        }
+
+        window_mgr_->raise_to_top(wid);
+        window_mgr_->set_focus(wid);
+        return record_success(0);
+    }
+
+    case kSysWiniosWindowList: {
+        ++stats_.total_display_syscalls;
+        if (!window_mgr_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint64_t buf_va = arg0;
+        std::size_t max_count = static_cast<std::size_t>(arg1);
+        auto wins = window_mgr_->get_windows_for_process(proc.pid());
+
+        if (max_count == 0) {
+            auto vres = memory::GuestMemoryValidator::validate_buffer(
+                uas, buf_va, sizeof(winios_window_list_t), true, 8);
+            if (vres != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+
+            winios_window_list_t list{};
+            list.max_count = 32;
+            list.count = std::min<std::uint32_t>(static_cast<std::uint32_t>(wins.size()), 32);
+            for (std::uint32_t i = 0; i < list.count; ++i) {
+                list.window_ids[i] = wins[i]->id;
+            }
+
+            auto out_res = memory::GuestMemoryValidator::copyout(uas, &list, buf_va, sizeof(list), 8);
+            if (out_res != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+
+            return record_success(list.count);
+        } else {
+            auto vres = memory::GuestMemoryValidator::validate_buffer(
+                uas, buf_va, max_count * sizeof(std::uint32_t), true, 4);
+            if (vres != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+
+            std::uint32_t count = std::min<std::uint32_t>(static_cast<std::uint32_t>(wins.size()), static_cast<std::uint32_t>(max_count));
+            std::vector<std::uint32_t> ids(count);
+            for (std::uint32_t i = 0; i < count; ++i) {
+                ids[i] = wins[i]->id;
+            }
+
+            auto out_res = memory::GuestMemoryValidator::copyout(uas, ids.data(), buf_va, count * sizeof(std::uint32_t), 4);
+            if (out_res != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+
+            return record_success(count);
+        }
+    }
+
+    case kSysWiniosCreateTimer: {
+        if (!event_services_) {
+            return record_error(kErrnoENOSYS);
+        }
+
+        std::uint32_t interval_ms = static_cast<std::uint32_t>(arg0);
+        bool is_periodic = (arg1 != 0);
+
+        if (interval_ms == 0) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        std::uint32_t tid = event_services_->create_timer(proc.pid(), interval_ms, is_periodic);
+        if (tid == 0) {
+            return record_error(kErrnoEPERM);
+        }
+
+        return record_success(tid);
     }
 
     default: {
