@@ -2685,6 +2685,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         if (arg0 == 0) {
             return record_error(kErrnoEINVAL);
         }
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::SettingsRead)) {
+            return record_error(kErrnoEPERM);
+        }
         winios_settings_snapshot_t snap{};
         if (state_mgr_) {
             auto s = state_mgr_->get_settings();
@@ -2721,6 +2724,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     }
 
     case kSysWiniosSettingsSet: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::SettingsWrite)) {
+            return record_error(kErrnoEPERM);
+        }
         if (!state_mgr_) {
             return record_error(kErrnoENODEV);
         }
@@ -2767,6 +2773,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     }
 
     case kSysWiniosThemeGet: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::SettingsRead)) {
+            return record_error(kErrnoEPERM);
+        }
         if (!state_mgr_) {
             return record_error(kErrnoENODEV);
         }
@@ -2783,6 +2792,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     }
 
     case kSysWiniosThemeSet: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::SettingsWrite)) {
+            return record_error(kErrnoEPERM);
+        }
         if (!state_mgr_) {
             return record_error(kErrnoENODEV);
         }
@@ -2815,7 +2827,21 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
         std::vector<settings::TaskInfo> tasks;
         if (task_mgr_) {
-            tasks = task_mgr_->enumerate_tasks();
+            if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::TaskManage)) {
+                // Without TaskManage capability, restrict enumeration to caller task only
+                settings::TaskInfo self_t{};
+                if (task_mgr_->get_task(proc.pid(), self_t)) {
+                    tasks.push_back(self_t);
+                } else {
+                    self_t.pid = proc.pid();
+                    self_t.name = proc.name();
+                    self_t.state = settings::TaskState::Running;
+                    self_t.is_foreground = true;
+                    tasks.push_back(self_t);
+                }
+            } else {
+                tasks = task_mgr_->enumerate_tasks();
+            }
         } else {
             // Fallback: report calling process
             settings::TaskInfo self_t{};
@@ -2844,12 +2870,17 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
         if (arg2 != 0) {
             std::uint32_t cnt32 = static_cast<std::uint32_t>(count);
-            uas.copyin(arg2, &cnt32, sizeof(cnt32));
+            if (!uas.copyin(arg2, &cnt32, sizeof(cnt32))) {
+                return record_error(kErrnoEFAULT);
+            }
         }
         return record_success(count);
     }
 
     case kSysWiniosTaskSwitch: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::TaskManage)) {
+            return record_error(kErrnoEPERM);
+        }
         if (!task_mgr_) {
             return record_error(kErrnoENODEV);
         }
@@ -2871,6 +2902,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         bool graceful = (arg1 != 0);
         if (target_pid == 0) {
             return record_error(kErrnoEINVAL);
+        }
+        if (target_pid != static_cast<std::uint32_t>(proc.pid()) && cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::TaskManage)) {
+            return record_error(kErrnoEPERM);
         }
         if (!task_mgr_) {
             return record_error(kErrnoENODEV);
@@ -2913,6 +2947,9 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     }
 
     case kSysWiniosAccessibilitySet: {
+        if (cap_mgr_ && !cap_mgr_->check(proc.pid(), security::Capability::AccessibilityAccess)) {
+            return record_error(kErrnoEPERM);
+        }
         std::uint32_t text_scale = static_cast<std::uint32_t>(arg0);
         bool high_contrast = (arg1 != 0);
         if (text_scale != 0 && (text_scale < 100 || text_scale > 200)) {
@@ -2928,6 +2965,51 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoENODEV);
         }
         return record_success(0);
+    }
+
+    case kSysWiniosDiagEventQuery: {
+        if (!diag_service_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        winios_diag_query_req_t req{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+
+        bool privileged = false;
+        if (cap_mgr_ && cap_mgr_->check(proc.pid(), security::Capability::DiagnosticsAccess)) {
+            privileged = true;
+        }
+
+        const uint32_t bounded_max = std::min<uint32_t>(req.max_entries, 128);
+        if (req.max_entries > 0 && req.buffer_va == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+
+        auto events = diag_service_->query_events(
+            req.after_sequence,
+            req.category_filter,
+            req.min_level,
+            bounded_max,
+            proc.pid(),
+            privileged);
+
+        req.returned_entries = static_cast<uint32_t>(events.size());
+
+        if (!events.empty() && req.buffer_va != 0) {
+            if (!uas.copyin(req.buffer_va, events.data(), events.size() * sizeof(winios_diag_event_record_t))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+
+        if (!uas.copyin(arg0, &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+
+        return record_success(events.size());
     }
 
     default: {

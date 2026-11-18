@@ -8,10 +8,13 @@
 extern "C" {
 #endif
 
-#define WINIOS_SDK_VERSION_MAJOR 1
-#define WINIOS_SDK_VERSION_MINOR 8
+#define WINIOS_SDK_VERSION_MAJOR 2
+#define WINIOS_SDK_VERSION_MINOR 3
 #define WINIOS_SDK_VERSION_PATCH 0
-#define WINIOS_SDK_VERSION       0x00010800
+#define WINIOS_SDK_VERSION       0x00020300
+
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_3 0x00020300
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_2 0x00020200
 
 #define WINIOS_ABI_CATEGORY_A_DARWIN_BSD 0x01
 #define WINIOS_ABI_CATEGORY_B_MSG_TRAP   0x02
@@ -218,6 +221,28 @@ typedef struct {
 #define WINIOS_SYS_TASK_TERMINATE         588
 #define WINIOS_SYS_ACCESSIBILITY_GET      589
 #define WINIOS_SYS_ACCESSIBILITY_SET      590
+#define WINIOS_SYS_DIAG_EVENT_QUERY       591
+
+// ABI v2.3 Diagnostic Event Record (48 bytes)
+typedef struct {
+    uint64_t sequence;
+    uint64_t timestamp_us;
+    uint32_t pid;
+    uint32_t level;
+    uint32_t category;
+    int32_t  error_code;
+    char     tag[16];
+} winios_diag_event_record_t;
+
+// ABI v2.3 Diagnostic Query Request (32 bytes)
+typedef struct {
+    uint64_t after_sequence;
+    uint32_t category_filter;
+    uint32_t min_level;
+    uint32_t max_entries;
+    uint32_t returned_entries;
+    uint64_t buffer_va;
+} winios_diag_query_req_t;
 
 #pragma pack(pop)
 

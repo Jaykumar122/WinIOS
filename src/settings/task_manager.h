@@ -43,7 +43,15 @@ public:
 
     // Lifecycle Controls
     bool terminate_task(uint32_t pid, bool graceful = true);
+    bool terminate_task_versioned(uint32_t pid, uint32_t expected_generation, bool graceful);
     bool force_kill_task(uint32_t pid);
+    [[nodiscard]] uint32_t get_task_generation(uint32_t pid) const;
+
+    using TaskCleanupCallback = std::function<void(uint32_t pid, uint64_t primary_window)>;
+    void register_cleanup_callback(TaskCleanupCallback cb) {
+        std::lock_guard<std::recursive_mutex> lock(lock_);
+        if (cb) cleanup_callbacks_.push_back(std::move(cb));
+    }
 
     void set_lifecycle_handler(LifecycleHandler handler) {
         std::lock_guard<std::recursive_mutex> lock(lock_);
@@ -51,11 +59,13 @@ public:
     }
 
 private:
-    mutable std::recursive_mutex lock_;
-    std::vector<TaskInfo>        tasks_;
-    bool                         switcher_visible_{false};
-    size_t                       selected_index_{0};
-    LifecycleHandler             lifecycle_handler_;
+    mutable std::recursive_mutex     lock_;
+    std::vector<TaskInfo>            tasks_;
+    bool                             switcher_visible_{false};
+    size_t                           selected_index_{0};
+    LifecycleHandler                 lifecycle_handler_;
+    std::vector<TaskCleanupCallback> cleanup_callbacks_;
+    uint32_t                         generation_counter_{100};
 };
 
 } // namespace winios::settings

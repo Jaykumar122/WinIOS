@@ -37,7 +37,11 @@ enum class Capability : std::uint32_t {
     DocumentCreate    = 1 << 23,
     DocumentDelete    = 1 << 24,
     DocumentShare     = 1 << 25,
-    DocumentEnumerate = 1 << 26
+    DocumentEnumerate = 1 << 26,
+    SettingsRead      = 1 << 27,
+    SettingsWrite     = 1 << 28,
+    TaskManage        = 1 << 29,
+    AccessibilityAccess = 1 << 30
 };
 
 [[nodiscard]] constexpr std::uint32_t operator|(Capability a, Capability b) noexcept {

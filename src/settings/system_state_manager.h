@@ -48,6 +48,9 @@ public:
 
     // Transactional Mutators
     bool update_settings(const std::function<void(SystemSettings&)>& mutator);
+    bool update_settings_versioned(std::uint64_t expected_version, const std::function<void(SystemSettings&)>& mutator);
+    bool execute_transaction(const std::vector<std::function<void(SystemSettings&)>>& mutators);
+    [[nodiscard]] std::uint64_t get_version() const noexcept;
     bool set_theme(ThemeMode theme);
     bool set_accent(AccentColor accent);
     bool set_display_scale(DisplayScale scale);
@@ -68,15 +71,24 @@ public:
     bool save_to_vfs(const std::string& vfs_path = kDefaultSettingsVfsPath);
     bool load_from_vfs(const std::string& vfs_path = kDefaultSettingsVfsPath);
 
+    // Reliability & Fault-Injection hooks
+    void set_persistence_fault_injection(bool enable_fault) noexcept;
+    [[nodiscard]] bool was_recovered_from_backup() const noexcept;
+
     void reset_to_defaults();
 
 private:
     void notify_observers_locked(const SystemSettings& prev, const SystemSettings& curr);
+    bool save_to_vfs_locked(const std::string& vfs_path);
 
     mutable std::recursive_mutex            lock_;
     std::shared_ptr<vfs::VirtualFileSystem> vfs_;
     SystemSettings                          settings_;
     std::vector<SystemStateObserver*>       observers_;
+    std::uint64_t                           version_{1};
+    std::uint64_t                           temp_seq_{0};
+    bool                                    fault_injection_enabled_{false};
+    bool                                    recovered_from_backup_{false};
 };
 
 } // namespace winios::settings

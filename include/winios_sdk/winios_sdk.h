@@ -125,11 +125,13 @@ extern "C" {
 #define SYS_WINIOS_TASK_TERMINATE         588
 #define SYS_WINIOS_ACCESSIBILITY_GET      589
 #define SYS_WINIOS_ACCESSIBILITY_SET      590
+#define SYS_WINIOS_DIAG_EVENT_QUERY       591
 
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_3 0x00020300
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_2 0x00020200
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_1 0x00020100
-
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_0 0x00020000
+#define WINIOS_SDK_VERSION_2_3            0x00020300
 
 // -----------------------------------------------------------------------------
 // Core UI & Window Types
@@ -379,6 +381,27 @@ typedef struct {
     uint32_t pad[3];
 } winios_accessibility_info_t;
 
+// ABI v2.3 Diagnostic Event Record (48 bytes)
+typedef struct {
+    uint64_t sequence;
+    uint64_t timestamp_us;
+    uint32_t pid;
+    uint32_t level;
+    uint32_t category;
+    int32_t  error_code;
+    char     tag[16];
+} winios_diag_event_record_t;
+
+// ABI v2.3 Diagnostic Query Request (32 bytes)
+typedef struct {
+    uint64_t after_sequence;
+    uint32_t category_filter;
+    uint32_t min_level;
+    uint32_t max_entries;
+    uint32_t returned_entries;
+    uint64_t buffer_va;
+} winios_diag_query_req_t;
+
 #pragma pack(pop)
 
 #ifdef __cplusplus
@@ -401,6 +424,8 @@ static_assert(sizeof(winios_recent_doc_t) == 208, "winios_recent_doc_t must be 2
 static_assert(sizeof(winios_settings_snapshot_t) == 48, "winios_settings_snapshot_t must be 48 bytes");
 static_assert(sizeof(winios_task_entry_t) == 120, "winios_task_entry_t must be 120 bytes");
 static_assert(sizeof(winios_accessibility_info_t) == 32, "winios_accessibility_info_t must be 32 bytes");
+static_assert(sizeof(winios_diag_event_record_t) == 48, "winios_diag_event_record_t must be 48 bytes");
+static_assert(sizeof(winios_diag_query_req_t) == 32, "winios_diag_query_req_t must be 32 bytes");
 #endif
 
 // -----------------------------------------------------------------------------

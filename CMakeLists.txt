@@ -137,6 +137,7 @@ add_library(winios_core STATIC
     src/loader/macho_user_loader.cpp
     src/loader/macho_dependency_graph.cpp
     src/loader/guest_dynamic_loader.cpp
+    src/loader/app_inspector.cpp
     src/vfs/vfs.cpp
     src/crypto/sha256.cpp
     src/storage/isolated_storage.cpp
@@ -5665,6 +5666,98 @@ target_include_directories(stage228_23_adversarial_tests PRIVATE guest-sdk/inclu
 target_link_libraries(stage228_23_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage228_23_adversarial_tests)
 add_test(NAME stage228_23_adversarial_tests COMMAND stage228_23_adversarial_tests)
+
+# ==============================================================================
+# Campaign 229: Platform Reliability, Security, Diagnostics & SDK Conformance
+# ==============================================================================
+
+add_executable(stage229_2_platform_error_lifecycle_tests
+    tests/unit/stage229_2_platform_error_lifecycle_tests.cpp
+)
+target_include_directories(stage229_2_platform_error_lifecycle_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_2_platform_error_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage229_2_platform_error_lifecycle_tests)
+add_test(NAME stage229_2_platform_error_lifecycle_tests COMMAND stage229_2_platform_error_lifecycle_tests)
+
+add_executable(stage229_4_system_state_manager_hardened_tests
+    tests/unit/stage229_4_system_state_manager_hardened_tests.cpp
+)
+target_include_directories(stage229_4_system_state_manager_hardened_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_4_system_state_manager_hardened_tests PRIVATE winios_core)
+winios_set_warnings(stage229_4_system_state_manager_hardened_tests)
+add_test(NAME stage229_4_system_state_manager_hardened_tests COMMAND stage229_4_system_state_manager_hardened_tests)
+
+add_executable(stage229_7_syscall_conformance_tests
+    tests/unit/stage229_7_syscall_conformance_tests.cpp
+)
+target_include_directories(stage229_7_syscall_conformance_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_7_syscall_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage229_7_syscall_conformance_tests)
+add_test(NAME stage229_7_syscall_conformance_tests COMMAND stage229_7_syscall_conformance_tests)
+
+add_executable(stage229_8_task_manager_lifecycle_tests
+    tests/unit/stage229_8_task_manager_lifecycle_tests.cpp
+)
+target_include_directories(stage229_8_task_manager_lifecycle_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_8_task_manager_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage229_8_task_manager_lifecycle_tests)
+add_test(NAME stage229_8_task_manager_lifecycle_tests COMMAND stage229_8_task_manager_lifecycle_tests)
+
+add_executable(stage229_9_capability_isolation_tests
+    tests/unit/stage229_9_capability_isolation_tests.cpp
+)
+target_include_directories(stage229_9_capability_isolation_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_9_capability_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage229_9_capability_isolation_tests)
+add_test(NAME stage229_9_capability_isolation_tests COMMAND stage229_9_capability_isolation_tests)
+
+add_executable(stage229_11_diagnostics_query_tests
+    tests/unit/stage229_11_diagnostics_query_tests.cpp
+)
+target_include_directories(stage229_11_diagnostics_query_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_11_diagnostics_query_tests PRIVATE winios_core)
+winios_set_warnings(stage229_11_diagnostics_query_tests)
+add_test(NAME stage229_11_diagnostics_query_tests COMMAND stage229_11_diagnostics_query_tests)
+
+add_executable(stage229_14_crash_recovery_tests
+    tests/unit/stage229_14_crash_recovery_tests.cpp
+)
+target_include_directories(stage229_14_crash_recovery_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_14_crash_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage229_14_crash_recovery_tests)
+add_test(NAME stage229_14_crash_recovery_tests COMMAND stage229_14_crash_recovery_tests)
+
+add_executable(stage229_18_app_inspector_tests
+    tests/unit/stage229_18_app_inspector_tests.cpp
+)
+target_include_directories(stage229_18_app_inspector_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_18_app_inspector_tests PRIVATE winios_core)
+winios_set_warnings(stage229_18_app_inspector_tests)
+add_test(NAME stage229_18_app_inspector_tests COMMAND stage229_18_app_inspector_tests)
+
+add_executable(stage229_19_replay_divergence_tests
+    tests/unit/stage229_19_replay_divergence_tests.cpp
+)
+target_include_directories(stage229_19_replay_divergence_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_19_replay_divergence_tests PRIVATE winios_core)
+winios_set_warnings(stage229_19_replay_divergence_tests)
+add_test(NAME stage229_19_replay_divergence_tests COMMAND stage229_19_replay_divergence_tests)
+
+add_executable(stage229_21_workload_tests
+    tests/unit/stage229_21_workload_tests.cpp
+)
+target_include_directories(stage229_21_workload_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_21_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage229_21_workload_tests)
+add_test(NAME stage229_21_workload_tests COMMAND stage229_21_workload_tests)
+
+add_executable(stage229_22_adversarial_tests
+    tests/unit/stage229_22_adversarial_tests.cpp
+)
+target_include_directories(stage229_22_adversarial_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage229_22_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage229_22_adversarial_tests)
+add_test(NAME stage229_22_adversarial_tests COMMAND stage229_22_adversarial_tests)
 
 
 

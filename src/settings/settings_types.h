@@ -104,6 +104,7 @@ struct TaskInfo {
     std::uint64_t launch_time_us{0};
     std::uint64_t memory_bytes{0};
     bool          is_foreground{false};
+    std::uint32_t generation{1};
 };
 
 struct UserProfile {

@@ -192,7 +192,8 @@ inline constexpr std::uint64_t kSysWiniosTaskSwitch           = 587;
 inline constexpr std::uint64_t kSysWiniosTaskTerminate        = 588;
 inline constexpr std::uint64_t kSysWiniosAccessibilityGet     = 589;
 inline constexpr std::uint64_t kSysWiniosAccessibilitySet     = 590;
-inline constexpr std::uint64_t kSysWiniosMaxCategoryC         = 590;
+inline constexpr std::uint64_t kSysWiniosDiagEventQuery        = 591;
+inline constexpr std::uint64_t kSysWiniosMaxCategoryC         = 591;
 
 [[nodiscard]] constexpr bool is_category_c_extension(std::uint64_t sys_num) noexcept {
     return sys_num >= kSysWiniosWindowCreate && sys_num <= kSysWiniosMaxCategoryC;

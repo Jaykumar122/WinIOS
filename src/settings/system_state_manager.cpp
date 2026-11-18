@@ -53,9 +53,18 @@ UserProfile SystemStateManager::get_profile() const {
 }
 
 bool SystemStateManager::update_settings(const std::function<void(SystemSettings&)>& mutator) {
+    return update_settings_versioned(0, mutator);
+}
+
+bool SystemStateManager::update_settings_versioned(std::uint64_t expected_version,
+                                                  const std::function<void(SystemSettings&)>& mutator) {
     if (!mutator) return false;
 
     std::lock_guard<std::recursive_mutex> guard(lock_);
+    if (expected_version != 0 && expected_version != version_) {
+        return false; // Stale update conflict
+    }
+
     SystemSettings tentative = settings_;
     mutator(tentative);
 
@@ -63,12 +72,103 @@ bool SystemStateManager::update_settings(const std::function<void(SystemSettings
         return false; // Validation failure, abort transaction
     }
 
+    // Persist tentative state first if VFS is active; rollback on persistence failure
+    if (vfs_) {
+        const std::string serialized = SettingsSchema::serialize(tentative);
+        if (fault_injection_enabled_) {
+            return false; // Persistence failure rollback
+        }
+        vfs_->mkdir("/System");
+        vfs_->mkdir("/System/Library");
+        vfs_->mkdir("/System/Library/Preferences");
+
+        const std::string vfs_path = kDefaultSettingsVfsPath;
+        const std::string tmp_path = vfs_path + ".tmp." + std::to_string(++temp_seq_);
+        if (!vfs_->write_file(tmp_path, serialized.data(), serialized.size())) {
+            return false;
+        }
+
+        const std::string bak_path = vfs_path + ".bak";
+        std::vector<std::uint8_t> existing;
+        if (vfs_->read_file(vfs_path, existing) && !existing.empty()) {
+            vfs_->write_file(bak_path, existing.data(), existing.size());
+        }
+
+        if (!vfs_->rename(tmp_path, vfs_path)) {
+            vfs_->unlink(tmp_path);
+            return false;
+        }
+    }
+
     SystemSettings prev = settings_;
     settings_ = tentative;
+    ++version_;
 
     notify_observers_locked(prev, settings_);
-    save_to_vfs();
     return true;
+}
+
+bool SystemStateManager::execute_transaction(const std::vector<std::function<void(SystemSettings&)>>& mutators) {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    SystemSettings tentative = settings_;
+    for (const auto& mutator : mutators) {
+        if (mutator) {
+            mutator(tentative);
+        }
+    }
+
+    if (!SettingsSchema::validate_system_settings(tentative)) {
+        return false; // Batch validation failure
+    }
+
+    if (vfs_) {
+        const std::string serialized = SettingsSchema::serialize(tentative);
+        if (fault_injection_enabled_) {
+            return false;
+        }
+        vfs_->mkdir("/System");
+        vfs_->mkdir("/System/Library");
+        vfs_->mkdir("/System/Library/Preferences");
+
+        const std::string vfs_path = kDefaultSettingsVfsPath;
+        const std::string tmp_path = vfs_path + ".tmp." + std::to_string(++temp_seq_);
+        if (!vfs_->write_file(tmp_path, serialized.data(), serialized.size())) {
+            return false;
+        }
+
+        const std::string bak_path = vfs_path + ".bak";
+        std::vector<std::uint8_t> existing;
+        if (vfs_->read_file(vfs_path, existing) && !existing.empty()) {
+            vfs_->write_file(bak_path, existing.data(), existing.size());
+        }
+
+        if (!vfs_->rename(tmp_path, vfs_path)) {
+            vfs_->unlink(tmp_path);
+            return false;
+        }
+    }
+
+    SystemSettings prev = settings_;
+    settings_ = tentative;
+    ++version_;
+
+    notify_observers_locked(prev, settings_);
+    return true;
+}
+
+std::uint64_t SystemStateManager::get_version() const noexcept {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    return version_;
+}
+
+void SystemStateManager::set_persistence_fault_injection(bool enable_fault) noexcept {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    fault_injection_enabled_ = enable_fault;
+}
+
+bool SystemStateManager::was_recovered_from_backup() const noexcept {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    return recovered_from_backup_;
 }
 
 bool SystemStateManager::set_theme(ThemeMode theme) {
@@ -156,8 +256,15 @@ void SystemStateManager::remove_observer(SystemStateObserver* obs) {
 }
 
 void SystemStateManager::notify_observers_locked(const SystemSettings& prev, const SystemSettings& curr) {
-    for (auto* obs : observers_) {
+    // Snapshot observers to protect against reentrant add_observer / remove_observer calls during dispatch
+    std::vector<SystemStateObserver*> snapshot = observers_;
+    for (auto* obs : snapshot) {
         if (!obs) continue;
+        // Verify observer has not been removed during the notification loop
+        if (std::find(observers_.begin(), observers_.end(), obs) == observers_.end()) {
+            continue;
+        }
+
         if (prev.appearance.theme != curr.appearance.theme ||
             prev.appearance.accent != curr.appearance.accent ||
             prev.appearance.high_contrast != curr.appearance.high_contrast ||
@@ -198,25 +305,40 @@ void SystemStateManager::notify_observers_locked(const SystemSettings& prev, con
 }
 
 bool SystemStateManager::save_to_vfs(const std::string& vfs_path) {
-    if (!vfs_ || vfs_path.empty()) return false;
+    if (!vfs_) return false;
     std::lock_guard<std::recursive_mutex> guard(lock_);
+    return save_to_vfs_locked(vfs_path.empty() ? kDefaultSettingsVfsPath : vfs_path);
+}
+
+bool SystemStateManager::save_to_vfs_locked(const std::string& vfs_path) {
+    if (fault_injection_enabled_) {
+        return false;
+    }
+    if (!vfs_ || vfs_path.empty()) return false;
 
     const std::string serialized = SettingsSchema::serialize(settings_);
     vfs_->mkdir("/System");
     vfs_->mkdir("/System/Library");
     vfs_->mkdir("/System/Library/Preferences");
 
-    const std::string tmp_path = vfs_path + ".tmp";
+    const std::string tmp_path = vfs_path + ".tmp." + std::to_string(++temp_seq_);
     if (!vfs_->write_file(tmp_path, serialized.data(), serialized.size())) {
         return false;
     }
 
-    if (!vfs_->write_file(vfs_path, serialized.data(), serialized.size())) {
+    // Maintain backup of previously valid settings file
+    const std::string bak_path = vfs_path + ".bak";
+    std::vector<std::uint8_t> existing;
+    if (vfs_->read_file(vfs_path, existing) && !existing.empty()) {
+        vfs_->write_file(bak_path, existing.data(), existing.size());
+    }
+
+    // Atomic replacement using VFS rename capability
+    if (!vfs_->rename(tmp_path, vfs_path)) {
         vfs_->unlink(tmp_path);
         return false;
     }
 
-    vfs_->unlink(tmp_path);
     return true;
 }
 
@@ -225,18 +347,40 @@ bool SystemStateManager::load_from_vfs(const std::string& vfs_path) {
     std::lock_guard<std::recursive_mutex> guard(lock_);
 
     std::vector<std::uint8_t> data;
-    if (!vfs_->read_file(vfs_path, data) || data.empty()) {
-        return false;
+    bool primary_read = vfs_->read_file(vfs_path, data) && !data.empty();
+    SystemSettings loaded{};
+    bool deserialized = false;
+
+    if (primary_read) {
+        const std::string str(data.begin(), data.end());
+        deserialized = SettingsSchema::deserialize(str, loaded);
     }
 
-    const std::string str(data.begin(), data.end());
-    SystemSettings loaded{};
-    if (!SettingsSchema::deserialize(str, loaded)) {
-        return false;
+    if (!deserialized) {
+        // Recovery policy: attempt loading from backup file
+        const std::string bak_path = vfs_path + ".bak";
+        std::vector<std::uint8_t> bak_data;
+        if (vfs_->read_file(bak_path, bak_data) && !bak_data.empty()) {
+            const std::string bak_str(bak_data.begin(), bak_data.end());
+            if (SettingsSchema::deserialize(bak_str, loaded)) {
+                deserialized = true;
+                recovered_from_backup_ = true;
+                // Restore primary file from valid backup
+                vfs_->write_file(vfs_path, bak_data.data(), bak_data.size());
+            }
+        }
+    }
+
+    if (!deserialized) {
+        // Corrupt or missing: fallback to defaults
+        loaded = SettingsSchema::create_default_settings();
+        recovered_from_backup_ = true;
+        save_to_vfs_locked(vfs_path);
     }
 
     SystemSettings prev = settings_;
     settings_ = loaded;
+    ++version_;
     notify_observers_locked(prev, settings_);
     return true;
 }

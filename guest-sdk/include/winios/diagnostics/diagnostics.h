@@ -22,6 +22,9 @@ typedef struct {
 
 int winios_diagnostics_get_summary(winios_platform_diagnostics_t* out_summary);
 
+// ABI v2.3 Diagnostic Event Query API
+int winios_diag_query_events(winios_diag_query_req_t* req, winios_diag_event_record_t* out_records);
+
 #ifdef __cplusplus
 }
 #endif

@@ -163,6 +163,7 @@ public:
     bool write_file(const std::string& path, const void* data, std::size_t size);
     bool read_file(const std::string& path, std::vector<std::uint8_t>& out_data) const;
     bool unlink(const std::string& path);
+    bool rename(const std::string& oldpath, const std::string& newpath);
     bool exists(const std::string& path) const;
 
     // Metadata

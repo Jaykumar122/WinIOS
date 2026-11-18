@@ -31,6 +31,10 @@ Capability CapabilityManager::parse_capability_name(const std::string& name) noe
     if (name == "document.delete" || name == "doc.delete") return Capability::DocumentDelete;
     if (name == "document.share" || name == "doc.share") return Capability::DocumentShare;
     if (name == "document.enum" || name == "doc.enum" || name == "document" || name == "doc") return Capability::DocumentEnumerate;
+    if (name == "settings.read" || name == "settings") return Capability::SettingsRead;
+    if (name == "settings.write") return Capability::SettingsWrite;
+    if (name == "task.manage" || name == "task") return Capability::TaskManage;
+    if (name == "accessibility" || name == "a11y") return Capability::AccessibilityAccess;
     return Capability::None;
 }
 
@@ -41,7 +45,22 @@ void CapabilityManager::bind_identity(std::uint32_t pid, const std::string& bund
     id.bundle_id = bundle_id;
     id.uid = uid;
     id.security_token = ++next_token_;
-    identities_[pid] = std::move(id);
+    identities_[pid] = id;
+
+    // Grant role-based baseline capabilities for known system components
+    if (bundle_id == "com.winios.system" || pid == 1) {
+        process_caps_[pid] = 0xFFFFFFFFu;
+    } else if (bundle_id == "com.winios.settings") {
+        process_caps_[pid] |= static_cast<std::uint32_t>(
+            Capability::SettingsRead | Capability::SettingsWrite |
+            Capability::AccessibilityAccess | Capability::DisplayWindow |
+            Capability::StoragePrivate | Capability::LoggingAccess);
+    } else if (bundle_id == "com.winios.taskmonitor") {
+        process_caps_[pid] |= static_cast<std::uint32_t>(
+            Capability::TaskManage | Capability::AccessibilityAccess |
+            Capability::SettingsRead | Capability::DisplayWindow |
+            Capability::StoragePrivate | Capability::LoggingAccess);
+    }
 }
 
 void CapabilityManager::unbind_identity(std::uint32_t pid) {

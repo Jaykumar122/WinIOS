@@ -12,12 +12,17 @@ bool TaskManager::register_task(const TaskInfo& task) {
     // Check if task already exists
     for (auto& t : tasks_) {
         if (t.pid == task.pid) {
+            uint32_t gen = t.generation;
             t = task;
+            t.generation = gen;
             return true;
         }
     }
 
-    tasks_.push_back(task);
+    TaskInfo new_t = task;
+    if (++generation_counter_ == 0) generation_counter_ = 1;
+    new_t.generation = generation_counter_;
+    tasks_.push_back(new_t);
     return true;
 }
 
@@ -159,7 +164,19 @@ bool TaskManager::activate_selected_task() noexcept {
     return true;
 }
 
+uint32_t TaskManager::get_task_generation(uint32_t pid) const {
+    std::lock_guard<std::recursive_mutex> lock(lock_);
+    for (const auto& t : tasks_) {
+        if (t.pid == pid) return t.generation;
+    }
+    return 0;
+}
+
 bool TaskManager::terminate_task(uint32_t pid, bool graceful) {
+    return terminate_task_versioned(pid, 0, graceful);
+}
+
+bool TaskManager::terminate_task_versioned(uint32_t pid, uint32_t expected_generation, bool graceful) {
     std::lock_guard<std::recursive_mutex> lock(lock_);
     auto it = std::find_if(tasks_.begin(), tasks_.end(), [pid](const TaskInfo& t) {
         return t.pid == pid;
@@ -169,8 +186,38 @@ bool TaskManager::terminate_task(uint32_t pid, bool graceful) {
         return false;
     }
 
-    if (lifecycle_handler_) {
-        lifecycle_handler_(pid, graceful);
+    // Check generation counter to prevent killing reused PID with stale handle
+    if (expected_generation != 0 && it->generation != expected_generation) {
+        return false; // Stale handle mismatch
+    }
+
+    // Duplicate termination check
+    if (it->state == TaskState::Zombie || it->state == TaskState::Crashed) {
+        return true; // Already terminated (idempotent)
+    }
+
+    uint64_t win = it->primary_window;
+
+    // Invoke external lifecycle handler safely without storing iterator across call
+    LifecycleHandler handler_copy = lifecycle_handler_;
+    if (handler_copy) {
+        handler_copy(pid, graceful);
+    }
+
+    // Invoke registered resource reclamation callbacks
+    std::vector<TaskCleanupCallback> callbacks_copy = cleanup_callbacks_;
+    for (const auto& cb : callbacks_copy) {
+        if (cb) {
+            cb(pid, win);
+        }
+    }
+
+    // Re-lookup task iterator since callbacks could have mutated tasks_
+    it = std::find_if(tasks_.begin(), tasks_.end(), [pid](const TaskInfo& t) {
+        return t.pid == pid;
+    });
+    if (it == tasks_.end()) {
+        return true;
     }
 
     if (graceful) {

@@ -19,11 +19,13 @@ DiagnosticsService::DiagnosticsService(kernel::AppSupervisor* supervisor,
 
 void DiagnosticsService::log(const std::string& bundle_id, std::uint32_t pid, LogLevel level, const std::string& message) {
     std::lock_guard<std::mutex> guard(lock_);
-    LogEntry entry{};
-    entry.sequence = ++sequence_counter_;
-    entry.timestamp_us = static_cast<std::uint64_t>(
+    const auto now_us = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
+
+    LogEntry entry{};
+    entry.sequence = ++sequence_counter_;
+    entry.timestamp_us = now_us;
     entry.bundle_id = bundle_id;
     entry.pid = pid;
     entry.level = level;
@@ -32,6 +34,19 @@ void DiagnosticsService::log(const std::string& bundle_id, std::uint32_t pid, Lo
     log_ring_.push_back(std::move(entry));
     while (log_ring_.size() > kMaxLogCapacity) {
         log_ring_.pop_front();
+    }
+
+    winios_diag_event_record_t ev{};
+    ev.sequence = ++event_sequence_counter_;
+    ev.timestamp_us = now_us;
+    ev.category = 1; // System
+    ev.level = static_cast<uint32_t>(level);
+    ev.pid = pid;
+    ev.error_code = 0;
+    strncpy_s(ev.tag, sizeof(ev.tag), bundle_id.c_str(), _TRUNCATE);
+    event_ring_.push_back(ev);
+    while (event_ring_.size() > kMaxEventCapacity) {
+        event_ring_.pop_front();
     }
 }
 
@@ -117,6 +132,79 @@ DeviceDiagnosticsSummary DiagnosticsService::get_device_summary() const {
     }
 
     return ds;
+}
+
+void DiagnosticsService::record_event(uint32_t category, uint32_t level, uint32_t pid, int32_t error_code, const char* tag) {
+    std::lock_guard<std::mutex> guard(lock_);
+    winios_diag_event_record_t ev{};
+    ev.sequence = ++event_sequence_counter_;
+    ev.timestamp_us = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    ev.category = category;
+    ev.level = level;
+    ev.pid = pid;
+    ev.error_code = error_code;
+    if (tag) {
+        strncpy_s(ev.tag, sizeof(ev.tag), tag, _TRUNCATE);
+    }
+    event_ring_.push_back(ev);
+    while (event_ring_.size() > kMaxEventCapacity) {
+        event_ring_.pop_front();
+    }
+}
+
+void DiagnosticsService::record_event(const winios_diag_event_record_t& ev) {
+    std::lock_guard<std::mutex> guard(lock_);
+    winios_diag_event_record_t copy = ev;
+    if (copy.sequence == 0) {
+        copy.sequence = ++event_sequence_counter_;
+    }
+    if (copy.timestamp_us == 0) {
+        copy.timestamp_us = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count());
+    }
+    event_ring_.push_back(copy);
+    while (event_ring_.size() > kMaxEventCapacity) {
+        event_ring_.pop_front();
+    }
+}
+
+std::vector<winios_diag_event_record_t> DiagnosticsService::query_events(
+    uint64_t after_sequence,
+    uint32_t category_filter,
+    uint32_t min_level,
+    uint32_t max_entries,
+    uint32_t caller_pid,
+    bool privileged) const {
+    std::lock_guard<std::mutex> guard(lock_);
+    std::vector<winios_diag_event_record_t> results;
+    const uint32_t bounded_max = std::min<uint32_t>(max_entries, 128);
+    results.reserve(bounded_max);
+
+    for (const auto& ev : event_ring_) {
+        if (ev.sequence <= after_sequence) continue;
+        if (category_filter != 0 && ev.category != category_filter) continue;
+        if (ev.level < min_level) continue;
+        if (!privileged && ev.pid != caller_pid && ev.pid != 0) continue;
+
+        results.push_back(ev);
+        if (results.size() >= bounded_max) {
+            break;
+        }
+    }
+    return results;
+}
+
+std::size_t DiagnosticsService::total_event_count() const {
+    std::lock_guard<std::mutex> guard(lock_);
+    return event_sequence_counter_;
+}
+
+void DiagnosticsService::clear_events() {
+    std::lock_guard<std::mutex> guard(lock_);
+    event_ring_.clear();
 }
 
 } // namespace winios::services

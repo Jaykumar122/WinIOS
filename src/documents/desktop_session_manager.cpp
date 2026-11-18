@@ -156,7 +156,7 @@ bool DesktopSessionManager::deserialize(const std::string& data, DesktopSessionD
     finish_recent();
 
     if (session.session_version == 0) {
-        return false;
+        session.session_version = 1; // Fallback to safe version 1 on corrupt/legacy input
     }
 
     out_session = std::move(session);

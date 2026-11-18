@@ -358,6 +358,47 @@ bool VirtualFileSystem::unlink(const std::string& path) {
     return true;
 }
 
+bool VirtualFileSystem::rename(const std::string& oldpath, const std::string& newpath) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const std::string norm_old = normalize_path(oldpath);
+    const std::string norm_new = normalize_path(newpath);
+    if (norm_old == "/" || norm_new == "/") return false;
+    if (norm_old == norm_new) return true;
+
+    const auto old_last_slash = norm_old.rfind('/');
+    const std::string old_parent_path = (old_last_slash == 0) ? "/" : norm_old.substr(0, old_last_slash);
+    const std::string old_name = norm_old.substr(old_last_slash + 1);
+
+    const auto new_last_slash = norm_new.rfind('/');
+    const std::string new_parent_path = (new_last_slash == 0) ? "/" : norm_new.substr(0, new_last_slash);
+    const std::string new_name = norm_new.substr(new_last_slash + 1);
+
+    auto old_parent = lookup(old_parent_path, true);
+    if (!old_parent || !old_parent->is_directory()) return false;
+
+    auto old_it = old_parent->children.find(old_name);
+    if (old_it == old_parent->children.end()) return false;
+
+    auto new_parent = lookup(new_parent_path, true);
+    if (!new_parent || !new_parent->is_directory()) return false;
+
+    auto node_to_move = old_it->second;
+
+    auto new_it = new_parent->children.find(new_name);
+    if (new_it != new_parent->children.end()) {
+        if (new_it->second->is_directory()) {
+            return false;
+        }
+        new_parent->children.erase(new_it);
+    }
+
+    old_parent->children.erase(old_it);
+    node_to_move->name = new_name;
+    node_to_move->parent = new_parent;
+    new_parent->children[new_name] = node_to_move;
+    return true;
+}
+
 bool VirtualFileSystem::exists(const std::string& path) const {
     return lookup(path, true) != nullptr;
 }

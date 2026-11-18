@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace winios::replay {
 
@@ -96,4 +97,100 @@ public:
     );
 };
 
+// -----------------------------------------------------------------------------
+// Stage 229.19 Replay Divergence Diagnostics
+// -----------------------------------------------------------------------------
+struct ReplayEventRecord {
+    uint64_t    sequence{0};
+    uint64_t    deterministic_tick{0};
+    uint32_t    event_type{0};
+    uint64_t    payload_hash{0};
+    std::string description;
+};
+
+struct ReplayDivergence {
+    bool        has_diverged{false};
+    uint64_t    divergence_step{0};
+    ReplayEventRecord expected;
+    ReplayEventRecord actual;
+    std::string reason;
+};
+
+class ReplayDivergenceChecker {
+public:
+    ReplayDivergenceChecker() = default;
+
+    void add_recorded_event(ReplayEventRecord ev) {
+        recorded_timeline_.push_back(std::move(ev));
+    }
+
+    void add_replayed_event(ReplayEventRecord ev) {
+        replayed_timeline_.push_back(std::move(ev));
+    }
+
+    [[nodiscard]] ReplayDivergence check_divergence() const {
+        ReplayDivergence div{};
+        const size_t min_len = std::min(recorded_timeline_.size(), replayed_timeline_.size());
+
+        for (size_t i = 0; i < min_len; ++i) {
+            const auto& exp = recorded_timeline_[i];
+            const auto& act = replayed_timeline_[i];
+
+            if (exp.sequence != act.sequence) {
+                div.has_diverged = true;
+                div.divergence_step = i;
+                div.expected = exp;
+                div.actual = act;
+                div.reason = "Sequence mismatch: expected " + std::to_string(exp.sequence) +
+                             ", actual " + std::to_string(act.sequence);
+                return div;
+            }
+            if (exp.deterministic_tick != act.deterministic_tick) {
+                div.has_diverged = true;
+                div.divergence_step = i;
+                div.expected = exp;
+                div.actual = act;
+                div.reason = "Deterministic tick mismatch: expected " + std::to_string(exp.deterministic_tick) +
+                             ", actual " + std::to_string(act.deterministic_tick);
+                return div;
+            }
+            if (exp.event_type != act.event_type) {
+                div.has_diverged = true;
+                div.divergence_step = i;
+                div.expected = exp;
+                div.actual = act;
+                div.reason = "Event type mismatch: expected " + std::to_string(exp.event_type) +
+                             ", actual " + std::to_string(act.event_type);
+                return div;
+            }
+            if (exp.payload_hash != act.payload_hash) {
+                div.has_diverged = true;
+                div.divergence_step = i;
+                div.expected = exp;
+                div.actual = act;
+                div.reason = "Payload hash mismatch: expected 0x" + std::to_string(exp.payload_hash) +
+                             ", actual 0x" + std::to_string(act.payload_hash);
+                return div;
+            }
+        }
+
+        if (recorded_timeline_.size() != replayed_timeline_.size()) {
+            div.has_diverged = true;
+            div.divergence_step = min_len;
+            div.reason = "Timeline length mismatch: recorded=" + std::to_string(recorded_timeline_.size()) +
+                         ", replayed=" + std::to_string(replayed_timeline_.size());
+            return div;
+        }
+
+        div.has_diverged = false;
+        div.reason = "Replay perfectly deterministic";
+        return div;
+    }
+
+private:
+    std::vector<ReplayEventRecord> recorded_timeline_;
+    std::vector<ReplayEventRecord> replayed_timeline_;
+};
+
 } // namespace winios::replay
+

@@ -11,6 +11,7 @@
 #include "kernel/app_supervisor.h"
 #include "packaging/app_registry.h"
 #include "graphics/window_manager.h"
+#include "winios_sdk/winios_sdk.h"
 
 namespace winios::services {
 
@@ -88,15 +89,31 @@ public:
     [[nodiscard]] PlatformDiagnosticsSummary get_summary() const;
     [[nodiscard]] DeviceDiagnosticsSummary get_device_summary() const;
 
+    // ABI v2.3 Event Logging & Query API (Stages 229.10, 229.11)
+    static constexpr std::size_t kMaxEventCapacity = 512;
+    void record_event(uint32_t category, uint32_t level, uint32_t pid, int32_t error_code, const char* tag);
+    void record_event(const winios_diag_event_record_t& ev);
+    [[nodiscard]] std::vector<winios_diag_event_record_t> query_events(
+        uint64_t after_sequence,
+        uint32_t category_filter,
+        uint32_t min_level,
+        uint32_t max_entries,
+        uint32_t caller_pid,
+        bool privileged) const;
+    [[nodiscard]] std::size_t total_event_count() const;
+    void clear_events();
+
 private:
     kernel::AppSupervisor*          supervisor_{nullptr};
     packaging::ApplicationRegistry* registry_{nullptr};
     graphics::WindowManager*        wm_{nullptr};
     security::CapabilityManager*    cap_mgr_{nullptr};
 
-    mutable std::mutex              lock_;
-    std::deque<LogEntry>            log_ring_;
-    std::uint64_t                   sequence_counter_{0};
+    mutable std::mutex                     lock_;
+    std::deque<LogEntry>                   log_ring_;
+    std::uint64_t                          sequence_counter_{0};
+    std::deque<winios_diag_event_record_t> event_ring_;
+    std::uint64_t                          event_sequence_counter_{0};
 };
 
 } // namespace winios::services

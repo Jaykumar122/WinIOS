@@ -1893,6 +1893,19 @@ int winios_accessibility_set(uint32_t text_scale, int high_contrast) {
     return (int)winios_syscall2(WINIOS_SYS_ACCESSIBILITY_SET, (uint64_t)text_scale, (uint64_t)high_contrast);
 }
 
+// -----------------------------------------------------------------------------
+// Category C ABI v2.3 Diagnostic Event Query Syscall (Syscall 591)
+// -----------------------------------------------------------------------------
+
+int winios_diag_query_events(winios_diag_query_req_t* req, winios_diag_event_record_t* out_records) {
+    if (!req) return -1;
+    if (out_records && req->max_entries > 0) {
+        req->buffer_va = (uint64_t)(uintptr_t)out_records;
+    }
+    return (int)winios_syscall1(WINIOS_SYS_DIAG_EVENT_QUERY, (uint64_t)(uintptr_t)req);
+}
+
+
 
 
 
