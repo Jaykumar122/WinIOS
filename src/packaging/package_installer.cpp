@@ -1,4 +1,6 @@
 #include "packaging/package_installer.h"
+#include "packaging/canonical_path_validator.h"
+#include "security/security_utils.h"
 #include "crypto/sha256.h"
 
 #include <chrono>
@@ -60,6 +62,7 @@ PackageInstaller::PackageInstaller(std::shared_ptr<vfs::VirtualFileSystem> vfs,
     if (vfs_) {
         if (!vfs_->exists("/Applications")) vfs_->mkdir("/Applications");
         if (!vfs_->exists("/staging")) vfs_->mkdir("/staging");
+        if (!vfs_->exists("/backup")) vfs_->mkdir("/backup");
     }
 }
 
@@ -91,6 +94,36 @@ bool PackageInstaller::copy_directory(const std::string& src_dir, const std::str
     return true;
 }
 
+bool PackageInstaller::write_journal(const std::string& tx_id,
+                                     const std::string& bundle_id,
+                                     TransactionState state,
+                                     bool is_update,
+                                     const std::string& target_dir,
+                                     const std::string& backup_dir) {
+    if (!vfs_) return false;
+    const std::string staging_tx = "/staging/" + tx_id;
+    if (!vfs_->exists(staging_tx)) {
+        vfs_->mkdir(staging_tx);
+    }
+    const std::string journal_path = staging_tx + "/journal.json";
+
+    std::ostringstream ss;
+    ss << "{\n"
+       << "  \"tx_id\": \"" << tx_id << "\",\n"
+       << "  \"bundle_id\": \"" << bundle_id << "\",\n"
+       << "  \"state\": \"" << transaction_state_to_string(state) << "\",\n"
+       << "  \"is_update\": " << (is_update ? "true" : "false") << ",\n"
+       << "  \"target_dir\": \"" << target_dir << "\",\n"
+       << "  \"backup_dir\": \"" << backup_dir << "\"\n"
+       << "}\n";
+
+    std::string data = ss.str();
+    if (!vfs_->exists(journal_path)) {
+        vfs_->create_file(journal_path);
+    }
+    return vfs_->write_file(journal_path, data.data(), data.size());
+}
+
 InstallStatus PackageInstaller::install(const AppPackage& pkg) {
     if (!vfs_ || !registry_) return InstallStatus::VfsError;
 
@@ -106,66 +139,121 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
         return InstallStatus::AlreadyInstalled;
     }
 
-    // 3. Verify file integrity (SHA-256)
+    // Allocate unique transaction ID
+    const std::string tx_id = "tx_" + security::SecureRandom::get_random_hex(8);
+    const std::string target_dir = "/Applications/" + bundle_id + ".app";
+    const std::string staging_tx = "/staging/" + tx_id;
+    const std::string stage_bundle_dir = staging_tx + "/bundle";
+
+    if (!vfs_->exists("/staging")) vfs_->mkdir("/staging");
+    if (!vfs_->mkdir(staging_tx)) return InstallStatus::StagingFailed;
+
+    write_journal(tx_id, bundle_id, TransactionState::Pending, false, target_dir, "");
+
+    // Validate canonical path for every file in package
+    std::vector<std::pair<std::string, const FileEntry*>> normalized_files;
     for (const auto& f : pkg.manifest.files) {
-        const std::string computed_hash = crypto::Sha256::hash_hex(f.data);
-        if (!f.sha256_hex.empty() && computed_hash != f.sha256_hex) {
-            return InstallStatus::IntegrityCheckFailed;
+        std::string norm_path;
+        if (CanonicalPathValidator::validate_and_normalize_bundle_path(f.path, norm_path) != PathValidationStatus::Valid) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+            rollback_staging(staging_tx);
+            return InstallStatus::InvalidManifest;
         }
+        normalized_files.push_back({norm_path, &f});
     }
 
-    // 4. Staging
-    const std::string staging_dir = "/staging/" + bundle_id;
-    if (vfs_->exists(staging_dir)) {
-        rollback_staging(staging_dir);
-    }
-    if (!vfs_->mkdir(staging_dir)) {
+    write_journal(tx_id, bundle_id, TransactionState::Validated, false, target_dir, "");
+
+    // 3. Staged write phase
+    if (!vfs_->mkdir(stage_bundle_dir)) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
         return InstallStatus::StagingFailed;
     }
 
-    for (const auto& f : pkg.manifest.files) {
-        const std::string stage_file_path = staging_dir + "/" + f.path;
-        const auto slash_pos = f.path.find_last_of('/');
+    if (injected_failure_ == InjectedFailureStage::StagingWrite) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
+        return InstallStatus::StagingFailed;
+    }
+
+    for (const auto& [norm_path, f_ptr] : normalized_files) {
+        const std::string stage_file_path = stage_bundle_dir + "/" + norm_path;
+        const auto slash_pos = norm_path.find_last_of('/');
         if (slash_pos != std::string::npos) {
-            const std::string sub = staging_dir + "/" + f.path.substr(0, slash_pos);
-            if (!vfs_->exists(sub)) vfs_->mkdir(sub);
+            const std::string sub = stage_bundle_dir + "/" + norm_path.substr(0, slash_pos);
+            if (!vfs_->exists(sub)) {
+                // Ensure all parents are created
+                std::string parent_builder = stage_bundle_dir;
+                std::istringstream pss(norm_path.substr(0, slash_pos));
+                std::string seg;
+                while (std::getline(pss, seg, '/')) {
+                    if (seg.empty()) continue;
+                    parent_builder += "/" + seg;
+                    if (!vfs_->exists(parent_builder)) vfs_->mkdir(parent_builder);
+                }
+            }
         }
 
         if (!vfs_->create_file(stage_file_path) ||
-            (f.size > 0 && !vfs_->write_file(stage_file_path, f.data.data(), f.data.size()))) {
-            rollback_staging(staging_dir);
+            (f_ptr->size > 0 && !vfs_->write_file(stage_file_path, f_ptr->data.data(), f_ptr->data.size()))) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+            rollback_staging(staging_tx);
             return InstallStatus::StagingFailed;
         }
     }
 
-    // 5. Commit to /Applications/<bundle_id>.app/
-    const std::string target_dir = "/Applications/" + bundle_id + ".app";
-    if (vfs_->exists(target_dir)) {
-        remove_tree(*vfs_, target_dir);
+    // 4. Pre-commit integrity check: re-read staged files and verify digests
+    if (injected_failure_ == InjectedFailureStage::PreCommitIntegrity) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
+        return InstallStatus::IntegrityCheckFailed;
     }
-    if (!vfs_->mkdir(target_dir)) {
-        rollback_staging(staging_dir);
+
+    for (const auto& [norm_path, f_ptr] : normalized_files) {
+        const std::string stage_file_path = stage_bundle_dir + "/" + norm_path;
+        std::vector<std::uint8_t> read_back;
+        if (!vfs_->read_file(stage_file_path, read_back)) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+            rollback_staging(staging_tx);
+            return InstallStatus::IntegrityCheckFailed;
+        }
+
+        const std::string computed_hash = crypto::Sha256::hash_hex(read_back);
+        if (!f_ptr->sha256_hex.empty() && !security::constant_time_equals(computed_hash, f_ptr->sha256_hex)) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+            rollback_staging(staging_tx);
+            return InstallStatus::IntegrityCheckFailed;
+        }
+    }
+
+    write_journal(tx_id, bundle_id, TransactionState::Staged, false, target_dir, "");
+
+    // 5. Atomic commit phase
+    write_journal(tx_id, bundle_id, TransactionState::Committing, false, target_dir, "");
+
+    if (injected_failure_ == InjectedFailureStage::CommitMove) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
         return InstallStatus::CommitFailed;
     }
 
-    for (const auto& f : pkg.manifest.files) {
-        const std::string target_file_path = target_dir + "/" + f.path;
-        const auto slash_pos = f.path.find_last_of('/');
-        if (slash_pos != std::string::npos) {
-            const std::string sub = target_dir + "/" + f.path.substr(0, slash_pos);
-            if (!vfs_->exists(sub)) vfs_->mkdir(sub);
-        }
-
-        if (!vfs_->create_file(target_file_path) ||
-            (f.size > 0 && !vfs_->write_file(target_file_path, f.data.data(), f.data.size()))) {
-            rollback_staging(staging_dir);
-            remove_tree(*vfs_, target_dir);
-            return InstallStatus::CommitFailed;
-        }
+    if (vfs_->exists(target_dir)) {
+        remove_tree(*vfs_, target_dir);
     }
 
-    // Clean up staging
-    rollback_staging(staging_dir);
+    if (!vfs_->rename(stage_bundle_dir, target_dir)) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
+        return InstallStatus::CommitFailed;
+    }
+
+    if (injected_failure_ == InjectedFailureStage::RegistryCommit) {
+        remove_tree(*vfs_, target_dir);
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
+        return InstallStatus::CommitFailed;
+    }
 
     // 6. Register in ApplicationRegistry
     AppRegistration reg{};
@@ -191,6 +279,9 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
     reg.is_active = true;
 
     if (!registry_->register_app(reg)) {
+        remove_tree(*vfs_, target_dir);
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, false, target_dir, "");
+        rollback_staging(staging_tx);
         return InstallStatus::CommitFailed;
     }
 
@@ -198,21 +289,170 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
         registry_->set_default_app_for_type(dt, bundle_id);
     }
 
+    write_journal(tx_id, bundle_id, TransactionState::Committed, false, target_dir, "");
+    rollback_staging(staging_tx);
     return InstallStatus::Success;
 }
 
-std::size_t PackageInstaller::recover_interrupted_installations() {
-    if (!vfs_ || !vfs_->exists("/staging")) return 0;
-    std::vector<vfs::VfsDirEntry> entries;
-    if (!vfs_->readdir("/staging", entries)) return 0;
-    std::size_t recovered = 0;
-    for (const auto& e : entries) {
-        if (e.name == "." || e.name == "..") continue;
-        const std::string path = "/staging/" + e.name;
-        rollback_staging(path);
-        ++recovered;
+namespace {
+
+struct JournalEntry {
+    std::string tx_id;
+    std::string bundle_id;
+    std::string state;
+    bool is_update{false};
+    std::string target_dir;
+    std::string backup_dir;
+};
+
+static bool parse_journal(const std::string& json_text, JournalEntry& out) {
+    auto extract = [&](const std::string& key) -> std::string {
+        std::string pattern = "\"" + key + "\": \"";
+        auto pos = json_text.find(pattern);
+        if (pos == std::string::npos) return "";
+        pos += pattern.size();
+        auto end = json_text.find('"', pos);
+        if (end == std::string::npos) return "";
+        return json_text.substr(pos, end - pos);
+    };
+    out.tx_id = extract("tx_id");
+    out.bundle_id = extract("bundle_id");
+    out.state = extract("state");
+    out.target_dir = extract("target_dir");
+    out.backup_dir = extract("backup_dir");
+    out.is_update = (json_text.find("\"is_update\": true") != std::string::npos);
+    return !out.tx_id.empty() && !out.state.empty();
+}
+
+} // namespace
+
+PackageInstaller::RecoveryReport PackageInstaller::reconcile_and_recover() {
+    RecoveryReport report{};
+    if (!vfs_ || !registry_) return report;
+
+    // 1. Scan /staging
+    if (vfs_->exists("/staging")) {
+        std::vector<vfs::VfsDirEntry> entries;
+        if (vfs_->readdir("/staging", entries)) {
+            for (const auto& e : entries) {
+                if (e.name == "." || e.name == "..") continue;
+                const std::string staging_tx = "/staging/" + e.name;
+                const std::string journal_path = staging_tx + "/journal.json";
+
+                std::vector<std::uint8_t> journal_data;
+                JournalEntry j{};
+                bool has_journal = vfs_->read_file(journal_path, journal_data) &&
+                                   parse_journal(std::string(journal_data.begin(), journal_data.end()), j);
+
+                if (has_journal && j.state == "Committing") {
+                    bool target_has_content = false;
+                    std::vector<vfs::VfsDirEntry> target_entries;
+                    if (vfs_->exists(j.target_dir) && vfs_->readdir(j.target_dir, target_entries)) {
+                        for (const auto& te : target_entries) {
+                            if (te.name != "." && te.name != "..") {
+                                target_has_content = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (target_has_content) {
+                        if (!registry_->is_installed(j.bundle_id)) {
+                            AppRegistration reg{};
+                            reg.bundle_id = j.bundle_id;
+                            reg.name = j.bundle_id;
+                            reg.install_dir = j.target_dir;
+                            reg.version = "1.0.0";
+                            reg.exec_path = "bin/main";
+                            reg.is_active = true;
+                            reg.state = InstallationState::Installed;
+                            registry_->register_app(reg);
+                        }
+                        if (!j.backup_dir.empty() && vfs_->exists(j.backup_dir)) {
+                            remove_tree(*vfs_, j.backup_dir);
+                        }
+                        rollback_staging(staging_tx);
+                        report.committed_transactions_finalized++;
+                    } else {
+                        if (j.is_update && !j.backup_dir.empty() && vfs_->exists(j.backup_dir)) {
+                            if (vfs_->exists(j.target_dir)) remove_tree(*vfs_, j.target_dir);
+                            vfs_->rename(j.backup_dir, j.target_dir);
+                            report.backups_restored++;
+                        }
+                        rollback_staging(staging_tx);
+                        report.abandoned_transactions_cleaned++;
+                    }
+                } else {
+                    if (has_journal && j.is_update && !j.backup_dir.empty() && vfs_->exists(j.backup_dir)) {
+                        if (!vfs_->exists(j.target_dir)) {
+                            vfs_->rename(j.backup_dir, j.target_dir);
+                            report.backups_restored++;
+                        } else {
+                            remove_tree(*vfs_, j.backup_dir);
+                        }
+                    }
+                    rollback_staging(staging_tx);
+                    report.abandoned_transactions_cleaned++;
+                }
+            }
+        }
     }
-    return recovered;
+
+    // 2. Scan leftover /backup directories
+    if (vfs_->exists("/backup")) {
+        std::vector<vfs::VfsDirEntry> backup_entries;
+        if (vfs_->readdir("/backup", backup_entries)) {
+            for (const auto& be : backup_entries) {
+                if (be.name == "." || be.name == "..") continue;
+                remove_tree(*vfs_, "/backup/" + be.name);
+            }
+        }
+    }
+
+    // 3. Reconcile Registry against /Applications
+    auto registered_apps = registry_->list_apps(false);
+    for (const auto& app : registered_apps) {
+        if (!vfs_->exists(app.install_dir)) {
+            registry_->set_installation_state(app.bundle_id, InstallationState::Corrupted);
+            registry_->set_active(app.bundle_id, false);
+            report.corrupted_apps_flagged++;
+        }
+    }
+
+    if (vfs_->exists("/Applications")) {
+        std::vector<vfs::VfsDirEntry> app_entries;
+        if (vfs_->readdir("/Applications", app_entries)) {
+            for (const auto& ae : app_entries) {
+                if (ae.name == "." || ae.name == "..") continue;
+                if (ae.type == 4 && ae.name.size() > 4 && ae.name.substr(ae.name.size() - 4) == ".app") {
+                    std::string bundle_id = ae.name.substr(0, ae.name.size() - 4);
+                    if (!registry_->is_installed(bundle_id)) {
+                        std::vector<vfs::VfsDirEntry> sub;
+                        std::string bundle_path = "/Applications/" + ae.name;
+                        if (vfs_->readdir(bundle_path, sub) && sub.size() > 2) {
+                            AppRegistration discovered{};
+                            discovered.bundle_id = bundle_id;
+                            discovered.name = bundle_id;
+                            discovered.display_name = bundle_id;
+                            discovered.version = "1.0.0";
+                            discovered.exec_path = "bin/main";
+                            discovered.install_dir = bundle_path;
+                            discovered.is_active = true;
+                            discovered.state = InstallationState::Installed;
+                            registry_->register_app(discovered);
+                            report.unindexed_apps_discovered++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return report;
+}
+
+std::size_t PackageInstaller::recover_interrupted_installations() {
+    return reconcile_and_recover().total_recovered();
 }
 
 InstallStatus PackageInstaller::update(const AppPackage& pkg, bool allow_downgrade) {
@@ -240,82 +480,118 @@ InstallStatus PackageInstaller::update(const AppPackage& pkg, bool allow_downgra
         }
     }
 
-    // Verify integrity
+    const std::string tx_id = "tx_" + security::SecureRandom::get_random_hex(8);
+    const std::string target_dir = "/Applications/" + bundle_id + ".app";
+    const std::string backup_dir = "/backup/" + tx_id;
+    const std::string staging_tx = "/staging/" + tx_id;
+    const std::string stage_bundle_dir = staging_tx + "/bundle";
+
+    if (!vfs_->exists("/staging")) vfs_->mkdir("/staging");
+    if (!vfs_->exists("/backup")) vfs_->mkdir("/backup");
+    if (!vfs_->mkdir(staging_tx)) return InstallStatus::StagingFailed;
+
+    write_journal(tx_id, bundle_id, TransactionState::Pending, true, target_dir, backup_dir);
+
+    // Validate canonical path for every file
+    std::vector<std::pair<std::string, const FileEntry*>> normalized_files;
     for (const auto& f : pkg.manifest.files) {
-        const std::string computed = crypto::Sha256::hash_hex(f.data);
-        if (!f.sha256_hex.empty() && computed != f.sha256_hex) {
-            return InstallStatus::IntegrityCheckFailed;
+        std::string norm_path;
+        if (CanonicalPathValidator::validate_and_normalize_bundle_path(f.path, norm_path) != PathValidationStatus::Valid) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+            rollback_staging(staging_tx);
+            return InstallStatus::InvalidManifest;
         }
+        normalized_files.push_back({norm_path, &f});
     }
 
-    const std::string target_dir = "/Applications/" + bundle_id + ".app";
-    const std::string staging_dir = "/staging/" + bundle_id + ".update";
-    const std::string backup_dir = "/staging/" + bundle_id + ".backup";
+    write_journal(tx_id, bundle_id, TransactionState::Validated, true, target_dir, backup_dir);
 
-    // Prepare staging
-    if (vfs_->exists(staging_dir)) rollback_staging(staging_dir);
-    if (vfs_->exists(backup_dir)) rollback_staging(backup_dir);
+    // Staging write phase
+    if (!vfs_->mkdir(stage_bundle_dir)) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
+        return InstallStatus::StagingFailed;
+    }
 
-    if (!vfs_->mkdir(staging_dir)) return InstallStatus::StagingFailed;
+    if (injected_failure_ == InjectedFailureStage::StagingWrite) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
+        return InstallStatus::StagingFailed;
+    }
 
-    // Stage new files
-    for (const auto& f : pkg.manifest.files) {
-        const std::string stage_file = staging_dir + "/" + f.path;
-        const auto slash_pos = f.path.find_last_of('/');
+    for (const auto& [norm_path, f_ptr] : normalized_files) {
+        const std::string stage_file = stage_bundle_dir + "/" + norm_path;
+        const auto slash_pos = norm_path.find_last_of('/');
         if (slash_pos != std::string::npos) {
-            const std::string sub = staging_dir + "/" + f.path.substr(0, slash_pos);
-            if (!vfs_->exists(sub)) vfs_->mkdir(sub);
+            std::string parent_builder = stage_bundle_dir;
+            std::istringstream pss(norm_path.substr(0, slash_pos));
+            std::string seg;
+            while (std::getline(pss, seg, '/')) {
+                if (seg.empty()) continue;
+                parent_builder += "/" + seg;
+                if (!vfs_->exists(parent_builder)) vfs_->mkdir(parent_builder);
+            }
         }
         if (!vfs_->create_file(stage_file) ||
-            (f.size > 0 && !vfs_->write_file(stage_file, f.data.data(), f.data.size()))) {
-            rollback_staging(staging_dir);
+            (f_ptr->size > 0 && !vfs_->write_file(stage_file, f_ptr->data.data(), f_ptr->data.size()))) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+            rollback_staging(staging_tx);
             return InstallStatus::StagingFailed;
         }
     }
 
-    // Backup current installation
-    if (!copy_directory(target_dir, backup_dir)) {
-        rollback_staging(staging_dir);
+    // Pre-commit integrity check
+    if (injected_failure_ == InjectedFailureStage::PreCommitIntegrity) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
+        return InstallStatus::IntegrityCheckFailed;
+    }
+
+    for (const auto& [norm_path, f_ptr] : normalized_files) {
+        const std::string stage_file = stage_bundle_dir + "/" + norm_path;
+        std::vector<std::uint8_t> read_back;
+        if (!vfs_->read_file(stage_file, read_back)) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+            rollback_staging(staging_tx);
+            return InstallStatus::IntegrityCheckFailed;
+        }
+
+        const std::string computed = crypto::Sha256::hash_hex(read_back);
+        if (!f_ptr->sha256_hex.empty() && !security::constant_time_equals(computed, f_ptr->sha256_hex)) {
+            write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+            rollback_staging(staging_tx);
+            return InstallStatus::IntegrityCheckFailed;
+        }
+    }
+
+    write_journal(tx_id, bundle_id, TransactionState::Staged, true, target_dir, backup_dir);
+
+    // Atomic commit phase
+    write_journal(tx_id, bundle_id, TransactionState::Committing, true, target_dir, backup_dir);
+
+    if (injected_failure_ == InjectedFailureStage::CommitMove) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
         return InstallStatus::CommitFailed;
     }
 
-    // Remove existing target and commit new files
-    remove_tree(*vfs_, target_dir);
-    if (!vfs_->mkdir(target_dir)) {
+    // Move current target to backup directory
+    if (!vfs_->rename(target_dir, backup_dir)) {
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
+        return InstallStatus::CommitFailed;
+    }
+
+    // Move staging bundle to target
+    bool move_ok = vfs_->rename(stage_bundle_dir, target_dir);
+    if (!move_ok || injected_failure_ == InjectedFailureStage::RegistryCommit) {
         // Rollback from backup!
-        copy_directory(backup_dir, target_dir);
-        rollback_staging(backup_dir);
-        rollback_staging(staging_dir);
-        return InstallStatus::RollbackSuccess;
-    }
-
-    bool commit_ok = true;
-    for (const auto& f : pkg.manifest.files) {
-        const std::string target_file = target_dir + "/" + f.path;
-        const auto slash_pos = f.path.find_last_of('/');
-        if (slash_pos != std::string::npos) {
-            const std::string sub = target_dir + "/" + f.path.substr(0, slash_pos);
-            if (!vfs_->exists(sub)) vfs_->mkdir(sub);
-        }
-        if (!vfs_->create_file(target_file) ||
-            (f.size > 0 && !vfs_->write_file(target_file, f.data.data(), f.data.size()))) {
-            commit_ok = false;
-            break;
-        }
-    }
-
-    if (!commit_ok) {
-        // Rollback from backup
         remove_tree(*vfs_, target_dir);
-        copy_directory(backup_dir, target_dir);
-        rollback_staging(backup_dir);
-        rollback_staging(staging_dir);
+        vfs_->rename(backup_dir, target_dir);
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
         return InstallStatus::RollbackSuccess;
     }
-
-    // Success: cleanup backup and staging
-    rollback_staging(backup_dir);
-    rollback_staging(staging_dir);
 
     // Update registry record
     AppRegistration updated = *existing_opt;
@@ -331,7 +607,18 @@ InstallStatus PackageInstaller::update(const AppPackage& pkg, bool allow_downgra
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
 
-    registry_->update_app(updated);
+    if (!registry_->update_app(updated)) {
+        remove_tree(*vfs_, target_dir);
+        vfs_->rename(backup_dir, target_dir);
+        write_journal(tx_id, bundle_id, TransactionState::RolledBack, true, target_dir, backup_dir);
+        rollback_staging(staging_tx);
+        return InstallStatus::RollbackSuccess;
+    }
+
+    // Commit success: cleanup backup and staging
+    remove_tree(*vfs_, backup_dir);
+    write_journal(tx_id, bundle_id, TransactionState::Committed, true, target_dir, backup_dir);
+    rollback_staging(staging_tx);
     return InstallStatus::Success;
 }
 

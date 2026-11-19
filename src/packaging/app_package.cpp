@@ -1,10 +1,13 @@
 #include "packaging/app_package.h"
 #include "crypto/sha256.h"
+#include "security/security_utils.h"
+#include "security/publisher_trust_store.h"
 
 #include <cstring>
 #include <sstream>
 #include <unordered_set>
 #include <algorithm>
+#include <cctype>
 
 namespace winios::packaging {
 
@@ -17,6 +20,39 @@ constexpr std::size_t kMaxManifestLen = 65536;
 constexpr std::size_t kMaxFileCount = 256;
 constexpr std::size_t kMaxIndividualFileSize = 32 * 1024 * 1024; // 32 MB
 constexpr std::size_t kV3HeaderSize = 48;
+
+static bool is_valid_utf8_path(const std::string& path) {
+    if (path.empty() || path.size() > 256) return false;
+    const auto* s = reinterpret_cast<const unsigned char*>(path.data());
+    const std::size_t len = path.size();
+    std::size_t i = 0;
+    while (i < len) {
+        if (s[i] < 0x20) {
+            return false; // Null byte or control code
+        }
+        if (s[i] <= 0x7F) {
+            i++;
+        } else if (s[i] >= 0xC2 && s[i] <= 0xDF) {
+            if (i + 1 >= len || (s[i + 1] & 0xC0) != 0x80) return false;
+            i += 2;
+        } else if (s[i] >= 0xE0 && s[i] <= 0xEF) {
+            if (i + 2 >= len || (s[i + 1] & 0xC0) != 0x80 || (s[i + 2] & 0xC0) != 0x80) return false;
+            // Overlong or surrogate rejection
+            if (s[i] == 0xE0 && s[i + 1] < 0xA0) return false;
+            if (s[i] == 0xED && s[i + 1] >= 0xA0) return false;
+            i += 3;
+        } else if (s[i] >= 0xF0 && s[i] <= 0xF4) {
+            if (i + 3 >= len || (s[i + 1] & 0xC0) != 0x80 || (s[i + 2] & 0xC0) != 0x80 || (s[i + 3] & 0xC0) != 0x80) return false;
+            if (s[i] == 0xF0 && s[i + 1] < 0x90) return false;
+            if (s[i] == 0xF4 && s[i + 1] >= 0x90) return false;
+            i += 4;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
 }
 
 bool PackageManifest::is_valid() const noexcept {
@@ -210,9 +246,12 @@ std::vector<std::uint8_t> AppPackage::pack_v3() const {
     const std::uint32_t flags = manifest.signature_sha256.empty() ? 0 : 1;
     std::memcpy(buf.data() + 12, &flags, sizeof(flags));
 
-    // 4. Manifest text
+    // 4. Manifest text & canonical file sorting
     PackageManifest m_copy = manifest;
     m_copy.format_version = "3.0";
+    std::sort(m_copy.files.begin(), m_copy.files.end(), [](const FileEntry& a, const FileEntry& b) {
+        return a.path < b.path;
+    });
     const std::string manifest_str = m_copy.serialize();
     const std::uint64_t manifest_off = kV3HeaderSize;
     const std::uint32_t manifest_len = static_cast<std::uint32_t>(manifest_str.size());
@@ -222,7 +261,7 @@ std::vector<std::uint8_t> AppPackage::pack_v3() const {
     buf.insert(buf.end(), manifest_str.begin(), manifest_str.end());
 
     // 5. File count
-    const std::uint32_t file_count = static_cast<std::uint32_t>(manifest.files.size());
+    const std::uint32_t file_count = static_cast<std::uint32_t>(m_copy.files.size());
     std::memcpy(buf.data() + 36, &file_count, sizeof(file_count));
 
     // 6. Directory table placeholder & file payload packaging
@@ -237,7 +276,7 @@ std::vector<std::uint8_t> AppPackage::pack_v3() const {
     };
 
     std::vector<EntryMeta> metas;
-    for (const auto& f : manifest.files) {
+    for (const auto& f : m_copy.files) {
         EntryMeta meta{};
         meta.path = f.path;
         meta.type = (f.path == manifest.executable_name) ? 1 : 0;
@@ -380,8 +419,18 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
         if (manifest_len > kMaxManifestLen) {
             return PackageValidationResult::ManifestTooLarge;
         }
-        if (manifest_off + manifest_len > size) {
+
+        std::uint64_t manifest_end = 0;
+        if (!security::checked_add(manifest_off, static_cast<std::uint64_t>(manifest_len), manifest_end)) {
+            return PackageValidationResult::IntegerOverflow;
+        }
+        if (manifest_end > size) {
             return PackageValidationResult::PayloadTruncated;
+        }
+
+        // Check for embedded null bytes in manifest text
+        if (std::memchr(data + manifest_off, '\0', manifest_len) != nullptr) {
+            return PackageValidationResult::InvalidManifest;
         }
 
         std::string mstr(reinterpret_cast<const char*>(data + manifest_off), manifest_len);
@@ -400,10 +449,11 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
 
         std::vector<std::pair<std::uint64_t, std::uint64_t>> ranges;
         ranges.push_back({0, kV3HeaderSize});
-        ranges.push_back({manifest_off, manifest_off + manifest_len});
+        ranges.push_back({manifest_off, manifest_end});
 
-        std::size_t off = manifest_off + manifest_len;
+        std::size_t off = static_cast<std::size_t>(manifest_end);
         std::unordered_set<std::string> seen_paths;
+        std::unordered_set<std::string> seen_lower_paths;
 
         for (std::uint32_t i = 0; i < file_count; ++i) {
             if (off + 2 > size) return PackageValidationResult::PayloadTruncated;
@@ -411,18 +461,32 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
             std::memcpy(&plen, data + off, 2);
             off += 2;
 
-            if (off + plen > size) return PackageValidationResult::PayloadTruncated;
-            std::string p(reinterpret_cast<const char*>(data + off), plen);
-            off += plen;
+            if (plen == 0 || plen > 256) return PackageValidationResult::PathTraversalAttempt;
 
-            // Path safety checks
-            if (p.empty() || p.find("..") != std::string::npos || p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos) {
+            std::uint64_t path_end = 0;
+            if (!security::checked_add(static_cast<std::uint64_t>(off), static_cast<std::uint64_t>(plen), path_end)) {
+                return PackageValidationResult::IntegerOverflow;
+            }
+            if (path_end > size) return PackageValidationResult::PayloadTruncated;
+
+            std::string p(reinterpret_cast<const char*>(data + off), plen);
+            off = static_cast<std::size_t>(path_end);
+
+            // Path character and UTF-8 safety checks
+            if (!is_valid_utf8_path(p) || p.find("..") != std::string::npos ||
+                p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos) {
                 return PackageValidationResult::PathTraversalAttempt;
             }
-            if (seen_paths.find(p) != seen_paths.end()) {
+
+            // Case-insensitive duplicate collision detection
+            std::string lower_p = p;
+            std::transform(lower_p.begin(), lower_p.end(), lower_p.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (seen_paths.find(p) != seen_paths.end() || seen_lower_paths.find(lower_p) != seen_lower_paths.end()) {
                 return PackageValidationResult::DuplicateFileEntry;
             }
             seen_paths.insert(p);
+            seen_lower_paths.insert(lower_p);
 
             if (off + 4 + 4 + 8 + 8 + 32 > size) {
                 return PackageValidationResult::PayloadTruncated;
@@ -447,15 +511,19 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
             std::memcpy(expected_hash, data + off, 32);
             off += 32;
 
-            if (data_sz > kMaxIndividualFileSize) {
+            if (data_sz > kMaxIndividualFileSize || data_sz > size) {
                 return PackageValidationResult::FileCountExceeded;
             }
-            if (data_off + data_sz > size || data_off + data_sz < data_off) {
+
+            std::uint64_t entry_end = 0;
+            if (!security::checked_add(data_off, data_sz, entry_end)) {
+                return PackageValidationResult::IntegerOverflow;
+            }
+            if (entry_end > size) {
                 return PackageValidationResult::PayloadTruncated;
             }
 
             // Check range overlaps
-            const std::uint64_t entry_end = data_off + data_sz;
             for (const auto& [r_start, r_end] : ranges) {
                 if (std::max(data_off, r_start) < std::min(entry_end, r_end)) {
                     return PackageValidationResult::OverlappingEntries;
@@ -469,7 +537,7 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
             hasher.update(data + data_off, static_cast<std::size_t>(data_sz));
             hasher.finalize(actual_hash);
 
-            if (std::memcmp(actual_hash, expected_hash, 32) != 0) {
+            if (!security::constant_time_equals(actual_hash, expected_hash, 32)) {
                 return PackageValidationResult::ChecksumMismatch;
             }
 
@@ -519,12 +587,21 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
     if (mlen > kMaxManifestLen) {
         return PackageValidationResult::ManifestTooLarge;
     }
-    if (off + mlen > size) {
+
+    std::uint64_t manifest_end = 0;
+    if (!security::checked_add(static_cast<std::uint64_t>(off), static_cast<std::uint64_t>(mlen), manifest_end)) {
+        return PackageValidationResult::IntegerOverflow;
+    }
+    if (manifest_end > size) {
         return PackageValidationResult::PayloadTruncated;
     }
 
+    if (std::memchr(data + off, '\0', mlen) != nullptr) {
+        return PackageValidationResult::InvalidManifest;
+    }
+
     std::string mstr(reinterpret_cast<const char*>(data + off), mlen);
-    off += mlen;
+    off = static_cast<std::size_t>(manifest_end);
 
     PackageManifest m{};
     if (!PackageManifest::deserialize(mstr, m)) {
@@ -548,35 +625,54 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
     }
 
     std::unordered_set<std::string> seen_paths;
+    std::unordered_set<std::string> seen_lower_paths;
 
     for (std::uint32_t i = 0; i < file_count; ++i) {
         if (off + 2 > size) return PackageValidationResult::PayloadTruncated;
         std::uint16_t plen = 0;
         std::memcpy(&plen, data + off, 2);
         off += 2;
-        if (off + plen > size) return PackageValidationResult::PayloadTruncated;
+
+        if (plen == 0 || plen > 256) return PackageValidationResult::PathTraversalAttempt;
+
+        std::uint64_t path_end = 0;
+        if (!security::checked_add(static_cast<std::uint64_t>(off), static_cast<std::uint64_t>(plen), path_end)) {
+            return PackageValidationResult::IntegerOverflow;
+        }
+        if (path_end > size) return PackageValidationResult::PayloadTruncated;
 
         std::string p(reinterpret_cast<const char*>(data + off), plen);
-        off += plen;
+        off = static_cast<std::size_t>(path_end);
 
         // Path safety & duplicate check
-        if (p.empty() || p.find("..") != std::string::npos || p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos) {
+        if (!is_valid_utf8_path(p) || p.find("..") != std::string::npos ||
+            p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos) {
             return PackageValidationResult::PathTraversalAttempt;
         }
-        if (seen_paths.find(p) != seen_paths.end()) {
+
+        std::string lower_p = p;
+        std::transform(lower_p.begin(), lower_p.end(), lower_p.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (seen_paths.find(p) != seen_paths.end() || seen_lower_paths.find(lower_p) != seen_lower_paths.end()) {
             return PackageValidationResult::DuplicateFileEntry;
         }
         seen_paths.insert(p);
+        seen_lower_paths.insert(lower_p);
 
         if (off + 4 > size) return PackageValidationResult::PayloadTruncated;
         std::uint32_t dsize = 0;
         std::memcpy(&dsize, data + off, 4);
         off += 4;
-        if (dsize > kMaxIndividualFileSize) return PackageValidationResult::FileCountExceeded;
-        if (off + dsize > size) return PackageValidationResult::PayloadTruncated;
+        if (dsize > kMaxIndividualFileSize || dsize > size) return PackageValidationResult::FileCountExceeded;
+
+        std::uint64_t next_off = 0;
+        if (!security::checked_add(static_cast<std::uint64_t>(off), static_cast<std::uint64_t>(dsize), next_off)) {
+            return PackageValidationResult::IntegerOverflow;
+        }
+        if (next_off > size) return PackageValidationResult::PayloadTruncated;
 
         std::vector<std::uint8_t> fdata(data + off, data + off + dsize);
-        off += dsize;
+        off = static_cast<std::size_t>(next_off);
 
         FileEntry fe{};
         fe.path = p;
@@ -630,15 +726,56 @@ PackageTrustInfo AppPackage::evaluate_trust(const AppPackage& pkg, bool allow_de
 
     if (!pkg.manifest.signature_sha256.empty()) {
         info.signature_hex = pkg.manifest.signature_sha256;
-        // Platform trust root simulation: check known valid platform signature format
-        if (pkg.manifest.signature_sha256 == "PLATFORM_ROOT_A16_TRUSTED" ||
-            pkg.manifest.signature_sha256.size() == 64) {
+        if (pkg.manifest.signature_sha256 == "PLATFORM_ROOT_A16_TRUSTED") {
             info.trust_level = PackageTrustLevel::PlatformSigned;
         } else {
-            info.trust_level = PackageTrustLevel::Unsigned;
+            auto store = security::PublisherTrustStore::create_default_test_store();
+            auto key = store.get_key(pkg.manifest.signature_sha256);
+            if (key.has_value() && !key->is_revoked) {
+                if (key->role == security::PublisherRole::Platform) {
+                    info.trust_level = PackageTrustLevel::PlatformSigned;
+                } else {
+                    info.trust_level = allow_developer_trust ? PackageTrustLevel::DeveloperLocal : PackageTrustLevel::Unsigned;
+                }
+            } else {
+                info.trust_level = PackageTrustLevel::Unsigned;
+            }
         }
     } else {
         info.trust_level = allow_developer_trust ? PackageTrustLevel::DeveloperLocal : PackageTrustLevel::Unsigned;
+    }
+
+    return info;
+}
+
+PackageTrustInfo AppPackage::evaluate_trust(const std::uint8_t* raw_pkg_data,
+                                            std::size_t raw_pkg_size,
+                                            const security::PublisherTrustStore& store,
+                                            bool allow_developer_trust) {
+    PackageTrustInfo info{};
+    AppPackage pkg{};
+    if (validate_package_data(raw_pkg_data, raw_pkg_size, &pkg) != PackageValidationResult::Valid) {
+        info.integrity_verified = false;
+        info.trust_level = PackageTrustLevel::Unsigned;
+        return info;
+    }
+    info.integrity_verified = true;
+
+    auto policy = allow_developer_trust ? security::TrustPolicy::Development : security::TrustPolicy::StrictProduction;
+    auto sig_res = store.verify_package_signature(raw_pkg_data, raw_pkg_size, policy);
+
+    info.digest_hex = sig_res.digest_hex;
+    info.signature_hex = sig_res.signature_hex;
+
+    if (sig_res.status == security::SignatureStatus::PlatformSigned) {
+        info.trust_level = PackageTrustLevel::PlatformSigned;
+    } else if (sig_res.status == security::SignatureStatus::DeveloperSigned) {
+        info.trust_level = allow_developer_trust ? PackageTrustLevel::DeveloperLocal : PackageTrustLevel::Unsigned;
+    } else if (sig_res.status == security::SignatureStatus::Unsigned) {
+        info.trust_level = allow_developer_trust ? PackageTrustLevel::DeveloperLocal : PackageTrustLevel::Unsigned;
+    } else {
+        info.trust_level = PackageTrustLevel::Unsigned;
+        info.integrity_verified = false;
     }
 
     return info;

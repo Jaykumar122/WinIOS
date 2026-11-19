@@ -5,6 +5,10 @@
 #include <string>
 #include <vector>
 
+namespace winios::security {
+class PublisherTrustStore;
+}
+
 namespace winios::packaging {
 
 enum class PackageValidationResult : std::uint32_t {
@@ -132,6 +136,10 @@ struct AppPackage {
 
     // Evaluate trust policy
     static PackageTrustInfo evaluate_trust(const AppPackage& pkg, bool allow_developer_trust = true);
+    static PackageTrustInfo evaluate_trust(const std::uint8_t* raw_pkg_data,
+                                           std::size_t raw_pkg_size,
+                                           const security::PublisherTrustStore& store,
+                                           bool allow_developer_trust = true);
 };
 
 } // namespace winios::packaging

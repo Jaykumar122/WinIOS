@@ -66,6 +66,22 @@ public:
     // Recover interrupted installations by cleaning up any orphaned staging directories
     std::size_t recover_interrupted_installations();
 
+    struct RecoveryReport {
+        std::size_t abandoned_transactions_cleaned{0};
+        std::size_t committed_transactions_finalized{0};
+        std::size_t backups_restored{0};
+        std::size_t corrupted_apps_flagged{0};
+        std::size_t unindexed_apps_discovered{0};
+
+        std::size_t total_recovered() const noexcept {
+            return abandoned_transactions_cleaned + committed_transactions_finalized +
+                   backups_restored + corrupted_apps_flagged + unindexed_apps_discovered;
+        }
+    };
+
+    // Full reconciliation between VFS filesystem state, staging journals, and ApplicationRegistry
+    RecoveryReport reconcile_and_recover();
+
     // Callbacks for running app lifecycle integration
     void set_running_check(RunningCheckCallback cb) { is_running_cb_ = std::move(cb); }
     void set_terminate_callback(TerminateCallback cb) { terminate_cb_ = std::move(cb); }
@@ -73,7 +89,48 @@ public:
     // Helper: Compare semver strings ("major.minor.patch") -> returns -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
     static int compare_versions(const std::string& v1, const std::string& v2) noexcept;
 
+    // Failure injection stages for deterministic testing of rollback and recovery
+    enum class InjectedFailureStage : std::uint32_t {
+        None = 0,
+        StagingWrite = 1,
+        PreCommitIntegrity = 2,
+        CommitMove = 3,
+        RegistryCommit = 4
+    };
+
+    void set_injected_failure(InjectedFailureStage stage) noexcept {
+        injected_failure_ = stage;
+    }
+
+    enum class TransactionState : std::uint32_t {
+        Pending = 0,
+        Validated = 1,
+        Staged = 2,
+        Committing = 3,
+        Committed = 4,
+        RolledBack = 5
+    };
+
+    static const char* transaction_state_to_string(TransactionState s) noexcept {
+        switch (s) {
+        case TransactionState::Pending: return "Pending";
+        case TransactionState::Validated: return "Validated";
+        case TransactionState::Staged: return "Staged";
+        case TransactionState::Committing: return "Committing";
+        case TransactionState::Committed: return "Committed";
+        case TransactionState::RolledBack: return "RolledBack";
+        default: return "Unknown";
+        }
+    }
+
 private:
+    bool write_journal(const std::string& tx_id,
+                       const std::string& bundle_id,
+                       TransactionState state,
+                       bool is_update,
+                       const std::string& target_dir,
+                       const std::string& backup_dir);
+
     void rollback_staging(const std::string& staging_dir);
     bool copy_directory(const std::string& src_dir, const std::string& dst_dir);
 
@@ -81,6 +138,7 @@ private:
     std::shared_ptr<ApplicationRegistry>   registry_;
     RunningCheckCallback                    is_running_cb_;
     TerminateCallback                       terminate_cb_;
+    InjectedFailureStage                    injected_failure_{InjectedFailureStage::None};
 };
 
 } // namespace winios::packaging

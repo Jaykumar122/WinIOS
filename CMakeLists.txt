@@ -144,7 +144,10 @@ add_library(winios_core STATIC
     src/packaging/app_package.cpp
     src/packaging/app_registry.cpp
     src/packaging/package_installer.cpp
+    src/packaging/canonical_path_validator.cpp
     src/security/capability_manager.cpp
+    src/security/security_utils.cpp
+    src/security/publisher_trust_store.cpp
     src/kernel/app_supervisor.cpp
     src/services/configuration_service.cpp
     src/services/diagnostics_service.cpp
@@ -320,7 +323,8 @@ target_include_directories(winios_core PUBLIC
 
 if(WIN32)
     # GetProcessMemoryInfo / PROCESS_MEMORY_COUNTERS_EX for Stage 21 memory probes.
-    target_link_libraries(winios_core PUBLIC psapi)
+    # bcrypt for cryptographic random generation (Campaign 231)
+    target_link_libraries(winios_core PUBLIC psapi bcrypt)
 endif()
 
 winios_set_warnings(winios_core)
@@ -5862,6 +5866,177 @@ target_include_directories(stage230_22_adversarial_boundary_tests PRIVATE guest-
 target_link_libraries(stage230_22_adversarial_boundary_tests PRIVATE winios_core)
 winios_set_warnings(stage230_22_adversarial_boundary_tests)
 add_test(NAME stage230_22_adversarial_boundary_tests COMMAND stage230_22_adversarial_boundary_tests)
+
+# ==============================================================================
+# Campaign 231: Package Authenticity, Transactional Runtime, ABI Conformance & Reproducible Developer Toolchain
+# ==============================================================================
+
+add_executable(stage231_2_security_primitives_tests
+    tests/unit/stage231_2_security_primitives_tests.cpp
+)
+target_include_directories(stage231_2_security_primitives_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_2_security_primitives_tests PRIVATE winios_core)
+winios_set_warnings(stage231_2_security_primitives_tests)
+add_test(NAME stage231_2_security_primitives_tests COMMAND stage231_2_security_primitives_tests)
+
+add_executable(stage231_4_trust_store_tests
+    tests/unit/stage231_4_trust_store_tests.cpp
+)
+target_include_directories(stage231_4_trust_store_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_4_trust_store_tests PRIVATE winios_core)
+winios_set_warnings(stage231_4_trust_store_tests)
+add_test(NAME stage231_4_trust_store_tests COMMAND stage231_4_trust_store_tests)
+
+add_executable(stage231_5_parser_hardening_tests
+    tests/unit/stage231_5_parser_hardening_tests.cpp
+)
+target_include_directories(stage231_5_parser_hardening_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_5_parser_hardening_tests PRIVATE winios_core)
+winios_set_warnings(stage231_5_parser_hardening_tests)
+add_test(NAME stage231_5_parser_hardening_tests COMMAND stage231_5_parser_hardening_tests)
+
+add_executable(stage231_6_canonical_path_tests
+    tests/unit/stage231_6_canonical_path_tests.cpp
+)
+target_include_directories(stage231_6_canonical_path_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_6_canonical_path_tests PRIVATE winios_core)
+winios_set_warnings(stage231_6_canonical_path_tests)
+add_test(NAME stage231_6_canonical_path_tests COMMAND stage231_6_canonical_path_tests)
+
+add_executable(stage231_7_crash_consistent_installer_tests
+    tests/unit/stage231_7_crash_consistent_installer_tests.cpp
+)
+target_include_directories(stage231_7_crash_consistent_installer_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_7_crash_consistent_installer_tests PRIVATE winios_core)
+winios_set_warnings(stage231_7_crash_consistent_installer_tests)
+add_test(NAME stage231_7_crash_consistent_installer_tests COMMAND stage231_7_crash_consistent_installer_tests)
+
+add_executable(stage231_8_recovery_reconciliation_tests
+    tests/unit/stage231_8_recovery_reconciliation_tests.cpp
+)
+target_include_directories(stage231_8_recovery_reconciliation_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_8_recovery_reconciliation_tests PRIVATE winios_core)
+winios_set_warnings(stage231_8_recovery_reconciliation_tests)
+add_test(NAME stage231_8_recovery_reconciliation_tests COMMAND stage231_8_recovery_reconciliation_tests)
+
+add_executable(stage231_9_process_identity_hardening_tests
+    tests/unit/stage231_9_process_identity_hardening_tests.cpp
+)
+target_include_directories(stage231_9_process_identity_hardening_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_9_process_identity_hardening_tests PRIVATE winios_core)
+winios_set_warnings(stage231_9_process_identity_hardening_tests)
+add_test(NAME stage231_9_process_identity_hardening_tests COMMAND stage231_9_process_identity_hardening_tests)
+
+add_executable(stage231_10_ipc_token_security_tests
+    tests/unit/stage231_10_ipc_token_security_tests.cpp
+)
+target_include_directories(stage231_10_ipc_token_security_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_10_ipc_token_security_tests PRIVATE winios_core)
+winios_set_warnings(stage231_10_ipc_token_security_tests)
+add_test(NAME stage231_10_ipc_token_security_tests COMMAND stage231_10_ipc_token_security_tests)
+
+add_executable(stage231_11_doc_grant_security_tests
+    tests/unit/stage231_11_doc_grant_security_tests.cpp
+)
+target_include_directories(stage231_11_doc_grant_security_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_11_doc_grant_security_tests PRIVATE winios_core)
+winios_set_warnings(stage231_11_doc_grant_security_tests)
+add_test(NAME stage231_11_doc_grant_security_tests COMMAND stage231_11_doc_grant_security_tests)
+
+add_executable(stage231_12_launch_transaction_tests
+    tests/unit/stage231_12_launch_transaction_tests.cpp
+)
+target_include_directories(stage231_12_launch_transaction_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage231_12_launch_transaction_tests PRIVATE winios_core)
+winios_set_warnings(stage231_12_launch_transaction_tests)
+add_test(NAME stage231_12_launch_transaction_tests COMMAND stage231_12_launch_transaction_tests)
+
+add_executable(stage231_13_abi_conformance_tests
+    tests/unit/stage231_13_abi_conformance_tests.cpp
+)
+target_include_directories(stage231_13_abi_conformance_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_13_abi_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage231_13_abi_conformance_tests)
+add_test(NAME stage231_13_abi_conformance_tests COMMAND stage231_13_abi_conformance_tests)
+
+add_executable(stage231_14_syscall_boundary_tests
+    tests/unit/stage231_14_syscall_boundary_tests.cpp
+)
+target_include_directories(stage231_14_syscall_boundary_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_14_syscall_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage231_14_syscall_boundary_tests)
+add_test(NAME stage231_14_syscall_boundary_tests COMMAND stage231_14_syscall_boundary_tests)
+
+add_executable(stage231_15_macho_format_tests
+    tests/unit/stage231_15_macho_format_tests.cpp
+)
+target_include_directories(stage231_15_macho_format_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_15_macho_format_tests PRIVATE winios_core)
+winios_set_warnings(stage231_15_macho_format_tests)
+add_test(NAME stage231_15_macho_format_tests COMMAND stage231_15_macho_format_tests)
+
+add_executable(stage231_16_reproducible_build_tests
+    tests/unit/stage231_16_reproducible_build_tests.cpp
+)
+target_include_directories(stage231_16_reproducible_build_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_16_reproducible_build_tests PRIVATE winios_core)
+winios_set_warnings(stage231_16_reproducible_build_tests)
+add_test(NAME stage231_16_reproducible_build_tests COMMAND stage231_16_reproducible_build_tests)
+
+add_executable(stage231_17_cli_security_tests
+    tests/unit/stage231_17_cli_security_tests.cpp
+)
+target_include_directories(stage231_17_cli_security_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_17_cli_security_tests PRIVATE winios_core)
+winios_set_warnings(stage231_17_cli_security_tests)
+add_test(NAME stage231_17_cli_security_tests COMMAND stage231_17_cli_security_tests)
+
+add_executable(stage231_18_generator_validation_tests
+    tests/unit/stage231_18_generator_validation_tests.cpp
+)
+target_include_directories(stage231_18_generator_validation_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_18_generator_validation_tests PRIVATE winios_core)
+winios_set_warnings(stage231_18_generator_validation_tests)
+add_test(NAME stage231_18_generator_validation_tests COMMAND stage231_18_generator_validation_tests)
+
+add_executable(stage231_19_debugger_profiler_tests
+    tests/unit/stage231_19_debugger_profiler_tests.cpp
+)
+target_include_directories(stage231_19_debugger_profiler_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_19_debugger_profiler_tests PRIVATE winios_core)
+winios_set_warnings(stage231_19_debugger_profiler_tests)
+add_test(NAME stage231_19_debugger_profiler_tests COMMAND stage231_19_debugger_profiler_tests)
+
+add_executable(stage231_20_resource_isolation_tests
+    tests/unit/stage231_20_resource_isolation_tests.cpp
+)
+target_include_directories(stage231_20_resource_isolation_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_20_resource_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage231_20_resource_isolation_tests)
+add_test(NAME stage231_20_resource_isolation_tests COMMAND stage231_20_resource_isolation_tests)
+
+add_executable(stage231_21_e2e_ecosystem_tests
+    tests/unit/stage231_21_e2e_ecosystem_tests.cpp
+)
+target_include_directories(stage231_21_e2e_ecosystem_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_21_e2e_ecosystem_tests PRIVATE winios_core)
+winios_set_warnings(stage231_21_e2e_ecosystem_tests)
+add_test(NAME stage231_21_e2e_ecosystem_tests COMMAND stage231_21_e2e_ecosystem_tests)
+
+add_executable(stage231_22_adversarial_suite_tests
+    tests/unit/stage231_22_adversarial_suite_tests.cpp
+)
+target_include_directories(stage231_22_adversarial_suite_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage231_22_adversarial_suite_tests PRIVATE winios_core)
+winios_set_warnings(stage231_22_adversarial_suite_tests)
+add_test(NAME stage231_22_adversarial_suite_tests COMMAND stage231_22_adversarial_suite_tests)
+
+
+
+
+
+
+
 
 
 

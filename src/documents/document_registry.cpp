@@ -1,11 +1,14 @@
 #include "documents/document_registry.h"
+#include "packaging/canonical_path_validator.h"
+#include "security/security_utils.h"
 
 #include <algorithm>
 
 namespace winios::documents {
 
-DocumentRegistry::DocumentRegistry(std::shared_ptr<security::CapabilityManager> cap_mgr)
-    : cap_mgr_(std::move(cap_mgr)) {}
+DocumentRegistry::DocumentRegistry(std::shared_ptr<security::CapabilityManager> cap_mgr,
+                                   std::shared_ptr<kernel::ProcessIdentityManager> identity_mgr)
+    : cap_mgr_(std::move(cap_mgr)), identity_mgr_(std::move(identity_mgr)) {}
 
 std::uint64_t DocumentRegistry::current_time_us() const {
     return static_cast<std::uint64_t>(
@@ -15,31 +18,44 @@ std::uint64_t DocumentRegistry::current_time_us() const {
 
 bool DocumentRegistry::sanitize_and_validate_path(const std::string& in_path, std::string& out_canonical) {
     if (in_path.empty()) return false;
-    // Disallow path traversal sequences and encoded variants
+    // Must begin with '/'
+    if (in_path.front() != '/') return false;
+
+    // Disallow path traversal sequences, backslashes, and encoded variants
     if (in_path.find("..") != std::string::npos || in_path.find('\\') != std::string::npos ||
         in_path.find("%2e") != std::string::npos || in_path.find("%2E") != std::string::npos ||
         in_path.find("%2f") != std::string::npos || in_path.find("%2F") != std::string::npos ||
         in_path.find("%5c") != std::string::npos || in_path.find("%5C") != std::string::npos) {
         return false;
     }
-    // Must begin with '/' and be in permitted virtual roots
-    if (in_path.front() != '/') {
+
+    // Canonical path validation using CanonicalPathValidator on relative segment
+    std::string rel_path = in_path.substr(1);
+    std::string norm_rel;
+    if (packaging::CanonicalPathValidator::validate_and_normalize_bundle_path(rel_path, norm_rel) !=
+        packaging::PathValidationStatus::Valid) {
         return false;
     }
-    // Permitted virtual document roots: /Documents, /Shared, /Downloads, /tmp, /Users
+
+    std::string canonical = "/" + norm_rel;
+
+    // Permitted virtual document roots: /Documents, /Shared, /Downloads, /tmp, /Users, /var/mobile
     const std::vector<std::string> valid_prefixes = {
         "/Documents", "/Shared", "/Downloads", "/tmp", "/Users", "/var/mobile"
     };
     bool valid_prefix = false;
     for (const auto& p : valid_prefixes) {
-        if (in_path.rfind(p, 0) == 0) {
-            valid_prefix = true;
-            break;
+        if (canonical.rfind(p, 0) == 0) {
+            // Must be exact match or followed by '/'
+            if (canonical.length() == p.length() || canonical[p.length()] == '/') {
+                valid_prefix = true;
+                break;
+            }
         }
     }
     if (!valid_prefix) return false;
 
-    out_canonical = in_path;
+    out_canonical = canonical;
     return true;
 }
 
@@ -212,6 +228,11 @@ std::vector<DocumentMetadata> DocumentRegistry::list_documents_for_process(std::
             // Check grants
             for (const auto& [tok, grant] : grants_) {
                 if (grant.doc_handle == doc.handle && grant.grantee_pid == caller_pid && !grant.is_revoked) {
+                    if (identity_mgr_ && grant.grantee_generation > 0) {
+                        if (identity_mgr_->get_generation(caller_pid) != grant.grantee_generation) {
+                            continue;
+                        }
+                    }
                     if (grant.expiry_time_us == 0 || grant.expiry_time_us > now) {
                         allowed = true;
                         break;
@@ -290,6 +311,13 @@ bool DocumentRegistry::check_access(DocumentHandle handle,
     auto it = documents_.find(id);
     if (it == documents_.end()) return false;
 
+    // Check process validity if identity manager is active
+    if (identity_mgr_ && caller_pid != 1) {
+        if (!identity_mgr_->is_valid_pid(caller_pid)) {
+            return false;
+        }
+    }
+
     // Capability check
     if (cap_mgr_ && caller_pid != 1) {
         if (has_access_flag(mode, DocumentAccessMode::Read)) {
@@ -310,12 +338,82 @@ bool DocumentRegistry::check_access(DocumentHandle handle,
         return true;
     }
 
-    // Check explicit sharing grant
+    // Check explicit sharing grant with generational validation
     const auto now = current_time_us();
     for (const auto& [tok, grant] : grants_) {
         if (grant.doc_handle == handle && grant.grantee_pid == caller_pid && !grant.is_revoked) {
             if (grant.expiry_time_us != 0 && grant.expiry_time_us <= now) {
                 continue; // Expired
+            }
+            if (identity_mgr_ && grant.grantee_generation > 0) {
+                if (identity_mgr_->get_generation(caller_pid) != grant.grantee_generation) {
+                    continue; // Generation mismatch: stale recycled PID!
+                }
+            }
+            const auto granted_mode = static_cast<DocumentAccessMode>(grant.mode);
+            if (has_access_flag(mode, DocumentAccessMode::Write) && !has_access_flag(granted_mode, DocumentAccessMode::Write)) {
+                return false;
+            }
+            if (has_access_flag(mode, DocumentAccessMode::Read) && !has_access_flag(granted_mode, DocumentAccessMode::Read)) {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool DocumentRegistry::check_access(DocumentHandle handle,
+                                    kernel::ProcessHandle caller,
+                                    DocumentAccessMode mode) const {
+    if (handle == kInvalidDocumentHandle) return false;
+    const std::uint32_t id = doc_handle_id(handle);
+    const std::uint32_t gen = doc_handle_gen(handle);
+
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    auto gen_it = generations_.find(id);
+    if (gen_it == generations_.end() || gen_it->second != gen) return false;
+
+    auto it = documents_.find(id);
+    if (it == documents_.end()) return false;
+
+    // Check caller handle validity
+    if (identity_mgr_ && caller.pid != 1) {
+        if (!identity_mgr_->is_valid_handle(caller)) {
+            return false;
+        }
+    }
+
+    // Capability check
+    if (cap_mgr_ && caller.pid != 1) {
+        if (has_access_flag(mode, DocumentAccessMode::Read)) {
+            if (!cap_mgr_->check(caller.pid, security::Capability::DocumentRead)) return false;
+        }
+        if (has_access_flag(mode, DocumentAccessMode::Write)) {
+            if (!cap_mgr_->check(caller.pid, security::Capability::DocumentWrite)) return false;
+        }
+    }
+
+    // Read only constraint
+    if (it->second.is_read_only && has_access_flag(mode, DocumentAccessMode::Write)) {
+        return false;
+    }
+
+    // Direct ownership check
+    if (it->second.owner_pid == caller.pid || caller.pid == 1) {
+        return true;
+    }
+
+    // Check explicit sharing grant matching PID and generation
+    const auto now = current_time_us();
+    for (const auto& [tok, grant] : grants_) {
+        if (grant.doc_handle == handle && grant.grantee_pid == caller.pid && !grant.is_revoked) {
+            if (grant.expiry_time_us != 0 && grant.expiry_time_us <= now) {
+                continue;
+            }
+            if (grant.grantee_generation > 0 && grant.grantee_generation != caller.generation) {
+                continue; // Generation mismatch!
             }
             const auto granted_mode = static_cast<DocumentAccessMode>(grant.mode);
             if (has_access_flag(mode, DocumentAccessMode::Write) && !has_access_flag(granted_mode, DocumentAccessMode::Write)) {
@@ -358,12 +456,23 @@ DocumentAccessGrant DocumentRegistry::create_grant(DocumentHandle handle,
 
     const auto now = current_time_us();
     const std::uint64_t token = next_grant_token_++;
+    const std::string token_hex = security::SecureRandom::get_random_hex(16);
+
+    uint32_t grantor_gen = 0;
+    uint32_t grantee_gen = 0;
+    if (identity_mgr_) {
+        if (grantor_pid != 1) grantor_gen = identity_mgr_->get_generation(grantor_pid);
+        grantee_gen = identity_mgr_->get_generation(grantee_pid);
+    }
 
     DocumentAccessGrant grant{};
     grant.grant_token = token;
+    grant.grant_token_hex = token_hex;
     grant.doc_handle = handle;
     grant.grantor_pid = grantor_pid;
+    grant.grantor_generation = grantor_gen;
     grant.grantee_pid = grantee_pid;
+    grant.grantee_generation = grantee_gen;
     grant.grantee_bundle_id = grantee_bundle_id;
     grant.mode = static_cast<std::uint32_t>(mode);
     grant.granted_time_us = now;
@@ -371,6 +480,58 @@ DocumentAccessGrant DocumentRegistry::create_grant(DocumentHandle handle,
     grant.is_revoked = false;
 
     grants_[token] = grant;
+    grants_by_hex_[token_hex] = token;
+    return grant;
+}
+
+DocumentAccessGrant DocumentRegistry::create_grant(DocumentHandle handle,
+                                                   kernel::ProcessHandle grantor,
+                                                   kernel::ProcessHandle grantee,
+                                                   const std::string& grantee_bundle_id,
+                                                   DocumentAccessMode mode,
+                                                   std::uint64_t expiry_us) {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    if (!is_handle_valid(handle)) return {};
+
+    if (identity_mgr_) {
+        if (grantor.pid != 1 && !identity_mgr_->is_valid_handle(grantor)) return {};
+        if (!identity_mgr_->is_valid_handle(grantee)) return {};
+    }
+
+    const std::uint32_t id = doc_handle_id(handle);
+    auto it = documents_.find(id);
+    if (it == documents_.end()) return {};
+
+    if (it->second.owner_pid != grantor.pid && grantor.pid != 1) {
+        return {};
+    }
+
+    if (cap_mgr_ && grantor.pid != 1) {
+        if (!cap_mgr_->check(grantor.pid, security::Capability::DocumentShare)) {
+            return {};
+        }
+    }
+
+    const auto now = current_time_us();
+    const std::uint64_t token = next_grant_token_++;
+    const std::string token_hex = security::SecureRandom::get_random_hex(16);
+
+    DocumentAccessGrant grant{};
+    grant.grant_token = token;
+    grant.grant_token_hex = token_hex;
+    grant.doc_handle = handle;
+    grant.grantor_pid = grantor.pid;
+    grant.grantor_generation = grantor.generation;
+    grant.grantee_pid = grantee.pid;
+    grant.grantee_generation = grantee.generation;
+    grant.grantee_bundle_id = grantee_bundle_id;
+    grant.mode = static_cast<std::uint32_t>(mode);
+    grant.granted_time_us = now;
+    grant.expiry_time_us = (expiry_us > 0) ? (now + expiry_us) : 0;
+    grant.is_revoked = false;
+
+    grants_[token] = grant;
+    grants_by_hex_[token_hex] = token;
     return grant;
 }
 
@@ -387,11 +548,28 @@ bool DocumentRegistry::revoke_grant(std::uint64_t grant_token, std::uint32_t cal
     return true;
 }
 
+bool DocumentRegistry::revoke_grant_by_hex(const std::string& grant_token_hex, std::uint32_t caller_pid) {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    auto it_hex = grants_by_hex_.find(grant_token_hex);
+    if (it_hex == grants_by_hex_.end()) return false;
+
+    return revoke_grant(it_hex->second, caller_pid);
+}
+
 void DocumentRegistry::revoke_all_for_process(std::uint32_t pid) {
     std::lock_guard<std::recursive_mutex> guard(lock_);
-    // Revoke any grant issued by or to this pid
     for (auto& [tok, grant] : grants_) {
         if (grant.grantor_pid == pid || grant.grantee_pid == pid) {
+            grant.is_revoked = true;
+        }
+    }
+}
+
+void DocumentRegistry::revoke_all_for_process_handle(kernel::ProcessHandle handle) {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    for (auto& [tok, grant] : grants_) {
+        if ((grant.grantor_pid == handle.pid && (grant.grantor_generation == 0 || grant.grantor_generation == handle.generation)) ||
+            (grant.grantee_pid == handle.pid && (grant.grantee_generation == 0 || grant.grantee_generation == handle.generation))) {
             grant.is_revoked = true;
         }
     }
@@ -408,11 +586,29 @@ std::vector<DocumentAccessGrant> DocumentRegistry::get_grants_for_document(Docum
     return result;
 }
 
+std::optional<DocumentAccessGrant> DocumentRegistry::get_grant_by_token(std::uint64_t token) const {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    auto it = grants_.find(token);
+    if (it != grants_.end()) return it->second;
+    return std::nullopt;
+}
+
+std::optional<DocumentAccessGrant> DocumentRegistry::get_grant_by_hex(const std::string& token_hex) const {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    auto it_hex = grants_by_hex_.find(token_hex);
+    if (it_hex != grants_by_hex_.end()) {
+        auto it = grants_.find(it_hex->second);
+        if (it != grants_.end()) return it->second;
+    }
+    return std::nullopt;
+}
+
 void DocumentRegistry::clear() {
     std::lock_guard<std::recursive_mutex> guard(lock_);
     documents_.clear();
     generations_.clear();
     grants_.clear();
+    grants_by_hex_.clear();
     next_id_ = 1;
     next_grant_token_ = 5001;
 }

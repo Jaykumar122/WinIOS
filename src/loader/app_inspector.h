@@ -31,6 +31,10 @@ struct AppInspectionReport {
     std::vector<SegmentInfo> segments;
     size_t                   binary_size_bytes{0};
     bool                     wx_clean{true};
+    bool                     has_code_signature{false};
+    uint32_t                 code_signature_offset{0};
+    uint32_t                 code_signature_size{0};
+    bool                     page_aligned_16k{true};
 };
 
 class AppInspector {

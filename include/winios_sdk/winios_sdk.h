@@ -218,6 +218,9 @@ typedef enum {
     WINIOS_WINDOW_STATE_CLOSED    = 4
 } winios_window_state_t;
 
+// Compatibility alias for ABI v1.1
+#define WINIOS_WINDOW_STATE_NORMAL 0
+
 typedef struct {
     winios_rect_t frame;
     int32_t       z_order;

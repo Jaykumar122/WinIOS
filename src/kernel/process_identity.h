@@ -9,6 +9,8 @@
 #include <mutex>
 #include <algorithm>
 
+#include "security/security_utils.h"
+
 namespace winios::kernel {
 
 struct ProcessHandle {
@@ -52,6 +54,7 @@ struct ProcessInstance {
     ApplicationIdentity app;
     uint64_t            start_time_us{0};
     bool                active{false};
+    std::string         security_token; // 128-bit CSPRNG hex capability token
 };
 
 class ProcessIdentityManager {
@@ -75,28 +78,31 @@ public:
 
     [[nodiscard]] ProcessHandle allocate_process(const ApplicationIdentity& app, uint64_t start_time_us = 0) {
         std::lock_guard<std::mutex> lock(mutex_);
-        uint32_t pid = find_available_pid_locked();
-        if (pid == 0) {
-            return ProcessHandle{0, 0}; // Exhausted
+        while (true) {
+            uint32_t pid = find_available_pid_locked();
+            if (pid == 0) {
+                return ProcessHandle{0, 0}; // Exhausted
+            }
+
+            uint32_t gen = ++slot_generations_[pid];
+            if (gen == 0 || gen >= kMaxGeneration) {
+                // Slot generation exhausted - retire permanently
+                retired_pids_.push_back(pid);
+                continue;
+            }
+
+            ProcessHandle handle{pid, gen};
+            ProcessInstance inst{};
+            inst.handle = handle;
+            inst.instance_id = ++instance_counter_;
+            inst.app = app;
+            inst.start_time_us = start_time_us;
+            inst.active = true;
+            inst.security_token = security::SecureRandom::get_random_hex(16);
+
+            active_instances_[pid] = inst;
+            return handle;
         }
-
-        uint32_t gen = ++slot_generations_[pid];
-        if (gen == 0 || gen == kMaxGeneration) {
-            // Slot generation exhausted - retire permanently
-            retired_pids_.push_back(pid);
-            return allocate_process(app, start_time_us);
-        }
-
-        ProcessHandle handle{pid, gen};
-        ProcessInstance inst{};
-        inst.handle = handle;
-        inst.instance_id = ++instance_counter_;
-        inst.app = app;
-        inst.start_time_us = start_time_us;
-        inst.active = true;
-
-        active_instances_[pid] = inst;
-        return handle;
     }
 
     // Allocate a specific reserved PID (e.g. for fixed system daemons or backward compatibility test PIDs)
@@ -106,9 +112,15 @@ public:
         if (active_instances_.find(pid) != active_instances_.end()) {
             return ProcessHandle{0, 0}; // Already in use
         }
+        if (std::find(retired_pids_.begin(), retired_pids_.end(), pid) != retired_pids_.end()) {
+            return ProcessHandle{0, 0}; // Retired permanently
+        }
 
         uint32_t gen = ++slot_generations_[pid];
-        if (gen == 0) gen = 1;
+        if (gen == 0 || gen >= kMaxGeneration) {
+            retired_pids_.push_back(pid);
+            return ProcessHandle{0, 0}; // Generation exhausted, retired permanently
+        }
 
         ProcessHandle handle{pid, gen};
         ProcessInstance inst{};
@@ -117,6 +129,7 @@ public:
         inst.app = app;
         inst.start_time_us = start_time_us;
         inst.active = true;
+        inst.security_token = security::SecureRandom::get_random_hex(16);
 
         active_instances_[pid] = inst;
         return handle;
@@ -134,6 +147,7 @@ public:
         }
 
         it->second.active = false;
+        it->second.security_token.clear();
         active_instances_.erase(it);
 
         // Place into quarantine queue to delay immediate reuse
@@ -154,6 +168,7 @@ public:
         }
 
         it->second.active = false;
+        it->second.security_token.clear();
         active_instances_.erase(it);
 
         quarantine_queue_.push_back(pid);
@@ -167,6 +182,35 @@ public:
         auto it = active_instances_.find(handle.pid);
         if (it == active_instances_.end()) return false;
         return it->second.handle.generation == handle.generation && it->second.active;
+    }
+
+    [[nodiscard]] bool validate_handle_and_token(ProcessHandle handle, const std::string& token) const {
+        if (!handle.is_valid() || token.empty()) return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = active_instances_.find(handle.pid);
+        if (it == active_instances_.end()) return false;
+        if (it->second.handle.generation != handle.generation || !it->second.active) return false;
+        return security::constant_time_equals(it->second.security_token, token);
+    }
+
+    [[nodiscard]] std::string get_process_token(ProcessHandle handle) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = active_instances_.find(handle.pid);
+        if (it == active_instances_.end() || it->second.handle.generation != handle.generation || !it->second.active) {
+            return "";
+        }
+        return it->second.security_token;
+    }
+
+    [[nodiscard]] bool is_retired_pid(uint32_t pid) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return std::find(retired_pids_.begin(), retired_pids_.end(), pid) != retired_pids_.end();
+    }
+
+    // Diagnostic/testing helper to set a slot's generation
+    void set_slot_generation(uint32_t pid, uint32_t gen) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        slot_generations_[pid] = gen;
     }
 
     [[nodiscard]] bool is_valid_pid(uint32_t pid) const {
@@ -197,6 +241,10 @@ public:
         if (it != active_instances_.end()) return it->second.handle.generation;
         auto gen_it = slot_generations_.find(pid);
         return gen_it != slot_generations_.end() ? gen_it->second : 0;
+    }
+
+    [[nodiscard]] uint32_t get_generation(uint32_t pid) const {
+        return get_active_generation(pid);
     }
 
     [[nodiscard]] std::vector<ProcessInstance> list_active_instances() const {

@@ -40,7 +40,9 @@ struct DocumentHandoffResult {
     DocumentHandle doc_handle{kInvalidDocumentHandle};
     std::string target_bundle_id;
     std::uint32_t target_pid{0};
+    std::uint32_t target_generation{0};
     std::uint64_t grant_token{0};
+    std::string grant_token_hex;
     std::string error_message;
 };
 
@@ -149,7 +151,76 @@ public:
         res.status = HandoffStatus::Success;
         res.target_bundle_id = target_bundle_id;
         res.target_pid = target_pid;
+        res.target_generation = grant.grantee_generation;
         res.grant_token = grant.grant_token;
+        res.grant_token_hex = grant.grant_token_hex;
+        return res;
+    }
+
+    DocumentHandoffResult handoff_document(kernel::ProcessHandle caller,
+                                          DocumentHandle handle,
+                                          const std::string& explicit_target_bundle_id = "",
+                                          kernel::ProcessHandle target = {},
+                                          DocumentAccessMode mode = DocumentAccessMode::Read,
+                                          std::uint64_t expiry_us = 0) {
+        DocumentHandoffResult res{};
+        res.doc_handle = handle;
+
+        if (!doc_registry_ || !app_registry_) {
+            res.status = HandoffStatus::InvalidArguments;
+            res.error_message = "Services not initialized";
+            return res;
+        }
+
+        auto meta_opt = doc_registry_->get_metadata(handle);
+        if (!meta_opt) {
+            res.status = HandoffStatus::DocumentNotFound;
+            res.error_message = "Document handle not found or generation mismatch";
+            return res;
+        }
+        const auto& meta = *meta_opt;
+
+        if (!doc_registry_->check_access(handle, caller, mode)) {
+            res.status = HandoffStatus::CallerUnauthorized;
+            res.error_message = "Caller lacks permission to access or grant access to this document";
+            return res;
+        }
+
+        std::string target_bundle_id = explicit_target_bundle_id;
+        if (target_bundle_id.empty()) {
+            target_bundle_id = resolve_handler(meta.mime_type, meta.canonical_path);
+            if (target_bundle_id.empty()) {
+                res.status = HandoffStatus::NoHandlerForType;
+                res.error_message = "No default handler registered for document type: " + meta.mime_type;
+                return res;
+            }
+        }
+
+        auto app_opt = app_registry_->get_app(target_bundle_id);
+        if (!app_opt) {
+            res.status = HandoffStatus::TargetAppNotInstalled;
+            res.error_message = "Target application is not installed: " + target_bundle_id;
+            return res;
+        }
+        if (!app_opt->is_active) {
+            res.status = HandoffStatus::TargetAppInactive;
+            res.error_message = "Target application is currently disabled: " + target_bundle_id;
+            return res;
+        }
+
+        auto grant = doc_registry_->create_grant(handle, caller, target, target_bundle_id, mode, expiry_us);
+        if (grant.grant_token == 0) {
+            res.status = HandoffStatus::CallerUnauthorized;
+            res.error_message = "Failed to create document grant";
+            return res;
+        }
+
+        res.status = HandoffStatus::Success;
+        res.target_bundle_id = target_bundle_id;
+        res.target_pid = target.pid;
+        res.target_generation = target.generation;
+        res.grant_token = grant.grant_token;
+        res.grant_token_hex = grant.grant_token_hex;
         return res;
     }
 

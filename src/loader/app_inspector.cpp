@@ -103,6 +103,11 @@ AppInspectionReport AppInspector::inspect_binary(const uint8_t* data, size_t siz
                     report.wx_clean = false;
                 }
 
+                // Check 16 KB page granule alignment (0x4000) for segments
+                if (seg.vmaddr != 0 && (seg.vmaddr & 0x3FFFull) != 0) {
+                    report.page_aligned_16k = false;
+                }
+
                 report.segments.push_back(seg);
             }
         } else if (cmd == 0x80000028) { // LC_MAIN
@@ -114,6 +119,13 @@ AppInspectionReport AppInspector::inspect_binary(const uint8_t* data, size_t siz
         } else if (cmd == 0x5) { // LC_UNIXTHREAD
             report.load_commands.push_back("LC_UNIXTHREAD");
             found_entry = true;
+        } else if (cmd == 0x1d) { // LC_CODE_SIGNATURE
+            report.load_commands.push_back("LC_CODE_SIGNATURE");
+            report.has_code_signature = true;
+            if (cmdsize >= 16) {
+                std::memcpy(&report.code_signature_offset, data + offset + 8, 4);
+                std::memcpy(&report.code_signature_size, data + offset + 12, 4);
+            }
         } else if (cmd == 0xe) {
             report.load_commands.push_back("LC_LOAD_DYLINKER");
         } else if (cmd == 0xc) {

@@ -75,9 +75,12 @@ struct DocumentMetadata {
 // Document Access Grant (for cross-process sharing)
 struct DocumentAccessGrant {
     std::uint64_t  grant_token{0};
+    std::string    grant_token_hex{};  // 128-bit CSPRNG hex string
     DocumentHandle doc_handle{kInvalidDocumentHandle};
     std::uint32_t  grantor_pid{0};
+    std::uint32_t  grantor_generation{0};
     std::uint32_t  grantee_pid{0};
+    std::uint32_t  grantee_generation{0};
     std::string    grantee_bundle_id;
     std::uint32_t  mode{static_cast<std::uint32_t>(DocumentAccessMode::Read)};
     std::uint64_t  granted_time_us{0};
