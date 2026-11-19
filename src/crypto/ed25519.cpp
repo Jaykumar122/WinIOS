@@ -386,6 +386,11 @@ bool point_from_bytes(Point& out_p, const std::uint8_t in[32]) noexcept {
     bool x_bit = (in[31] & 0x80) != 0;
     y.d[7] &= 0x7FFFFFFFU;
 
+    // RFC 8032 Section 5.1.3: If y >= p, decoding fails
+    if (y >= P_MOD) {
+        return false;
+    }
+
     U256 x;
     if (!point_x_recover(x, y)) {
         return false;
@@ -475,6 +480,10 @@ void Ed25519::create_keypair(Ed25519PublicKey& out_pub,
     // Private key is 32-byte seed + 32-byte public key
     std::memcpy(out_priv.data(), seed.data(), 32);
     std::memcpy(out_priv.data() + 32, out_pub.data(), 32);
+
+    // Stage 233.4: Secure memory zeroization of private intermediates
+    security::secure_zero_memory(h, sizeof(h));
+    security::secure_zero_memory(&a, sizeof(a));
 }
 
 bool Ed25519::generate_keypair(Ed25519PublicKey& out_pub,
@@ -484,6 +493,7 @@ bool Ed25519::generate_keypair(Ed25519PublicKey& out_pub,
         return false;
     }
     create_keypair(out_pub, out_priv, seed);
+    security::secure_zero_memory(seed.data(), seed.size());
     return true;
 }
 
@@ -524,15 +534,22 @@ void Ed25519::sign(Ed25519Signature& out_sig,
     // 4. S = (r + k * a) mod L
     U256 S = sc_muladd_L(r, k, a);
     S.to_bytes_le(out_sig.data() + 32);
+
+    // Stage 233.4: Secure memory zeroization of private stack intermediates
+    security::secure_zero_memory(h, sizeof(h));
+    security::secure_zero_memory(r_hash, sizeof(r_hash));
+    security::secure_zero_memory(k_hash, sizeof(k_hash));
+    security::secure_zero_memory(&a, sizeof(a));
+    security::secure_zero_memory(&r, sizeof(r));
 }
 
 bool Ed25519::verify(const Ed25519Signature& signature,
                      const void* message,
                      std::size_t message_len,
                      const Ed25519PublicKey& public_key) noexcept {
-    // 1. Check S < L
+    // 1. Check 0 < S < L (RFC 8032 Section 5.1.7)
     U256 S = U256::from_bytes_le(signature.data() + 32);
-    if (S >= L_ORDER) {
+    if (S.is_zero() || S >= L_ORDER) {
         return false;
     }
 
@@ -542,6 +559,16 @@ bool Ed25519::verify(const Ed25519Signature& signature,
         return false;
     }
     if (!point_from_bytes(A, public_key.data())) {
+        return false;
+    }
+
+    // Reject small-order / degenerate points (identity point)
+    if (A.is_identity || (A.x.is_zero() && A.y.d[0] == 1 && A.y.d[1] == 0 && A.y.d[2] == 0 && A.y.d[3] == 0 &&
+                          A.y.d[4] == 0 && A.y.d[5] == 0 && A.y.d[6] == 0 && A.y.d[7] == 0)) {
+        return false;
+    }
+    if (R.is_identity || (R.x.is_zero() && R.y.d[0] == 1 && R.y.d[1] == 0 && R.y.d[2] == 0 && R.y.d[3] == 0 &&
+                          R.y.d[4] == 0 && R.y.d[5] == 0 && R.y.d[6] == 0 && R.y.d[7] == 0)) {
         return false;
     }
 

@@ -158,12 +158,14 @@ ValidationResult GuestMemoryValidator::copy_string(
     for (std::size_t i = 0; i < max_bytes; ++i) {
         const std::uint64_t cur_va = user_va + i;
         if (cur_va >= kUserSpaceLimitVa || cur_va < user_va) {
+            out_str.clear();
             return ValidationResult::OutOfBounds;
         }
 
         PageDescriptorFields fields{};
         const std::uint64_t pa = uas.translate(cur_va, &fields);
         if (pa == 0 || !fields.valid || !fields.el0_accessible) {
+            out_str.clear();
             return ValidationResult::UnmappedPage;
         }
 
@@ -175,6 +177,7 @@ ValidationResult GuestMemoryValidator::copy_string(
     }
 
     // Reached max_bytes without encountering null terminator: strictly reject
+    out_str.clear();
     return ValidationResult::StringNotTerminated;
 }
 

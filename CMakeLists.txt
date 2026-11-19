@@ -12,7 +12,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 function(winios_set_warnings target)
     if(MSVC)
-        target_compile_options(${target} PRIVATE /W4 /permissive-)
+        target_compile_options(${target} PRIVATE /W4 /permissive- /FS)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()
@@ -6162,6 +6162,141 @@ target_include_directories(stage232_22_adversarial_security_tests PRIVATE includ
 target_link_libraries(stage232_22_adversarial_security_tests PRIVATE winios_core)
 winios_set_warnings(stage232_22_adversarial_security_tests)
 add_test(NAME stage232_22_adversarial_security_tests COMMAND stage232_22_adversarial_security_tests)
+
+# --- Campaign 233 ---
+add_executable(stage233_3_ed25519_conformance_tests
+    tests/unit/stage233_3_ed25519_conformance_tests.cpp
+)
+target_include_directories(stage233_3_ed25519_conformance_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_3_ed25519_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage233_3_ed25519_conformance_tests)
+add_test(NAME stage233_3_ed25519_conformance_tests COMMAND stage233_3_ed25519_conformance_tests)
+
+add_executable(stage233_5_keystore_security_tests
+    tests/unit/stage233_5_keystore_security_tests.cpp
+)
+target_include_directories(stage233_5_keystore_security_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_5_keystore_security_tests PRIVATE winios_core)
+winios_set_warnings(stage233_5_keystore_security_tests)
+add_test(NAME stage233_5_keystore_security_tests COMMAND stage233_5_keystore_security_tests)
+
+add_executable(stage233_6_trust_chain_tests
+    tests/unit/stage233_6_trust_chain_tests.cpp
+)
+target_include_directories(stage233_6_trust_chain_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_6_trust_chain_tests PRIVATE winios_core)
+winios_set_warnings(stage233_6_trust_chain_tests)
+add_test(NAME stage233_6_trust_chain_tests COMMAND stage233_6_trust_chain_tests)
+
+add_executable(stage233_7_wiosauth_conformance_tests
+    tests/unit/stage233_7_wiosauth_conformance_tests.cpp
+)
+target_include_directories(stage233_7_wiosauth_conformance_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_7_wiosauth_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage233_7_wiosauth_conformance_tests)
+add_test(NAME stage233_7_wiosauth_conformance_tests COMMAND stage233_7_wiosauth_conformance_tests)
+
+add_executable(stage233_8_key_rotation_revocation_tests
+    tests/unit/stage233_8_key_rotation_revocation_tests.cpp
+)
+target_include_directories(stage233_8_key_rotation_revocation_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_8_key_rotation_revocation_tests PRIVATE winios_core)
+winios_set_warnings(stage233_8_key_rotation_revocation_tests)
+add_test(NAME stage233_8_key_rotation_revocation_tests COMMAND stage233_8_key_rotation_revocation_tests)
+
+add_executable(stage233_9_parser_canonicalization_tests
+    tests/unit/stage233_9_parser_canonicalization_tests.cpp
+)
+target_include_directories(stage233_9_parser_canonicalization_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_9_parser_canonicalization_tests PRIVATE winios_core)
+winios_set_warnings(stage233_9_parser_canonicalization_tests)
+add_test(NAME stage233_9_parser_canonicalization_tests COMMAND stage233_9_parser_canonicalization_tests)
+
+add_executable(stage233_11_hostile_filesystem_tests
+    tests/unit/stage233_11_hostile_filesystem_tests.cpp
+)
+target_include_directories(stage233_11_hostile_filesystem_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_11_hostile_filesystem_tests PRIVATE winios_core)
+winios_set_warnings(stage233_11_hostile_filesystem_tests)
+add_test(NAME stage233_11_hostile_filesystem_tests COMMAND stage233_11_hostile_filesystem_tests)
+
+add_executable(stage233_13_wal_durability_tests
+    tests/unit/stage233_13_wal_durability_tests.cpp
+)
+target_include_directories(stage233_13_wal_durability_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_13_wal_durability_tests PRIVATE winios_core)
+winios_set_warnings(stage233_13_wal_durability_tests)
+add_test(NAME stage233_13_wal_durability_tests COMMAND stage233_13_wal_durability_tests)
+
+add_executable(stage233_15_syscall_adversarial_tests
+    tests/unit/stage233_15_syscall_adversarial_tests.cpp
+)
+target_include_directories(stage233_15_syscall_adversarial_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_15_syscall_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage233_15_syscall_adversarial_tests)
+add_test(NAME stage233_15_syscall_adversarial_tests COMMAND stage233_15_syscall_adversarial_tests)
+
+add_executable(stage233_16_ipc_anti_replay_tests
+    tests/unit/stage233_16_ipc_anti_replay_tests.cpp
+)
+target_include_directories(stage233_16_ipc_anti_replay_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_16_ipc_anti_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage233_16_ipc_anti_replay_tests)
+add_test(NAME stage233_16_ipc_anti_replay_tests COMMAND stage233_16_ipc_anti_replay_tests)
+
+add_executable(stage233_17_document_stream_race_tests
+    tests/unit/stage233_17_document_stream_race_tests.cpp
+)
+target_include_directories(stage233_17_document_stream_race_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_17_document_stream_race_tests PRIVATE winios_core)
+winios_set_warnings(stage233_17_document_stream_race_tests)
+add_test(NAME stage233_17_document_stream_race_tests COMMAND stage233_17_document_stream_race_tests)
+
+add_executable(stage233_18_launch_resource_tests
+    tests/unit/stage233_18_launch_resource_tests.cpp
+)
+target_include_directories(stage233_18_launch_resource_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_18_launch_resource_tests PRIVATE winios_core)
+winios_set_warnings(stage233_18_launch_resource_tests)
+add_test(NAME stage233_18_launch_resource_tests COMMAND stage233_18_launch_resource_tests)
+
+add_executable(stage233_19_macho_loader_tests
+    tests/unit/stage233_19_macho_loader_tests.cpp
+)
+target_include_directories(stage233_19_macho_loader_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_19_macho_loader_tests PRIVATE winios_core)
+winios_set_warnings(stage233_19_macho_loader_tests)
+add_test(NAME stage233_19_macho_loader_tests COMMAND stage233_19_macho_loader_tests)
+
+add_executable(stage233_20_security_fuzzing_tests
+    tests/unit/stage233_20_security_fuzzing_tests.cpp
+)
+target_include_directories(stage233_20_security_fuzzing_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_20_security_fuzzing_tests PRIVATE winios_core)
+winios_set_warnings(stage233_20_security_fuzzing_tests)
+add_test(NAME stage233_20_security_fuzzing_tests COMMAND stage233_20_security_fuzzing_tests)
+
+add_executable(stage233_21_e2e_security_workflow_tests
+    tests/unit/stage233_21_e2e_security_workflow_tests.cpp
+)
+target_include_directories(stage233_21_e2e_security_workflow_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage233_21_e2e_security_workflow_tests PRIVATE winios_core)
+winios_set_warnings(stage233_21_e2e_security_workflow_tests)
+add_test(NAME stage233_21_e2e_security_workflow_tests COMMAND stage233_21_e2e_security_workflow_tests)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

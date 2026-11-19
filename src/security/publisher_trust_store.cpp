@@ -67,7 +67,8 @@ bool PublisherTrustStore::register_key(const PublisherKey& key) {
         return false;
     }
     keys_[key.key_id] = key;
-    if (key.is_revoked) {
+    if (key.is_revoked || revoked_publishers_.contains(key.publisher_id)) {
+        keys_[key.key_id].is_revoked = true;
         revoked_keys_.insert(key.key_id);
     }
     return true;
@@ -214,6 +215,16 @@ bool PublisherTrustStore::deserialize(const std::string& text) {
         std::string k = line.substr(0, eq_pos);
         std::string v = line.substr(eq_pos + 1);
 
+        if (k == "revoked_publisher") {
+            if (in_key && !current_key.key_id.empty()) {
+                register_key(current_key);
+                current_key = PublisherKey{};
+                in_key = false;
+            }
+            revoke_publisher(v);
+            continue;
+        }
+
         if (in_key) {
             if (k == "publisher_id") current_key.publisher_id = v;
             else if (k == "org_name") current_key.organization_name = v;
@@ -228,10 +239,6 @@ bool PublisherTrustStore::deserialize(const std::string& text) {
             else if (k == "valid_until") current_key.valid_until = std::strtoull(v.c_str(), nullptr, 10);
             else if (k == "revoked") current_key.is_revoked = (v == "1");
             else if (k == "key_hex") current_key.key_bytes = hex_to_bytes(v);
-        } else {
-            if (k == "revoked_publisher") {
-                revoke_publisher(v);
-            }
         }
     }
     if (in_key && !current_key.key_id.empty()) {
