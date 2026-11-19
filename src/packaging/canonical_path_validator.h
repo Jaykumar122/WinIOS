@@ -93,6 +93,23 @@ public:
     // Resolves true physical canonical path on Windows using GetFinalPathNameByHandle.
     static bool resolve_canonical_physical_path(const std::string& path, std::string& out_canonical);
 
+    // Verify whether an open file handle is strictly confined within root_dir
+    static bool is_handle_strictly_inside_root(void* file_handle, const std::string& root_dir);
+
+    // Verify whether an open file handle is strictly confined within an open root directory handle
+    static bool is_handle_strictly_inside_root_handle(void* file_handle, void* root_dir_handle);
+
+    // Securely opens a file guaranteed to be confined within root_dir, defeating symlink/junction escapes
+    struct ConfinedFileHandle {
+        void* handle{nullptr};
+        std::string canonical_path;
+        bool is_valid{false};
+    };
+
+    static ConfinedFileHandle open_confined_file_read(const std::string& root_dir, const std::string& rel_path);
+    static ConfinedFileHandle open_confined_file_write(const std::string& root_dir, const std::string& rel_path, bool create_new = true);
+    static void close_confined_file(ConfinedFileHandle& confined);
+
     // Checks if path contains a Windows device namespace prefix (\\?\, \\.\, \??\).
     static bool contains_device_namespace(const std::string& path) noexcept;
 

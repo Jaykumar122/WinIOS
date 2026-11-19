@@ -52,6 +52,15 @@ struct DeveloperIdentity {
     std::vector<std::uint8_t> public_key;
 
     // Zero out private key seed upon destruction or clearing
+    DeveloperIdentity() = default;
+    ~DeveloperIdentity() noexcept {
+        wipe_private_key();
+    }
+    DeveloperIdentity(const DeveloperIdentity&) = default;
+    DeveloperIdentity& operator=(const DeveloperIdentity&) = default;
+    DeveloperIdentity(DeveloperIdentity&&) noexcept = default;
+    DeveloperIdentity& operator=(DeveloperIdentity&&) noexcept = default;
+
     void wipe_private_key() noexcept;
     bool is_valid() const noexcept;
 };

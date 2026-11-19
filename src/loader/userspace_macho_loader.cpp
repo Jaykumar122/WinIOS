@@ -307,6 +307,12 @@ UserspaceMachOLoadStatus UserspaceMachOLoader::validate_segments(
     for (std::size_t i = 0; i < segments.size(); ++i) {
         const auto& s = segments[i];
 
+        // 0. PAGEZERO permission guard check
+        if (s.is_pagezero && (s.initprot != 0 || s.maxprot != 0)) {
+            out_error = "__PAGEZERO segment must have VM_PROT_NONE";
+            return UserspaceMachOLoadStatus::CorruptedLoadCommands;
+        }
+
         // 1. Integer Overflow Checks
         if (s.vmsize > 0 && (s.vmaddr + s.vmsize < s.vmaddr)) {
             out_error = "Segment '" + s.name + "' virtual memory range overflows 64-bit address space";

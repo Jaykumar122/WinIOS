@@ -67,7 +67,7 @@ bool PublisherTrustStore::register_key(const PublisherKey& key) {
         return false;
     }
     keys_[key.key_id] = key;
-    if (key.is_revoked || revoked_publishers_.contains(key.publisher_id)) {
+    if (key.is_revoked || revoked_publishers_.contains(key.publisher_id) || revoked_keys_.contains(key.key_id)) {
         keys_[key.key_id].is_revoked = true;
         revoked_keys_.insert(key.key_id);
     }

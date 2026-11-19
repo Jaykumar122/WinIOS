@@ -466,6 +466,7 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
         std::size_t off = static_cast<std::size_t>(manifest_end);
         std::unordered_set<std::string> seen_paths;
         std::unordered_set<std::string> seen_lower_paths;
+        std::uint64_t cumulative_payload_sz = 0;
 
         for (std::uint32_t i = 0; i < file_count; ++i) {
             if (off + 2 > size) return PackageValidationResult::PayloadTruncated;
@@ -484,9 +485,11 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
             std::string p(reinterpret_cast<const char*>(data + off), plen);
             off = static_cast<std::size_t>(path_end);
 
-            // Path character and UTF-8 safety checks
+            // Path character, UTF-8 safety, empty segments, and nesting depth checks
             if (!is_valid_utf8_path(p) || p.find("..") != std::string::npos ||
-                p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos) {
+                p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos ||
+                p.find("//") != std::string::npos || p.back() == '/' || p.back() == '\\' ||
+                std::count(p.begin(), p.end(), '/') > 16) {
                 return PackageValidationResult::PathTraversalAttempt;
             }
 
@@ -525,6 +528,13 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
 
             if (data_sz > kMaxIndividualFileSize || data_sz > size) {
                 return PackageValidationResult::FileCountExceeded;
+            }
+
+            if (!security::checked_add(cumulative_payload_sz, data_sz, cumulative_payload_sz)) {
+                return PackageValidationResult::IntegerOverflow;
+            }
+            if (m.storage_quota_bytes > 0 && cumulative_payload_sz > m.storage_quota_bytes) {
+                return PackageValidationResult::QuotaExceeded;
             }
 
             std::uint64_t entry_end = 0;
@@ -638,6 +648,7 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
 
     std::unordered_set<std::string> seen_paths;
     std::unordered_set<std::string> seen_lower_paths;
+    std::uint64_t cumulative_payload_sz = 0;
 
     for (std::uint32_t i = 0; i < file_count; ++i) {
         if (off + 2 > size) return PackageValidationResult::PayloadTruncated;
@@ -656,9 +667,11 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
         std::string p(reinterpret_cast<const char*>(data + off), plen);
         off = static_cast<std::size_t>(path_end);
 
-        // Path safety & duplicate check
+        // Path safety, duplicate, empty segments, and nesting check
         if (!is_valid_utf8_path(p) || p.find("..") != std::string::npos ||
-            p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos) {
+            p.front() == '/' || p.front() == '\\' || p.find(':') != std::string::npos ||
+            p.find("//") != std::string::npos || p.back() == '/' || p.back() == '\\' ||
+            std::count(p.begin(), p.end(), '/') > 16) {
             return PackageValidationResult::PathTraversalAttempt;
         }
 
@@ -676,6 +689,13 @@ PackageValidationResult AppPackage::validate_package_data(const std::uint8_t* da
         std::memcpy(&dsize, data + off, 4);
         off += 4;
         if (dsize > kMaxIndividualFileSize || dsize > size) return PackageValidationResult::FileCountExceeded;
+
+        if (!security::checked_add(cumulative_payload_sz, static_cast<std::uint64_t>(dsize), cumulative_payload_sz)) {
+            return PackageValidationResult::IntegerOverflow;
+        }
+        if (m.storage_quota_bytes > 0 && cumulative_payload_sz > m.storage_quota_bytes) {
+            return PackageValidationResult::QuotaExceeded;
+        }
 
         std::uint64_t next_off = 0;
         if (!security::checked_add(static_cast<std::uint64_t>(off), static_cast<std::uint64_t>(dsize), next_off)) {

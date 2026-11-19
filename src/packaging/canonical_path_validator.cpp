@@ -70,9 +70,31 @@ bool CanonicalPathValidator::contains_short_name_alias(const std::string& segmen
     return false;
 }
 
+#ifdef _WIN32
+static std::wstring utf8_to_wide(const std::string& str) {
+    if (str.empty()) return L"";
+    int count = MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
+    if (count <= 0) return L"";
+    std::wstring wstr(static_cast<std::size_t>(count), 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), wstr.data(), count);
+    return wstr;
+}
+
+static std::string wide_to_utf8(const std::wstring& wstr) {
+    if (wstr.empty()) return "";
+    int count = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0, nullptr, nullptr);
+    if (count <= 0) return "";
+    std::string str(static_cast<std::size_t>(count), 0);
+    WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), str.data(), count, nullptr, nullptr);
+    return str;
+}
+#endif
+
 bool CanonicalPathValidator::is_reparse_point(const std::string& path) {
 #ifdef _WIN32
-    DWORD attrs = GetFileAttributesA(path.c_str());
+    std::wstring wpath = utf8_to_wide(path);
+    if (wpath.empty()) return false;
+    DWORD attrs = GetFileAttributesW(wpath.c_str());
     if (attrs == INVALID_FILE_ATTRIBUTES) return false;
     return (attrs & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 #else
@@ -85,8 +107,11 @@ bool CanonicalPathValidator::resolve_canonical_physical_path(
     const std::string& path,
     std::string& out_canonical) {
 #ifdef _WIN32
-    HANDLE hFile = CreateFileA(
-        path.c_str(),
+    std::wstring wpath = utf8_to_wide(path);
+    if (wpath.empty()) return false;
+
+    HANDLE hFile = CreateFileW(
+        wpath.c_str(),
         0,
         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr,
@@ -98,23 +123,24 @@ bool CanonicalPathValidator::resolve_canonical_physical_path(
         return false;
     }
 
-    char buffer[1024];
-    DWORD len = GetFinalPathNameByHandleA(
+    wchar_t buffer[1024];
+    DWORD len = GetFinalPathNameByHandleW(
         hFile,
         buffer,
-        sizeof(buffer),
+        1024,
         FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
     );
     CloseHandle(hFile);
 
-    if (len == 0 || len >= sizeof(buffer)) {
+    if (len == 0 || len >= 1024) {
         return false;
     }
 
-    std::string result(buffer, len);
-    if (result.rfind("\\\\?\\", 0) == 0) {
-        result = result.substr(4);
+    std::wstring wresult(buffer, len);
+    if (wresult.rfind(L"\\\\?\\", 0) == 0) {
+        wresult = wresult.substr(4);
     }
+    std::string result = wide_to_utf8(wresult);
     std::replace(result.begin(), result.end(), '\\', '/');
     out_canonical = std::move(result);
     return true;
@@ -123,6 +149,251 @@ bool CanonicalPathValidator::resolve_canonical_physical_path(
     (void)out_canonical;
     return false;
 #endif
+}
+
+bool CanonicalPathValidator::is_handle_strictly_inside_root(void* file_handle, const std::string& root_dir) {
+#ifdef _WIN32
+    if (!file_handle || file_handle == INVALID_HANDLE_VALUE || root_dir.empty()) {
+        return false;
+    }
+
+    HANDLE hFile = static_cast<HANDLE>(file_handle);
+    wchar_t target_buf[1024];
+    DWORD target_len = GetFinalPathNameByHandleW(
+        hFile,
+        target_buf,
+        1024,
+        FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
+    );
+    if (target_len == 0 || target_len >= 1024) {
+        return false;
+    }
+
+    std::string canonical_root;
+    if (!resolve_canonical_physical_path(root_dir, canonical_root)) {
+        return false;
+    }
+
+    std::wstring wtarget(target_buf, target_len);
+    if (wtarget.rfind(L"\\\\?\\", 0) == 0) {
+        wtarget = wtarget.substr(4);
+    }
+    std::string canonical_target = wide_to_utf8(wtarget);
+    std::replace(canonical_target.begin(), canonical_target.end(), '\\', '/');
+
+    std::string norm_root = canonical_root;
+    while (!norm_root.empty() && norm_root.back() == '/') {
+        norm_root.pop_back();
+    }
+    norm_root.push_back('/');
+
+    std::string lower_root = norm_root;
+    std::string lower_target = canonical_target;
+    std::transform(lower_root.begin(), lower_root.end(), lower_root.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(lower_target.begin(), lower_target.end(), lower_target.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    return (lower_target.rfind(lower_root, 0) == 0);
+#else
+    (void)file_handle;
+    (void)root_dir;
+    return false;
+#endif
+}
+
+bool CanonicalPathValidator::is_handle_strictly_inside_root_handle(void* file_handle, void* root_dir_handle) {
+#ifdef _WIN32
+    if (!file_handle || file_handle == INVALID_HANDLE_VALUE ||
+        !root_dir_handle || root_dir_handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    wchar_t target_buf[1024];
+    DWORD target_len = GetFinalPathNameByHandleW(
+        static_cast<HANDLE>(file_handle),
+        target_buf,
+        1024,
+        FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
+    );
+    if (target_len == 0 || target_len >= 1024) return false;
+
+    wchar_t root_buf[1024];
+    DWORD root_len = GetFinalPathNameByHandleW(
+        static_cast<HANDLE>(root_dir_handle),
+        root_buf,
+        1024,
+        FILE_NAME_NORMALIZED | VOLUME_NAME_DOS
+    );
+    if (root_len == 0 || root_len >= 1024) return false;
+
+    std::wstring wtarget(target_buf, target_len);
+    if (wtarget.rfind(L"\\\\?\\", 0) == 0) wtarget = wtarget.substr(4);
+    std::wstring wroot(root_buf, root_len);
+    if (wroot.rfind(L"\\\\?\\", 0) == 0) wroot = wroot.substr(4);
+
+    std::string canonical_target = wide_to_utf8(wtarget);
+    std::string canonical_root = wide_to_utf8(wroot);
+    std::replace(canonical_target.begin(), canonical_target.end(), '\\', '/');
+    std::replace(canonical_root.begin(), canonical_root.end(), '\\', '/');
+
+    while (!canonical_root.empty() && canonical_root.back() == '/') {
+        canonical_root.pop_back();
+    }
+    canonical_root.push_back('/');
+
+    std::string lower_root = canonical_root;
+    std::string lower_target = canonical_target;
+    std::transform(lower_root.begin(), lower_root.end(), lower_root.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(lower_target.begin(), lower_target.end(), lower_target.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    return (lower_target.rfind(lower_root, 0) == 0);
+#else
+    (void)file_handle;
+    (void)root_dir_handle;
+    return false;
+#endif
+}
+
+CanonicalPathValidator::ConfinedFileHandle CanonicalPathValidator::open_confined_file_read(
+    const std::string& root_dir,
+    const std::string& rel_path) {
+    ConfinedFileHandle result{};
+    std::string norm_rel;
+    if (validate_and_normalize_bundle_path(rel_path, norm_rel) != PathValidationStatus::Valid) {
+        return result;
+    }
+
+#ifdef _WIN32
+    std::string canonical_root;
+    if (!resolve_canonical_physical_path(root_dir, canonical_root)) {
+        return result;
+    }
+
+    std::filesystem::path full_target = std::filesystem::path(root_dir) / norm_rel;
+    std::wstring wtarget = utf8_to_wide(full_target.string());
+    if (wtarget.empty()) return result;
+
+    HANDLE hFile = CreateFileW(
+        wtarget.c_str(),
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        nullptr
+    );
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return result;
+    }
+
+    if (!is_handle_strictly_inside_root(hFile, canonical_root)) {
+        CloseHandle(hFile);
+        return result;
+    }
+
+    result.handle = hFile;
+    result.canonical_path = full_target.string();
+    result.is_valid = true;
+    return result;
+#else
+    (void)root_dir;
+    (void)rel_path;
+    return result;
+#endif
+}
+
+CanonicalPathValidator::ConfinedFileHandle CanonicalPathValidator::open_confined_file_write(
+    const std::string& root_dir,
+    const std::string& rel_path,
+    bool create_new) {
+    ConfinedFileHandle result{};
+    std::string norm_rel;
+    if (validate_and_normalize_bundle_path(rel_path, norm_rel) != PathValidationStatus::Valid) {
+        return result;
+    }
+
+#ifdef _WIN32
+    std::string canonical_root;
+    if (!resolve_canonical_physical_path(root_dir, canonical_root)) {
+        return result;
+    }
+
+    std::filesystem::path full_target = std::filesystem::path(root_dir) / norm_rel;
+    auto parent_path = full_target.parent_path();
+
+    std::error_code ec;
+    std::filesystem::create_directories(parent_path, ec);
+
+    std::string canonical_parent;
+    if (!resolve_canonical_physical_path(parent_path.string(), canonical_parent)) {
+        return result;
+    }
+
+    std::string norm_root = canonical_root;
+    while (!norm_root.empty() && norm_root.back() == '/') norm_root.pop_back();
+    norm_root.push_back('/');
+
+    std::string norm_parent = canonical_parent;
+    while (!norm_parent.empty() && norm_parent.back() == '/') norm_parent.pop_back();
+    norm_parent.push_back('/');
+
+    std::string lower_root = norm_root;
+    std::string lower_parent = norm_parent;
+    std::transform(lower_root.begin(), lower_root.end(), lower_root.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(lower_parent.begin(), lower_parent.end(), lower_parent.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    if (lower_parent.rfind(lower_root, 0) != 0 && lower_parent != lower_root) {
+        return result;
+    }
+
+    std::wstring wtarget = utf8_to_wide(full_target.string());
+    if (wtarget.empty()) return result;
+
+    HANDLE hFile = CreateFileW(
+        wtarget.c_str(),
+        GENERIC_READ | GENERIC_WRITE,
+        0,
+        nullptr,
+        create_new ? CREATE_ALWAYS : OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr
+    );
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return result;
+    }
+
+    if (!is_handle_strictly_inside_root(hFile, canonical_root)) {
+        CloseHandle(hFile);
+        std::filesystem::remove(full_target, ec);
+        return result;
+    }
+
+    result.handle = hFile;
+    result.canonical_path = full_target.string();
+    result.is_valid = true;
+    return result;
+#else
+    (void)root_dir;
+    (void)rel_path;
+    (void)create_new;
+    return result;
+#endif
+}
+
+void CanonicalPathValidator::close_confined_file(ConfinedFileHandle& confined) {
+#ifdef _WIN32
+    if (confined.handle && confined.handle != INVALID_HANDLE_VALUE) {
+        CloseHandle(static_cast<HANDLE>(confined.handle));
+    }
+#endif
+    confined.handle = nullptr;
+    confined.canonical_path.clear();
+    confined.is_valid = false;
 }
 
 PathValidationStatus CanonicalPathValidator::validate_and_normalize_bundle_path(
