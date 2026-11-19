@@ -165,7 +165,8 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         return false;
     };
 
-    switch (sys_num) {
+    try {
+        switch (sys_num) {
     case kSysExit: {
         const int exit_code = static_cast<int>(arg0);
         proc.terminate(exit_code);
@@ -3098,10 +3099,15 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         return record_success(to_return);
     }
 
-    default: {
-        ++stats_.total_invalid_syscalls;
-        return record_error(kErrnoENOSYS);
-    }
+        default: {
+            ++stats_.total_invalid_syscalls;
+            return record_error(kErrnoENOSYS);
+        }
+        }
+    } catch (const std::exception&) {
+        return record_error(kErrnoEINVAL);
+    } catch (...) {
+        return record_error(kErrnoEINVAL);
     }
 }
 

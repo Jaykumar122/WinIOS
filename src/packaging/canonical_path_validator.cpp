@@ -257,6 +257,26 @@ bool CanonicalPathValidator::is_handle_strictly_inside_root_handle(void* file_ha
 #endif
 }
 
+bool CanonicalPathValidator::check_volume_identity(void* handle1, void* handle2) noexcept {
+#ifdef _WIN32
+    if (!handle1 || handle1 == INVALID_HANDLE_VALUE ||
+        !handle2 || handle2 == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    BY_HANDLE_FILE_INFORMATION info1{};
+    BY_HANDLE_FILE_INFORMATION info2{};
+    if (!GetFileInformationByHandle(static_cast<HANDLE>(handle1), &info1) ||
+        !GetFileInformationByHandle(static_cast<HANDLE>(handle2), &info2)) {
+        return false;
+    }
+    return (info1.dwVolumeSerialNumber == info2.dwVolumeSerialNumber);
+#else
+    (void)handle1;
+    (void)handle2;
+    return false;
+#endif
+}
+
 CanonicalPathValidator::ConfinedFileHandle CanonicalPathValidator::open_confined_file_read(
     const std::string& root_dir,
     const std::string& rel_path) {
@@ -289,9 +309,38 @@ CanonicalPathValidator::ConfinedFileHandle CanonicalPathValidator::open_confined
         return result;
     }
 
+    // Verify opened file is not a reparse point
+    BY_HANDLE_FILE_INFORMATION file_info{};
+    if (GetFileInformationByHandle(hFile, &file_info)) {
+        if (file_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            CloseHandle(hFile);
+            return result;
+        }
+    }
+
     if (!is_handle_strictly_inside_root(hFile, canonical_root)) {
         CloseHandle(hFile);
         return result;
+    }
+
+    // Verify volume serial number matches root directory volume
+    std::wstring wroot = utf8_to_wide(canonical_root);
+    HANDLE hRoot = CreateFileW(
+        wroot.c_str(),
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        nullptr
+    );
+    if (hRoot != INVALID_HANDLE_VALUE) {
+        bool same_vol = check_volume_identity(hFile, hRoot);
+        CloseHandle(hRoot);
+        if (!same_vol) {
+            CloseHandle(hFile);
+            return result;
+        }
     }
 
     result.handle = hFile;
@@ -354,6 +403,12 @@ CanonicalPathValidator::ConfinedFileHandle CanonicalPathValidator::open_confined
     std::wstring wtarget = utf8_to_wide(full_target.string());
     if (wtarget.empty()) return result;
 
+    // Check if target is an existing reparse point before creating or opening
+    DWORD existing_attrs = GetFileAttributesW(wtarget.c_str());
+    if (existing_attrs != INVALID_FILE_ATTRIBUTES && (existing_attrs & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        return result; // Reparse point target strictly forbidden
+    }
+
     HANDLE hFile = CreateFileW(
         wtarget.c_str(),
         GENERIC_READ | GENERIC_WRITE,
@@ -367,10 +422,40 @@ CanonicalPathValidator::ConfinedFileHandle CanonicalPathValidator::open_confined
         return result;
     }
 
+    // Verify opened handle is not a reparse point
+    BY_HANDLE_FILE_INFORMATION file_info{};
+    if (GetFileInformationByHandle(hFile, &file_info)) {
+        if (file_info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+            CloseHandle(hFile);
+            return result;
+        }
+    }
+
     if (!is_handle_strictly_inside_root(hFile, canonical_root)) {
         CloseHandle(hFile);
         std::filesystem::remove(full_target, ec);
         return result;
+    }
+
+    // Verify volume serial number matches root directory volume
+    std::wstring wroot = utf8_to_wide(canonical_root);
+    HANDLE hRoot = CreateFileW(
+        wroot.c_str(),
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        nullptr
+    );
+    if (hRoot != INVALID_HANDLE_VALUE) {
+        bool same_vol = check_volume_identity(hFile, hRoot);
+        CloseHandle(hRoot);
+        if (!same_vol) {
+            CloseHandle(hFile);
+            std::filesystem::remove(full_target, ec);
+            return result;
+        }
     }
 
     result.handle = hFile;

@@ -6429,6 +6429,131 @@ target_link_libraries(stage234_22_cross_subsystem_integration_tests PRIVATE wini
 winios_set_warnings(stage234_22_cross_subsystem_integration_tests)
 add_test(NAME stage234_22_cross_subsystem_integration_tests COMMAND stage234_22_cross_subsystem_integration_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 235: Constant-Time Cryptography & Hardened Filesystem Confinement
+# -----------------------------------------------------------------------------
+add_executable(stage235_3_constant_time_scalar_tests
+    tests/unit/stage235_3_constant_time_scalar_tests.cpp
+)
+target_include_directories(stage235_3_constant_time_scalar_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_3_constant_time_scalar_tests PRIVATE winios_core)
+winios_set_warnings(stage235_3_constant_time_scalar_tests)
+add_test(NAME stage235_3_constant_time_scalar_tests COMMAND stage235_3_constant_time_scalar_tests)
+
+add_executable(stage235_4_ed25519_differential_tests
+    tests/unit/stage235_4_ed25519_differential_tests.cpp
+)
+target_include_directories(stage235_4_ed25519_differential_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_4_ed25519_differential_tests PRIVATE winios_core)
+winios_set_warnings(stage235_4_ed25519_differential_tests)
+add_test(NAME stage235_4_ed25519_differential_tests COMMAND stage235_4_ed25519_differential_tests)
+
+add_executable(stage235_5_timing_evidence_tests
+    tests/unit/stage235_5_timing_evidence_tests.cpp
+)
+target_include_directories(stage235_5_timing_evidence_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_5_timing_evidence_tests PRIVATE winios_core)
+winios_set_warnings(stage235_5_timing_evidence_tests)
+add_test(NAME stage235_5_timing_evidence_tests COMMAND stage235_5_timing_evidence_tests)
+set_tests_properties(stage235_5_timing_evidence_tests PROPERTIES TIMEOUT 180)
+
+add_executable(stage235_6_secret_lifetime_tests
+    tests/unit/stage235_6_secret_lifetime_tests.cpp
+)
+target_include_directories(stage235_6_secret_lifetime_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_6_secret_lifetime_tests PRIVATE winios_core)
+winios_set_warnings(stage235_6_secret_lifetime_tests)
+add_test(NAME stage235_6_secret_lifetime_tests COMMAND stage235_6_secret_lifetime_tests)
+
+add_executable(stage235_9_filesystem_race_tests
+    tests/unit/stage235_9_filesystem_race_tests.cpp
+)
+target_include_directories(stage235_9_filesystem_race_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_9_filesystem_race_tests PRIVATE winios_core)
+winios_set_warnings(stage235_9_filesystem_race_tests)
+add_test(NAME stage235_9_filesystem_race_tests COMMAND stage235_9_filesystem_race_tests)
+
+add_executable(stage235_11_installer_confinement_tests
+    tests/unit/stage235_11_installer_confinement_tests.cpp
+)
+target_include_directories(stage235_11_installer_confinement_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_11_installer_confinement_tests PRIVATE winios_core)
+winios_set_warnings(stage235_11_installer_confinement_tests)
+add_test(NAME stage235_11_installer_confinement_tests COMMAND stage235_11_installer_confinement_tests)
+
+add_executable(stage235_12_wal_revalidation_tests
+    tests/unit/stage235_12_wal_revalidation_tests.cpp
+)
+target_include_directories(stage235_12_wal_revalidation_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_12_wal_revalidation_tests PRIVATE winios_core)
+winios_set_warnings(stage235_12_wal_revalidation_tests)
+add_test(NAME stage235_12_wal_revalidation_tests COMMAND stage235_12_wal_revalidation_tests)
+
+add_executable(stage235_14_guest_memory_mapping_tests
+    tests/unit/stage235_14_guest_memory_mapping_tests.cpp
+)
+target_include_directories(stage235_14_guest_memory_mapping_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_14_guest_memory_mapping_tests PRIVATE winios_core)
+winios_set_warnings(stage235_14_guest_memory_mapping_tests)
+add_test(NAME stage235_14_guest_memory_mapping_tests COMMAND stage235_14_guest_memory_mapping_tests)
+
+add_executable(stage235_15_syscall_completeness_tests
+    tests/unit/stage235_15_syscall_completeness_tests.cpp
+)
+target_include_directories(stage235_15_syscall_completeness_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_15_syscall_completeness_tests PRIVATE winios_core)
+winios_set_warnings(stage235_15_syscall_completeness_tests)
+add_test(NAME stage235_15_syscall_completeness_tests COMMAND stage235_15_syscall_completeness_tests)
+
+add_executable(stage235_16_ipc_identity_tests
+    tests/unit/stage235_16_ipc_identity_tests.cpp
+)
+target_include_directories(stage235_16_ipc_identity_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_16_ipc_identity_tests PRIVATE winios_core)
+winios_set_warnings(stage235_16_ipc_identity_tests)
+add_test(NAME stage235_16_ipc_identity_tests COMMAND stage235_16_ipc_identity_tests)
+
+add_executable(stage235_17_document_concurrency_tests
+    tests/unit/stage235_17_document_concurrency_tests.cpp
+)
+target_include_directories(stage235_17_document_concurrency_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_17_document_concurrency_tests PRIVATE winios_core)
+winios_set_warnings(stage235_17_document_concurrency_tests)
+add_test(NAME stage235_17_document_concurrency_tests COMMAND stage235_17_document_concurrency_tests)
+
+add_executable(stage235_18_launch_ownership_tests
+    tests/unit/stage235_18_launch_ownership_tests.cpp
+)
+target_include_directories(stage235_18_launch_ownership_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_18_launch_ownership_tests PRIVATE winios_core)
+winios_set_warnings(stage235_18_launch_ownership_tests)
+add_test(NAME stage235_18_launch_ownership_tests COMMAND stage235_18_launch_ownership_tests)
+
+add_executable(stage235_19_macho_wx_tests
+    tests/unit/stage235_19_macho_wx_tests.cpp
+)
+target_include_directories(stage235_19_macho_wx_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_19_macho_wx_tests PRIVATE winios_core)
+winios_set_warnings(stage235_19_macho_wx_tests)
+add_test(NAME stage235_19_macho_wx_tests COMMAND stage235_19_macho_wx_tests)
+
+add_executable(stage235_20_fuzzing_tests
+    tests/unit/stage235_20_fuzzing_tests.cpp
+)
+target_include_directories(stage235_20_fuzzing_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_20_fuzzing_tests PRIVATE winios_core)
+winios_set_warnings(stage235_20_fuzzing_tests)
+add_test(NAME stage235_20_fuzzing_tests COMMAND stage235_20_fuzzing_tests)
+
+add_executable(stage235_21_security_integration_tests
+    tests/unit/stage235_21_security_integration_tests.cpp
+)
+target_include_directories(stage235_21_security_integration_tests PRIVATE include guest-sdk/include src)
+target_link_libraries(stage235_21_security_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage235_21_security_integration_tests)
+add_test(NAME stage235_21_security_integration_tests COMMAND stage235_21_security_integration_tests)
+
+
 
 
 

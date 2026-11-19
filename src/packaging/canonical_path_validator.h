@@ -99,6 +99,9 @@ public:
     // Verify whether an open file handle is strictly confined within an open root directory handle
     static bool is_handle_strictly_inside_root_handle(void* file_handle, void* root_dir_handle);
 
+    // Verify whether two open handles reside on the exact same physical volume
+    static bool check_volume_identity(void* handle1, void* handle2) noexcept;
+
     // Securely opens a file guaranteed to be confined within root_dir, defeating symlink/junction escapes
     struct ConfinedFileHandle {
         void* handle{nullptr};

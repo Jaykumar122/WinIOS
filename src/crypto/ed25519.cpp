@@ -204,20 +204,24 @@ U256 f_reduce(const U512& x) noexcept {
 U256 f_add(const U256& a, const U256& b) noexcept {
     U256 r;
     U256::add_carry(r, a, b);
-    while (r >= P_MOD) {
-        U256::sub_borrow(r, r, P_MOD);
+    U256 tmp;
+    std::uint32_t borrow = U256::sub_borrow(tmp, r, P_MOD);
+    std::uint32_t mask = 0U - (1U - borrow);
+    for (int i = 0; i < 8; ++i) {
+        r.d[i] = r.d[i] ^ (mask & (r.d[i] ^ tmp.d[i]));
     }
     return r;
 }
 
 U256 f_sub(const U256& a, const U256& b) noexcept {
+    U256 diff;
+    std::uint32_t borrow = U256::sub_borrow(diff, a, b);
+    U256 with_p;
+    U256::add_carry(with_p, diff, P_MOD);
+    std::uint32_t mask = 0U - borrow;
     U256 r;
-    if (a < b) {
-        U256 tmp;
-        U256::add_carry(tmp, a, P_MOD);
-        U256::sub_borrow(r, tmp, b);
-    } else {
-        U256::sub_borrow(r, a, b);
+    for (int i = 0; i < 8; ++i) {
+        r.d[i] = diff.d[i] ^ (mask & (diff.d[i] ^ with_p.d[i]));
     }
     return r;
 }
@@ -295,12 +299,24 @@ const Point BASE_POINT = []() {
     return b;
 }();
 
-Point point_add(const Point& P, const Point& Q) noexcept {
-    if (P.is_identity) return Q;
-    if (Q.is_identity) return P;
+// Constant-time point conditional select
+// mask must be 0x00000000 or 0xFFFFFFFF
+inline Point point_cselect(const Point& a, const Point& b, std::uint32_t mask) noexcept {
+    Point res;
+    for (int i = 0; i < 8; ++i) {
+        res.x.d[i] = a.x.d[i] ^ (mask & (a.x.d[i] ^ b.x.d[i]));
+        res.y.d[i] = a.y.d[i] ^ (mask & (a.y.d[i] ^ b.y.d[i]));
+    }
+    res.is_identity = false;
+    return res;
+}
 
+Point point_add(const Point& P, const Point& Q) noexcept {
+    // Complete Twisted Edwards addition on Curve25519:
     // x3 = (x1*y2 + x2*y1) / (1 + d*x1*x2*y1*y2)
     // y3 = (y1*y2 + x1*x2) / (1 - d*x1*x2*y1*y2)
+    // Since d is non-square in F_p, denominators are strictly non-zero for all curve points.
+    // Addition is algebraically complete: handles identity and doubling without branching.
     U256 x1y2 = f_mul(P.x, Q.y);
     U256 x2y1 = f_mul(Q.x, P.y);
     U256 x1x2 = f_mul(P.x, Q.x);
@@ -315,26 +331,34 @@ Point point_add(const Point& P, const Point& Q) noexcept {
     U256 num_y = f_add(y1y2, x1x2);
     U256 den_y = f_sub(one, dxxyy);
 
+    // Constant-time simultaneous inversion (Montgomery batch inversion)
+    U256 den_xy = f_mul(den_x, den_y);
+    U256 inv_xy = f_inv(den_xy);
+    U256 inv_x = f_mul(inv_xy, den_y);
+    U256 inv_y = f_mul(inv_xy, den_x);
+
     Point r;
-    r.x = f_mul(num_x, f_inv(den_x));
-    r.y = f_mul(num_y, f_inv(den_y));
+    r.x = f_mul(num_x, inv_x);
+    r.y = f_mul(num_y, inv_y);
     r.is_identity = false;
     return r;
 }
 
 Point point_scalarmult(Point P, U256 scalar) noexcept {
+    // Constant-time fixed-256-iteration double-and-add scalar multiplication.
+    // Eliminates secret-dependent early termination, secret-dependent branch selection,
+    // and non-uniform instruction sequences.
     Point res = Point::identity();
-    while (!scalar.is_zero()) {
-        if (scalar.d[0] & 1) {
-            res = point_add(res, P);
-        }
-        P = point_add(P, P);
-        std::uint32_t carry = 0;
-        for (int i = 7; i >= 0; --i) {
-            std::uint32_t next = scalar.d[i] & 1;
-            scalar.d[i] = (scalar.d[i] >> 1) | (carry << 31);
-            carry = next;
-        }
+    Point cur = P;
+
+    for (int bit_idx = 0; bit_idx < 256; ++bit_idx) {
+        std::uint32_t word = scalar.d[bit_idx / 32];
+        std::uint32_t bit = (word >> (bit_idx % 32)) & 1U;
+        std::uint32_t mask = 0U - bit;
+
+        Point added = point_add(res, cur);
+        res = point_cselect(res, added, mask);
+        cur = point_add(cur, cur);
     }
     return res;
 }
@@ -429,11 +453,15 @@ U256 sc_reduce_512(const std::uint8_t in[64]) noexcept {
             carry = next;
         }
         // Insert bit i
-        if ((acc[i / 32] >> (i % 32)) & 1) {
-            rem.d[0] |= 1;
-        }
-        if (rem >= L_ORDER) {
-            U256::sub_borrow(rem, rem, L_ORDER);
+        std::uint32_t bit = (acc[i / 32] >> (i % 32)) & 1U;
+        rem.d[0] |= bit;
+
+        // Constant-time conditional subtraction of L_ORDER
+        U256 sub_res;
+        std::uint32_t borrow = U256::sub_borrow(sub_res, rem, L_ORDER);
+        std::uint32_t mask = 0U - (1U - borrow);
+        for (int j = 0; j < 8; ++j) {
+            rem.d[j] = rem.d[j] ^ (mask & (rem.d[j] ^ sub_res.d[j]));
         }
     }
     return rem;
@@ -451,11 +479,16 @@ U256 sc_muladd_L(const U256& r, const U256& k, const U256& a) noexcept {
     }
     U256 ka = sc_reduce_512(prod_bytes);
 
-    // Add r
+    // Add r: r < L and ka < L, so res = r + ka < 2L < 2^254 < 2^256.
     U256 res;
-    std::uint32_t carry = U256::add_carry(res, r, ka);
-    if (carry || res >= L_ORDER) {
-        U256::sub_borrow(res, res, L_ORDER);
+    U256::add_carry(res, r, ka);
+
+    // Constant-time conditional subtraction of L_ORDER
+    U256 sub_res;
+    std::uint32_t borrow = U256::sub_borrow(sub_res, res, L_ORDER);
+    std::uint32_t mask = 0U - (1U - borrow);
+    for (int j = 0; j < 8; ++j) {
+        res.d[j] = res.d[j] ^ (mask & (res.d[j] ^ sub_res.d[j]));
     }
     return res;
 }

@@ -57,9 +57,54 @@ struct DeveloperIdentity {
         wipe_private_key();
     }
     DeveloperIdentity(const DeveloperIdentity&) = default;
-    DeveloperIdentity& operator=(const DeveloperIdentity&) = default;
-    DeveloperIdentity(DeveloperIdentity&&) noexcept = default;
-    DeveloperIdentity& operator=(DeveloperIdentity&&) noexcept = default;
+    DeveloperIdentity& operator=(const DeveloperIdentity& other) {
+        if (this != &other) {
+            wipe_private_key();
+            publisher_id = other.publisher_id;
+            organization_name = other.organization_name;
+            key_id = other.key_id;
+            role = other.role;
+            algorithm = other.algorithm;
+            created_at = other.created_at;
+            valid_from = other.valid_from;
+            valid_until = other.valid_until;
+            private_key_seed = other.private_key_seed;
+            public_key = other.public_key;
+        }
+        return *this;
+    }
+
+    DeveloperIdentity(DeveloperIdentity&& other) noexcept
+        : publisher_id(std::move(other.publisher_id)),
+          organization_name(std::move(other.organization_name)),
+          key_id(std::move(other.key_id)),
+          role(other.role),
+          algorithm(other.algorithm),
+          created_at(other.created_at),
+          valid_from(other.valid_from),
+          valid_until(other.valid_until),
+          private_key_seed(std::move(other.private_key_seed)),
+          public_key(std::move(other.public_key)) {
+        other.wipe_private_key();
+    }
+
+    DeveloperIdentity& operator=(DeveloperIdentity&& other) noexcept {
+        if (this != &other) {
+            wipe_private_key();
+            publisher_id = std::move(other.publisher_id);
+            organization_name = std::move(other.organization_name);
+            key_id = std::move(other.key_id);
+            role = other.role;
+            algorithm = other.algorithm;
+            created_at = other.created_at;
+            valid_from = other.valid_from;
+            valid_until = other.valid_until;
+            private_key_seed = std::move(other.private_key_seed);
+            public_key = std::move(other.public_key);
+            other.wipe_private_key();
+        }
+        return *this;
+    }
 
     void wipe_private_key() noexcept;
     bool is_valid() const noexcept;

@@ -101,6 +101,10 @@ DeveloperIdentity DeveloperKeyStore::generate_identity(
     crypto::Ed25519::create_keypair(pub_arr, priv_arr, seed_arr);
     std::memcpy(identity.public_key.data(), pub_arr.data(), 32);
 
+    // Stage 235.6: Zero stack key intermediates
+    secure_zero_memory(seed_arr.data(), seed_arr.size());
+    secure_zero_memory(priv_arr.data(), priv_arr.size());
+
     return identity;
 }
 
