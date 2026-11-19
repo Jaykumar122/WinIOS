@@ -189,7 +189,10 @@ public:
                 env_staged = false;
             }
             if (capabilities_bound && allocated_handle.pid != 0) {
-                if (cap_mgr_) cap_mgr_->unbind_identity(allocated_handle.pid);
+                if (cap_mgr_) {
+                    cap_mgr_->unbind_identity(allocated_handle.pid);
+                    cap_mgr_->revoke_all(allocated_handle.pid);
+                }
                 capabilities_bound = false;
             }
             if (budget_allocated && allocated_handle.pid != 0) {

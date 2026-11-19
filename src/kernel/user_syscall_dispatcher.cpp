@@ -57,8 +57,15 @@ inline void safe_copy_str(char* dst, size_t dst_sz, const std::string& src) {
 }
 }
 
+constexpr std::size_t kMaxGuestPathLen = 1024;
+constexpr std::size_t kMaxGuestLogLen  = 4096;
+
 static bool read_user_string(memory::UserAddressSpace& uas, std::uint64_t va, std::string& out_str, std::size_t max_len = 1024) {
     out_str.clear();
+    if (va == 0 || va >= memory::kUserSpaceLimitVa) return false;
+    if (max_len == 0) return false;
+    if (max_len > kMaxGuestLogLen) max_len = kMaxGuestLogLen;
+
     for (std::size_t i = 0; i < max_len; ++i) {
         char ch = 0;
         if (!uas.copyout(reinterpret_cast<const void*>(va + i), &ch, 1)) {
@@ -69,7 +76,8 @@ static bool read_user_string(memory::UserAddressSpace& uas, std::uint64_t va, st
         }
         out_str.push_back(ch);
     }
-    return !out_str.empty();
+    // SEC-232-05: Unterminated string exceeding max_len must be strictly rejected
+    return false;
 }
 
 bool UserSyscallDispatcher::handle_syscall(CPU& cpu,

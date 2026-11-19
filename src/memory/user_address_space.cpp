@@ -135,6 +135,7 @@ bool UserAddressSpace::validate_user_buffer(std::uint64_t va,
                                             std::size_t size,
                                             bool require_writable) const {
     if (size == 0) return true;
+    if (va == 0) return false; // Explicit null pointer rejection
     if (va + size < va) return false; // Overflow check
     if (va + size > kUserSpaceLimitVa) return false;
 

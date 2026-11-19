@@ -7,9 +7,14 @@
 #include "loader/app_launcher.h"
 #include "kernel/process_identity.h"
 #include "services/diagnostics_service.h"
+#include "security/developer_keystore.h"
+#include "security/publisher_trust_store.h"
 #include "vfs/vfs.h"
 
 #include <iostream>
+#include <fstream>
+#include <chrono>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <memory>
@@ -27,6 +32,8 @@ enum CliExitCode : int {
 
 class WiniosAppCli {
 public:
+    WiniosAppCli() = default;
+
     WiniosAppCli(std::shared_ptr<vfs::VirtualFileSystem> vfs,
                  std::shared_ptr<packaging::ApplicationRegistry> registry,
                  std::shared_ptr<packaging::PackageInstaller> installer,
@@ -41,6 +48,20 @@ public:
           diag_svc_(std::move(diag_svc)) {}
 
     ~WiniosAppCli() = default;
+
+    static std::optional<std::string> get_opt(const std::vector<std::string>& args, const std::string& flag) {
+        for (std::size_t i = 0; i + 1 < args.size(); ++i) {
+            if (args[i] == flag) return args[i + 1];
+        }
+        return std::nullopt;
+    }
+
+    static bool has_flag(const std::vector<std::string>& args, const std::string& flag) {
+        for (const auto& a : args) {
+            if (a == flag) return true;
+        }
+        return false;
+    }
 
     static bool is_valid_bundle_id(const std::string& bid) noexcept {
         if (bid.size() < 3 || bid.size() > 128) {
@@ -414,6 +435,268 @@ public:
             return CliExitCode::Success;
         }
 
+        if (cmd == "keygen") {
+            auto pub_id = get_opt(args, "--publisher-id");
+            auto out_file = get_opt(args, "--out");
+            if (!pub_id || !out_file) {
+                err << "Usage: keygen --publisher-id <id> --out <file> [--org <name>] [--key-id <id>] [--passphrase <pass>] [--protection dpapi|passphrase|none] [--json]\n";
+                return CliExitCode::InvalidArgs;
+            }
+            std::string org = get_opt(args, "--org").value_or("WinIOS Developer");
+            std::string key_id = get_opt(args, "--key-id").value_or(
+                "KEY-DEV-" + *pub_id + "-" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+            std::string pass = get_opt(args, "--passphrase").value_or("");
+            std::string prot_str = get_opt(args, "--protection").value_or("dpapi");
+
+            security::KeystoreProtection prot = security::KeystoreProtection::DPAPI;
+            if (prot_str == "passphrase") prot = security::KeystoreProtection::Passphrase;
+            else if (prot_str == "none") prot = security::KeystoreProtection::None;
+            else if (prot_str == "dpapi") prot = security::KeystoreProtection::DPAPI;
+
+            auto id = security::DeveloperKeyStore::generate_identity(*pub_id, org, key_id);
+            if (!security::DeveloperKeyStore::save_to_file(*out_file, id, prot, pass)) {
+                err << "Error: Failed to save keystore to " << *out_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+
+            if (has_flag(args, "--json")) {
+                out << "{\"status\":\"ok\",\"publisher_id\":\"" << *pub_id
+                    << "\",\"key_id\":\"" << key_id
+                    << "\",\"out\":\"" << *out_file << "\"}\n";
+            } else {
+                out << "Generated developer identity: " << *pub_id << " (" << key_id << ")\n";
+                out << "Saved to: " << *out_file << "\n";
+            }
+            return CliExitCode::Success;
+        }
+
+        if (cmd == "key-export-pub") {
+            auto key_file = get_opt(args, "--key");
+            auto out_file = get_opt(args, "--out");
+            if (!key_file || !out_file) {
+                err << "Usage: key-export-pub --key <file> --out <file> [--passphrase <pass>] [--json]\n";
+                return CliExitCode::InvalidArgs;
+            }
+            std::string pass = get_opt(args, "--passphrase").value_or("");
+            auto maybe_id = security::DeveloperKeyStore::load_from_file(*key_file, pass);
+            if (!maybe_id.has_value()) {
+                err << "Error: Failed to load keystore from " << *key_file << " (invalid passphrase or corrupted)\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            if (!security::DeveloperKeyStore::save_public_key_file(*out_file, *maybe_id)) {
+                err << "Error: Failed to write public key to " << *out_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            if (has_flag(args, "--json")) {
+                out << "{\"status\":\"ok\",\"key_id\":\"" << maybe_id->key_id
+                    << "\",\"out\":\"" << *out_file << "\"}\n";
+            } else {
+                out << "Exported public key for " << maybe_id->key_id << " to " << *out_file << "\n";
+            }
+            return CliExitCode::Success;
+        }
+
+        if (cmd == "app-sign") {
+            auto pkg_file = get_opt(args, "--pkg");
+            auto key_file = get_opt(args, "--key");
+            if (!pkg_file || !key_file) {
+                err << "Usage: app-sign --pkg <file> --key <file> [--out <file>] [--passphrase <pass>] [--valid-days <n>] [--flags <f>] [--json]\n";
+                return CliExitCode::InvalidArgs;
+            }
+            std::string out_file = get_opt(args, "--out").value_or(*pkg_file);
+            std::string pass = get_opt(args, "--passphrase").value_or("");
+            uint64_t valid_days = 365;
+            if (auto days_opt = get_opt(args, "--valid-days")) {
+                try { valid_days = std::stoull(*days_opt); } catch (...) {}
+            }
+            uint32_t flags = 0;
+            if (auto flags_opt = get_opt(args, "--flags")) {
+                try { flags = static_cast<uint32_t>(std::stoul(*flags_opt)); } catch (...) {}
+            }
+
+            std::ifstream ifs(*pkg_file, std::ios::binary);
+            if (!ifs.is_open()) {
+                err << "Error: Cannot open package file: " << *pkg_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            std::vector<std::uint8_t> pkg_data((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            ifs.close();
+
+            auto maybe_id = security::DeveloperKeyStore::load_from_file(*key_file, pass);
+            if (!maybe_id.has_value()) {
+                err << "Error: Cannot load developer key: " << *key_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+
+            uint64_t now = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+            uint64_t valid_until = (valid_days > 0) ? (now + valid_days * 86400) : 0;
+
+            if (!security::PublisherTrustStore::sign_package_v2(pkg_data, *maybe_id, flags, now, valid_until)) {
+                err << "Error: Signing failed\n";
+                return CliExitCode::ExecutionFailure;
+            }
+
+            std::ofstream ofs(out_file, std::ios::binary);
+            if (!ofs.is_open()) {
+                err << "Error: Cannot write signed package to: " << out_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            ofs.write(reinterpret_cast<const char*>(pkg_data.data()), static_cast<std::streamsize>(pkg_data.size()));
+            ofs.close();
+
+            if (has_flag(args, "--json")) {
+                out << "{\"status\":\"ok\",\"package\":\"" << out_file
+                    << "\",\"publisher_id\":\"" << maybe_id->publisher_id
+                    << "\",\"key_id\":\"" << maybe_id->key_id
+                    << "\",\"trailer_version\":2}\n";
+            } else {
+                out << "Signed " << out_file << " using key " << maybe_id->key_id << " (WIOSAUTH v2)\n";
+            }
+            return CliExitCode::Success;
+        }
+
+        if (cmd == "app-verify") {
+            auto pkg_file = get_opt(args, "--pkg");
+            if (!pkg_file) {
+                err << "Usage: app-verify --pkg <file> [--trust-store <file>] [--policy dev|prod] [--json]\n";
+                return CliExitCode::InvalidArgs;
+            }
+            security::PublisherTrustStore store;
+            if (auto ts_file = get_opt(args, "--trust-store")) {
+                std::ifstream ifs(*ts_file);
+                if (!ifs.is_open()) {
+                    err << "Error: Cannot open trust store: " << *ts_file << "\n";
+                    return CliExitCode::ExecutionFailure;
+                }
+                std::string text((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                if (!store.deserialize(text)) {
+                    err << "Error: Failed to parse trust store file: " << *ts_file << "\n";
+                    return CliExitCode::ExecutionFailure;
+                }
+            } else {
+                store = security::PublisherTrustStore::create_default_test_store();
+            }
+
+            security::TrustPolicy policy = security::TrustPolicy::Development;
+            if (auto pol_opt = get_opt(args, "--policy")) {
+                if (*pol_opt == "prod" || *pol_opt == "StrictProduction") {
+                    policy = security::TrustPolicy::StrictProduction;
+                }
+            }
+
+            std::ifstream ifs(*pkg_file, std::ios::binary);
+            if (!ifs.is_open()) {
+                err << "Error: Cannot open package: " << *pkg_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            std::vector<std::uint8_t> pkg_data((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            ifs.close();
+
+            uint64_t now = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+            auto res = store.verify_package_signature(pkg_data.data(), pkg_data.size(), policy, now);
+
+            if (has_flag(args, "--json")) {
+                out << "{\"status\":\"" << security::signature_status_to_string(res.status)
+                    << "\",\"trusted\":" << (res.is_trusted ? "true" : "false")
+                    << ",\"publisher_id\":\"" << res.publisher_id
+                    << "\",\"key_id\":\"" << res.key_id
+                    << "\",\"trailer_version\":" << res.trailer_version
+                    << ",\"trailer_flags\":" << res.trailer_flags
+                    << ",\"failure_reason\":\"" << res.failure_reason << "\"}\n";
+            } else {
+                out << "Package Verification: " << *pkg_file << "\n";
+                out << "  Status: " << security::signature_status_to_string(res.status) << "\n";
+                out << "  Trusted: " << (res.is_trusted ? "YES" : "NO") << "\n";
+                out << "  Publisher: " << (res.publisher_id.empty() ? "(none)" : res.publisher_id) << "\n";
+                out << "  Key ID: " << (res.key_id.empty() ? "(none)" : res.key_id) << "\n";
+                out << "  Trailer Version: " << res.trailer_version << "\n";
+                if (!res.is_trusted && !res.failure_reason.empty()) {
+                    out << "  Failure Reason: " << res.failure_reason << "\n";
+                }
+            }
+
+            return res.is_trusted ? CliExitCode::Success : CliExitCode::ExecutionFailure;
+        }
+
+        if (cmd == "trust-add-key") {
+            auto ts_file = get_opt(args, "--trust-store");
+            auto key_file = get_opt(args, "--key-file");
+            if (!ts_file || !key_file) {
+                err << "Usage: trust-add-key --trust-store <file> --key-file <file> [--root] [--json]\n";
+                return CliExitCode::InvalidArgs;
+            }
+            security::PublisherTrustStore store;
+            if (std::filesystem::exists(*ts_file)) {
+                std::ifstream ifs(*ts_file);
+                std::string text((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                store.deserialize(text);
+            }
+            std::ifstream kfs(*key_file);
+            if (!kfs.is_open()) {
+                err << "Error: Cannot open key file: " << *key_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            std::string key_text((std::istreambuf_iterator<char>(kfs)), std::istreambuf_iterator<char>());
+            security::PublisherTrustStore temp;
+            if (!temp.deserialize(key_text) || temp.total_keys() == 0) {
+                err << "Error: Failed to parse key file: " << *key_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            bool is_root = has_flag(args, "--root");
+            for (const auto& [_, k] : temp.all_keys()) {
+                if (is_root) {
+                    store.register_root_anchor(k);
+                } else {
+                    store.register_key(k);
+                }
+            }
+            std::ofstream ofs(*ts_file);
+            if (!ofs.is_open()) {
+                err << "Error: Cannot write trust store to " << *ts_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            ofs << store.serialize();
+            if (has_flag(args, "--json")) {
+                out << "{\"status\":\"ok\",\"trust_store\":\"" << *ts_file << "\",\"total_keys\":" << store.total_keys() << "}\n";
+            } else {
+                out << "Added key(s) to trust store: " << *ts_file << " (total keys: " << store.total_keys() << ")\n";
+            }
+            return CliExitCode::Success;
+        }
+
+        if (cmd == "trust-revoke") {
+            auto ts_file = get_opt(args, "--trust-store");
+            auto key_id = get_opt(args, "--key-id");
+            auto pub_id = get_opt(args, "--publisher-id");
+            if (!ts_file || (!key_id && !pub_id)) {
+                err << "Usage: trust-revoke --trust-store <file> (--key-id <id> | --publisher-id <id>) [--json]\n";
+                return CliExitCode::InvalidArgs;
+            }
+            security::PublisherTrustStore store;
+            if (std::filesystem::exists(*ts_file)) {
+                std::ifstream ifs(*ts_file);
+                std::string text((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+                store.deserialize(text);
+            }
+            if (key_id) store.revoke_key(*key_id);
+            if (pub_id) store.revoke_publisher(*pub_id);
+
+            std::ofstream ofs(*ts_file);
+            if (!ofs.is_open()) {
+                err << "Error: Cannot write trust store to " << *ts_file << "\n";
+                return CliExitCode::ExecutionFailure;
+            }
+            ofs << store.serialize();
+            if (has_flag(args, "--json")) {
+                out << "{\"status\":\"ok\",\"revoked\":\"" << (key_id ? *key_id : *pub_id) << "\"}\n";
+            } else {
+                out << "Revoked: " << (key_id ? *key_id : *pub_id) << " in " << *ts_file << "\n";
+            }
+            return CliExitCode::Success;
+        }
+
         err << "Unknown command: " << cmd << ". Run 'help' for usage.\n";
         return CliExitCode::InvalidArgs;
     }
@@ -434,6 +717,12 @@ private:
             << "  app-launch <bundle_id>          Launch application into active session\n"
             << "  app-terminate <pid>             Terminate running process\n"
             << "  diag-query [--limit <count>]    Query recent diagnostic logs\n"
+            << "  keygen [options]                Generate developer signing keypair\n"
+            << "  key-export-pub [options]        Export public verification key\n"
+            << "  app-sign [options]              Sign application package with key\n"
+            << "  app-verify [options]            Verify package authenticity & trust\n"
+            << "  trust-add-key [options]         Import public key into trust store\n"
+            << "  trust-revoke [options]          Revoke key or publisher in trust store\n"
             << "  help                            Display this help menu\n";
     }
 

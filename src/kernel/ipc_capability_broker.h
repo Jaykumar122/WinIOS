@@ -51,6 +51,7 @@ struct IpcCapabilityToken {
     uint32_t        allowed_rights{0x1};  // 0x1: Send, 0x2: Query, 0x4: Admin
     bool            is_revoked{false};
     uint64_t        last_sequence_num{0}; // Anti-replay sequence tracking
+    bool            require_strict_sequence{false}; // Strict anti-replay: sequence 0 rejected
 };
 
 class IpcCapabilityBroker {
@@ -66,13 +67,17 @@ public:
     ~IpcCapabilityBroker() = default;
 
     // Issue communication capability token with 128-bit CSPRNG hex token
-    IpcCapabilityToken grant_communication_right(ProcessHandle sender, ProcessHandle receiver, uint32_t rights = 0x1) {
+    IpcCapabilityToken grant_communication_right(ProcessHandle sender,
+                                                 ProcessHandle receiver,
+                                                 uint32_t rights = 0x1,
+                                                 bool require_strict_sequence = false) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!validate_handle_locked(sender) || !validate_handle_locked(receiver)) {
             return IpcCapabilityToken{};
         }
 
         IpcCapabilityToken token{};
+        token.require_strict_sequence = require_strict_sequence;
         // Generate non-zero 64-bit ID
         uint64_t rand_id = security::SecureRandom::get_random_u64();
         while (rand_id == 0 || tokens_.find(rand_id) != tokens_.end()) {
@@ -138,12 +143,11 @@ public:
             return IpcStatus::PermissionDenied;
         }
 
-        // 2. Anti-replay verification (if non-zero sequence number supplied)
-        if (sequence_num > 0) {
-            if (sequence_num <= token.last_sequence_num) {
+        // 2. Anti-replay verification (SEC-232-04 hardened)
+        if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
+            if (sequence_num == 0 || sequence_num <= token.last_sequence_num) {
                 return IpcStatus::ReplayDetected;
             }
-            token.last_sequence_num = sequence_num;
         }
 
         // 3. Verify sender handle
@@ -168,6 +172,11 @@ public:
         auto& queue = message_queues_[token.receiver.pid];
         if (queue.size() >= kMaxPortCapacity) {
             return IpcStatus::QueueFull;
+        }
+
+        // Advance sequence number upon passing all validation checks
+        if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
+            token.last_sequence_num = sequence_num;
         }
 
         // 7. Enqueue message
@@ -308,11 +317,11 @@ private:
             return IpcStatus::PermissionDenied;
         }
 
-        if (sequence_num > 0) {
-            if (sequence_num <= token.last_sequence_num) {
+        // 2. Anti-replay verification (SEC-232-04 hardened)
+        if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
+            if (sequence_num == 0 || sequence_num <= token.last_sequence_num) {
                 return IpcStatus::ReplayDetected;
             }
-            token.last_sequence_num = sequence_num;
         }
 
         if (current_sender.pid != token.sender.pid || current_sender.generation != token.sender.generation) {
@@ -333,6 +342,11 @@ private:
         auto& queue = message_queues_[token.receiver.pid];
         if (queue.size() >= kMaxPortCapacity) {
             return IpcStatus::QueueFull;
+        }
+
+        // Advance sequence number upon passing all validation checks
+        if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
+            token.last_sequence_num = sequence_num;
         }
 
         runtime::IpcMessage msg{};

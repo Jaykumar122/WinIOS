@@ -61,6 +61,8 @@ public:
                       std::uint32_t caller_pid);
 
     void close_all_for_process(std::uint32_t pid);
+    void close_streams_for_document(DocumentHandle doc_handle);
+    void close_streams_for_grantee(DocumentHandle doc_handle, std::uint32_t grantee_pid);
 
     [[nodiscard]] bool is_stream_valid(StreamHandle handle) const;
     [[nodiscard]] std::size_t get_stream_size(StreamHandle handle) const;

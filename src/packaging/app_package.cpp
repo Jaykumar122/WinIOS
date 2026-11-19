@@ -224,7 +224,11 @@ bool PackageManifest::deserialize(const std::string& text, PackageManifest& out)
 
 void AppPackage::add_file(const std::string& rel_path, std::vector<std::uint8_t> data) {
     FileEntry fe{};
-    fe.path = rel_path;
+    std::string norm_path = rel_path;
+    std::replace(norm_path.begin(), norm_path.end(), '\\', '/');
+    while (norm_path.rfind("./", 0) == 0) norm_path = norm_path.substr(2);
+    while (!norm_path.empty() && norm_path[0] == '/') norm_path = norm_path.substr(1);
+    fe.path = norm_path;
     fe.size = data.size();
     fe.sha256_hex = crypto::Sha256::hash_hex(data);
     fe.data = std::move(data);
@@ -249,9 +253,17 @@ std::vector<std::uint8_t> AppPackage::pack_v3() const {
     // 4. Manifest text & canonical file sorting
     PackageManifest m_copy = manifest;
     m_copy.format_version = "3.0";
+    for (auto& f : m_copy.files) {
+        std::replace(f.path.begin(), f.path.end(), '\\', '/');
+        while (f.path.rfind("./", 0) == 0) f.path = f.path.substr(2);
+        while (!f.path.empty() && f.path[0] == '/') f.path = f.path.substr(1);
+    }
     std::sort(m_copy.files.begin(), m_copy.files.end(), [](const FileEntry& a, const FileEntry& b) {
         return a.path < b.path;
     });
+    std::sort(m_copy.permissions.begin(), m_copy.permissions.end());
+    std::sort(m_copy.optional_permissions.begin(), m_copy.optional_permissions.end());
+    std::sort(m_copy.supported_doc_types.begin(), m_copy.supported_doc_types.end());
     const std::string manifest_str = m_copy.serialize();
     const std::uint64_t manifest_off = kV3HeaderSize;
     const std::uint32_t manifest_len = static_cast<std::uint32_t>(manifest_str.size());

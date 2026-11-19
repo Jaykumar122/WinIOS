@@ -21,7 +21,10 @@ enum class PathValidationStatus : std::uint32_t {
     TrailingDotOrSpace = 10,
     ControlCharactersForbidden = 11,
     NullCharacterForbidden = 12,
-    EscapesSandboxRoot = 13
+    EscapesSandboxRoot = 13,
+    ReparsePointForbidden = 14,
+    DeviceNamespaceForbidden = 15,
+    ShortNameForbidden = 16
 };
 
 inline const char* path_validation_status_to_string(PathValidationStatus status) noexcept {
@@ -40,6 +43,9 @@ inline const char* path_validation_status_to_string(PathValidationStatus status)
     case PathValidationStatus::ControlCharactersForbidden: return "ControlCharactersForbidden";
     case PathValidationStatus::NullCharacterForbidden: return "NullCharacterForbidden";
     case PathValidationStatus::EscapesSandboxRoot: return "EscapesSandboxRoot";
+    case PathValidationStatus::ReparsePointForbidden: return "ReparsePointForbidden";
+    case PathValidationStatus::DeviceNamespaceForbidden: return "DeviceNamespaceForbidden";
+    case PathValidationStatus::ShortNameForbidden: return "ShortNameForbidden";
     default: return "UnknownPathStatus";
     }
 }
@@ -76,9 +82,22 @@ public:
     }
 
     // Validates that target_path resides strictly inside root_dir without escaping.
+    // Physically resolves symlinks and NTFS junctions to prevent directory junction jailbreaks.
     static bool is_strictly_inside_root(
         const std::string& root_dir,
         const std::string& target_path);
+
+    // Checks if a path is an NTFS junction or symlink reparse point.
+    static bool is_reparse_point(const std::string& path);
+
+    // Resolves true physical canonical path on Windows using GetFinalPathNameByHandle.
+    static bool resolve_canonical_physical_path(const std::string& path, std::string& out_canonical);
+
+    // Checks if path contains a Windows device namespace prefix (\\?\, \\.\, \??\).
+    static bool contains_device_namespace(const std::string& path) noexcept;
+
+    // Checks if segment contains an 8.3 short name alias pattern (e.g. PROGRA~1).
+    static bool contains_short_name_alias(const std::string& segment) noexcept;
 
     // Checks if a name is a Windows reserved device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9).
     static bool is_windows_reserved_device_name(const std::string& segment);

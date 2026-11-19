@@ -102,26 +102,51 @@ public:
         injected_failure_ = stage;
     }
 
-    enum class TransactionState : std::uint32_t {
-        Pending = 0,
-        Validated = 1,
-        Staged = 2,
-        Committing = 3,
-        Committed = 4,
-        RolledBack = 5
+    enum class InstallerState : std::uint32_t {
+        Idle = 0,
+        Initiated = 1,
+        Validating = 2,
+        ManifestParsed = 3,
+        SecurityVerified = 4,
+        Staged = 5,
+        Extracting = 6,
+        Extracted = 7,
+        Registering = 8,
+        Committed = 9,
+        Aborted = 10,
+        // Compatibility aliases
+        Pending = Initiated,
+        Validated = SecurityVerified,
+        Committing = Registering,
+        RolledBack = Aborted
     };
+    using TransactionState = InstallerState;
 
-    static const char* transaction_state_to_string(TransactionState s) noexcept {
+    static const char* installer_state_to_string(InstallerState s) noexcept {
         switch (s) {
-        case TransactionState::Pending: return "Pending";
-        case TransactionState::Validated: return "Validated";
-        case TransactionState::Staged: return "Staged";
-        case TransactionState::Committing: return "Committing";
-        case TransactionState::Committed: return "Committed";
-        case TransactionState::RolledBack: return "RolledBack";
+        case InstallerState::Idle: return "Idle";
+        case InstallerState::Initiated: return "Initiated";
+        case InstallerState::Validating: return "Validating";
+        case InstallerState::ManifestParsed: return "ManifestParsed";
+        case InstallerState::SecurityVerified: return "SecurityVerified";
+        case InstallerState::Staged: return "Staged";
+        case InstallerState::Extracting: return "Extracting";
+        case InstallerState::Extracted: return "Extracted";
+        case InstallerState::Registering: return "Registering";
+        case InstallerState::Committed: return "Committed";
+        case InstallerState::Aborted: return "Aborted";
         default: return "Unknown";
         }
     }
+
+    static const char* transaction_state_to_string(InstallerState s) noexcept {
+        return installer_state_to_string(s);
+    }
+
+    using FaultInjectionHook = std::function<void(InstallerState)>;
+    void set_fault_injection_hook(FaultInjectionHook hook) { fault_hook_ = std::move(hook); }
+    void inject_fault_at_state(InstallerState state) noexcept { inject_fault_state_ = state; }
+    void clear_fault_injection() noexcept { inject_fault_state_.reset(); fault_hook_ = nullptr; }
 
 private:
     bool write_journal(const std::string& tx_id,
@@ -139,6 +164,8 @@ private:
     RunningCheckCallback                    is_running_cb_;
     TerminateCallback                       terminate_cb_;
     InjectedFailureStage                    injected_failure_{InjectedFailureStage::None};
+    FaultInjectionHook                      fault_hook_;
+    std::optional<InstallerState>           inject_fault_state_;
 };
 
 } // namespace winios::packaging

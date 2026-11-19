@@ -174,7 +174,8 @@ ValidationResult GuestMemoryValidator::copy_string(
         out_str.push_back(static_cast<char>(ch));
     }
 
-    return ValidationResult::Success;
+    // Reached max_bytes without encountering null terminator: strictly reject
+    return ValidationResult::StringNotTerminated;
 }
 
 } // namespace winios::memory

@@ -16,7 +16,8 @@ enum class ValidationResult : std::uint32_t {
     PermissionDenied = 5,
     MisalignedPointer = 6,
     CrossProcessViolation = 7,
-    ZeroLengthForbidden = 8
+    ZeroLengthForbidden = 8,
+    StringNotTerminated = 9
 };
 
 inline const char* validation_result_to_string(ValidationResult res) noexcept {
@@ -30,6 +31,7 @@ inline const char* validation_result_to_string(ValidationResult res) noexcept {
     case ValidationResult::MisalignedPointer: return "MisalignedPointer";
     case ValidationResult::CrossProcessViolation: return "CrossProcessViolation";
     case ValidationResult::ZeroLengthForbidden: return "ZeroLengthForbidden";
+    case ValidationResult::StringNotTerminated: return "StringNotTerminated";
     default: return "UnknownValidationResult";
     }
 }
@@ -44,6 +46,25 @@ public:
         bool require_writable,
         std::size_t required_alignment = 1,
         bool allow_zero_length = false) noexcept;
+
+    // Explicit guest read and write memory range validators
+    static ValidationResult validate_guest_read(
+        const UserAddressSpace& uas,
+        std::uint64_t va,
+        std::size_t size,
+        std::size_t required_alignment = 1,
+        bool allow_zero_length = false) noexcept {
+        return validate_buffer(uas, va, size, false /* require_writable */, required_alignment, allow_zero_length);
+    }
+
+    static ValidationResult validate_guest_write(
+        const UserAddressSpace& uas,
+        std::uint64_t va,
+        std::size_t size,
+        std::size_t required_alignment = 1,
+        bool allow_zero_length = false) noexcept {
+        return validate_buffer(uas, va, size, true /* require_writable */, required_alignment, allow_zero_length);
+    }
 
     // Safe copy in: Copy from guest user space into host buffer with full validation
     static ValidationResult copyin(

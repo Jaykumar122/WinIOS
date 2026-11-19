@@ -140,6 +140,8 @@ add_library(winios_core STATIC
     src/loader/app_inspector.cpp
     src/vfs/vfs.cpp
     src/crypto/sha256.cpp
+    src/crypto/sha512.cpp
+    src/crypto/ed25519.cpp
     src/storage/isolated_storage.cpp
     src/packaging/app_package.cpp
     src/packaging/app_registry.cpp
@@ -148,6 +150,7 @@ add_library(winios_core STATIC
     src/security/capability_manager.cpp
     src/security/security_utils.cpp
     src/security/publisher_trust_store.cpp
+    src/security/developer_keystore.cpp
     src/kernel/app_supervisor.cpp
     src/services/configuration_service.cpp
     src/services/diagnostics_service.cpp
@@ -324,7 +327,8 @@ target_include_directories(winios_core PUBLIC
 if(WIN32)
     # GetProcessMemoryInfo / PROCESS_MEMORY_COUNTERS_EX for Stage 21 memory probes.
     # bcrypt for cryptographic random generation (Campaign 231)
-    target_link_libraries(winios_core PUBLIC psapi bcrypt)
+    # crypt32 for DPAPI key protection (Campaign 232)
+    target_link_libraries(winios_core PUBLIC psapi bcrypt crypt32)
 endif()
 
 winios_set_warnings(winios_core)
@@ -6030,6 +6034,139 @@ target_include_directories(stage231_22_adversarial_suite_tests PRIVATE include g
 target_link_libraries(stage231_22_adversarial_suite_tests PRIVATE winios_core)
 winios_set_warnings(stage231_22_adversarial_suite_tests)
 add_test(NAME stage231_22_adversarial_suite_tests COMMAND stage231_22_adversarial_suite_tests)
+
+add_executable(stage232_4_asymmetric_signatures_tests
+    tests/unit/stage232_4_asymmetric_signatures_tests.cpp
+)
+target_include_directories(stage232_4_asymmetric_signatures_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_4_asymmetric_signatures_tests PRIVATE winios_core)
+winios_set_warnings(stage232_4_asymmetric_signatures_tests)
+add_test(NAME stage232_4_asymmetric_signatures_tests COMMAND stage232_4_asymmetric_signatures_tests)
+
+add_executable(stage232_5_key_storage_tests
+    tests/unit/stage232_5_key_storage_tests.cpp
+)
+target_include_directories(stage232_5_key_storage_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_5_key_storage_tests PRIVATE winios_core)
+winios_set_warnings(stage232_5_key_storage_tests)
+add_test(NAME stage232_5_key_storage_tests COMMAND stage232_5_key_storage_tests)
+
+add_executable(stage232_6_trust_store_tests
+    tests/unit/stage232_6_trust_store_tests.cpp
+)
+target_include_directories(stage232_6_trust_store_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_6_trust_store_tests PRIVATE winios_core)
+winios_set_warnings(stage232_6_trust_store_tests)
+add_test(NAME stage232_6_trust_store_tests COMMAND stage232_6_trust_store_tests)
+
+add_executable(stage232_7_wiosauth_v2_tests
+    tests/unit/stage232_7_wiosauth_v2_tests.cpp
+)
+target_include_directories(stage232_7_wiosauth_v2_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_7_wiosauth_v2_tests PRIVATE winios_core)
+winios_set_warnings(stage232_7_wiosauth_v2_tests)
+add_test(NAME stage232_7_wiosauth_v2_tests COMMAND stage232_7_wiosauth_v2_tests)
+
+add_executable(stage232_8_signing_cli_tests
+    tests/unit/stage232_8_signing_cli_tests.cpp
+)
+target_include_directories(stage232_8_signing_cli_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_8_signing_cli_tests PRIVATE winios_core)
+winios_set_warnings(stage232_8_signing_cli_tests)
+add_test(NAME stage232_8_signing_cli_tests COMMAND stage232_8_signing_cli_tests)
+
+add_executable(stage232_9_canonical_package_tests
+    tests/unit/stage232_9_canonical_package_tests.cpp
+)
+target_include_directories(stage232_9_canonical_package_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_9_canonical_package_tests PRIVATE winios_core)
+winios_set_warnings(stage232_9_canonical_package_tests)
+add_test(NAME stage232_9_canonical_package_tests COMMAND stage232_9_canonical_package_tests)
+
+add_executable(stage232_11_hardened_path_validator_tests
+    tests/unit/stage232_11_hardened_path_validator_tests.cpp
+)
+target_include_directories(stage232_11_hardened_path_validator_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_11_hardened_path_validator_tests PRIVATE winios_core)
+winios_set_warnings(stage232_11_hardened_path_validator_tests)
+add_test(NAME stage232_11_hardened_path_validator_tests COMMAND stage232_11_hardened_path_validator_tests)
+
+add_executable(stage232_13_crash_recovery_tests
+    tests/unit/stage232_13_crash_recovery_tests.cpp
+)
+target_include_directories(stage232_13_crash_recovery_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_13_crash_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage232_13_crash_recovery_tests)
+add_test(NAME stage232_13_crash_recovery_tests COMMAND stage232_13_crash_recovery_tests)
+
+add_executable(stage232_15_syscall_memory_tests
+    tests/unit/stage232_15_syscall_memory_tests.cpp
+)
+target_include_directories(stage232_15_syscall_memory_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_15_syscall_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage232_15_syscall_memory_tests)
+add_test(NAME stage232_15_syscall_memory_tests COMMAND stage232_15_syscall_memory_tests)
+
+add_executable(stage232_16_process_capability_tests
+    tests/unit/stage232_16_process_capability_tests.cpp
+)
+target_include_directories(stage232_16_process_capability_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_16_process_capability_tests PRIVATE winios_core)
+winios_set_warnings(stage232_16_process_capability_tests)
+add_test(NAME stage232_16_process_capability_tests COMMAND stage232_16_process_capability_tests)
+
+add_executable(stage232_17_document_security_tests
+    tests/unit/stage232_17_document_security_tests.cpp
+)
+target_include_directories(stage232_17_document_security_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_17_document_security_tests PRIVATE winios_core)
+winios_set_warnings(stage232_17_document_security_tests)
+add_test(NAME stage232_17_document_security_tests COMMAND stage232_17_document_security_tests)
+
+add_executable(stage232_18_launch_transaction_tests
+    tests/unit/stage232_18_launch_transaction_tests.cpp
+)
+target_include_directories(stage232_18_launch_transaction_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_18_launch_transaction_tests PRIVATE winios_core)
+winios_set_warnings(stage232_18_launch_transaction_tests)
+add_test(NAME stage232_18_launch_transaction_tests COMMAND stage232_18_launch_transaction_tests)
+
+add_executable(stage232_19_macho_wx_tests
+    tests/unit/stage232_19_macho_wx_tests.cpp
+)
+target_include_directories(stage232_19_macho_wx_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_19_macho_wx_tests PRIVATE winios_core)
+winios_set_warnings(stage232_19_macho_wx_tests)
+add_test(NAME stage232_19_macho_wx_tests COMMAND stage232_19_macho_wx_tests)
+
+add_executable(stage232_20_build_signing_pipeline_tests
+    tests/unit/stage232_20_build_signing_pipeline_tests.cpp
+)
+target_include_directories(stage232_20_build_signing_pipeline_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_20_build_signing_pipeline_tests PRIVATE winios_core)
+winios_set_warnings(stage232_20_build_signing_pipeline_tests)
+add_test(NAME stage232_20_build_signing_pipeline_tests COMMAND stage232_20_build_signing_pipeline_tests)
+
+add_executable(stage232_21_e2e_workflow_tests
+    tests/unit/stage232_21_e2e_workflow_tests.cpp
+)
+target_include_directories(stage232_21_e2e_workflow_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_21_e2e_workflow_tests PRIVATE winios_core)
+winios_set_warnings(stage232_21_e2e_workflow_tests)
+add_test(NAME stage232_21_e2e_workflow_tests COMMAND stage232_21_e2e_workflow_tests)
+
+add_executable(stage232_22_adversarial_security_tests
+    tests/unit/stage232_22_adversarial_security_tests.cpp
+)
+target_include_directories(stage232_22_adversarial_security_tests PRIVATE include guest-sdk/include)
+target_link_libraries(stage232_22_adversarial_security_tests PRIVATE winios_core)
+winios_set_warnings(stage232_22_adversarial_security_tests)
+add_test(NAME stage232_22_adversarial_security_tests COMMAND stage232_22_adversarial_security_tests)
+
+
+
+
+
 
 
 

@@ -100,6 +100,11 @@ bool DocumentStreamManager::read_stream(StreamHandle stream_handle,
         return false;
     }
 
+    // Dynamic verification: grant may have been revoked or expired since stream opened
+    if (registry_ && !registry_->check_access(it->second.doc_handle, caller_pid, it->second.mode)) {
+        return false;
+    }
+
     auto& stream = it->second;
     if (stream.cursor >= stream.buffer.size()) {
         bytes_read = 0;
@@ -142,6 +147,11 @@ bool DocumentStreamManager::write_stream(StreamHandle stream_handle,
     }
 
     if (!has_access_flag(it->second.mode, DocumentAccessMode::Write)) {
+        return false;
+    }
+
+    // Dynamic verification: grant may have been revoked or expired since stream opened
+    if (registry_ && !registry_->check_access(it->second.doc_handle, caller_pid, it->second.mode)) {
         return false;
     }
 
@@ -293,6 +303,44 @@ void DocumentStreamManager::close_all_for_process(std::uint32_t pid) {
     std::vector<std::uint32_t> to_remove;
     for (const auto& [id, stream] : streams_) {
         if (stream.owner_pid == pid) {
+            to_remove.push_back(id);
+        }
+    }
+    for (std::uint32_t id : to_remove) {
+        auto it = streams_.find(id);
+        if (it != streams_.end()) {
+            std::uint32_t next_gen = it->second.generation + 1;
+            if (next_gen == 0) next_gen = 1;
+            generations_[id] = next_gen;
+            streams_.erase(it);
+        }
+    }
+}
+
+void DocumentStreamManager::close_streams_for_document(DocumentHandle doc_handle) {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    std::vector<std::uint32_t> to_remove;
+    for (const auto& [id, stream] : streams_) {
+        if (stream.doc_handle == doc_handle) {
+            to_remove.push_back(id);
+        }
+    }
+    for (std::uint32_t id : to_remove) {
+        auto it = streams_.find(id);
+        if (it != streams_.end()) {
+            std::uint32_t next_gen = it->second.generation + 1;
+            if (next_gen == 0) next_gen = 1;
+            generations_[id] = next_gen;
+            streams_.erase(it);
+        }
+    }
+}
+
+void DocumentStreamManager::close_streams_for_grantee(DocumentHandle doc_handle, std::uint32_t grantee_pid) {
+    std::lock_guard<std::recursive_mutex> guard(lock_);
+    std::vector<std::uint32_t> to_remove;
+    for (const auto& [id, stream] : streams_) {
+        if (stream.doc_handle == doc_handle && stream.owner_pid == grantee_pid) {
             to_remove.push_back(id);
         }
     }
