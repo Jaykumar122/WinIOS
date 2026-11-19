@@ -63,6 +63,9 @@ public:
     // Uninstall installed package (safe removal with data persistence preservation unless purged)
     InstallStatus uninstall(const std::string& bundle_id, bool purge_data = false);
 
+    // Recover interrupted installations by cleaning up any orphaned staging directories
+    std::size_t recover_interrupted_installations();
+
     // Callbacks for running app lifecycle integration
     void set_running_check(RunningCheckCallback cb) { is_running_cb_ = std::move(cb); }
     void set_terminate_callback(TerminateCallback cb) { terminate_cb_ = std::move(cb); }

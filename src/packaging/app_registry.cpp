@@ -1,4 +1,5 @@
 #include "packaging/app_registry.h"
+#include "vfs/vfs.h"
 
 #include <sstream>
 
@@ -7,6 +8,9 @@ namespace winios::packaging {
 bool ApplicationRegistry::register_app(AppRegistration app) {
     if (app.bundle_id.empty() || app.name.empty() || app.exec_path.empty()) {
         return false;
+    }
+    if (app.display_name.empty()) {
+        app.display_name = app.name;
     }
     std::lock_guard<std::mutex> guard(lock_);
     if (apps_.find(app.bundle_id) != apps_.end()) {
@@ -18,12 +22,22 @@ bool ApplicationRegistry::register_app(AppRegistration app) {
 
 bool ApplicationRegistry::unregister_app(const std::string& bundle_id) {
     std::lock_guard<std::mutex> guard(lock_);
+    for (auto it = default_associations_.begin(); it != default_associations_.end(); ) {
+        if (it->second == bundle_id) {
+            it = default_associations_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     return apps_.erase(bundle_id) > 0;
 }
 
 bool ApplicationRegistry::update_app(AppRegistration app) {
     if (app.bundle_id.empty() || app.name.empty() || app.exec_path.empty()) {
         return false;
+    }
+    if (app.display_name.empty()) {
+        app.display_name = app.name;
     }
     std::lock_guard<std::mutex> guard(lock_);
     auto it = apps_.find(app.bundle_id);
@@ -42,6 +56,25 @@ bool ApplicationRegistry::set_active(const std::string& bundle_id, bool active) 
     }
     it->second.is_active = active;
     return true;
+}
+
+bool ApplicationRegistry::set_installation_state(const std::string& bundle_id, InstallationState state) {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = apps_.find(bundle_id);
+    if (it == apps_.end()) {
+        return false;
+    }
+    it->second.state = state;
+    return true;
+}
+
+InstallationState ApplicationRegistry::get_installation_state(const std::string& bundle_id) const {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = apps_.find(bundle_id);
+    if (it == apps_.end()) {
+        return InstallationState::Uninstalled;
+    }
+    return it->second.state;
 }
 
 bool ApplicationRegistry::is_installed(const std::string& bundle_id) const {
@@ -87,6 +120,34 @@ std::size_t ApplicationRegistry::app_count(bool active_only) const {
     return cnt;
 }
 
+bool ApplicationRegistry::verify_installed_app_integrity(const std::string& bundle_id, vfs::VirtualFileSystem& vfs) {
+    std::lock_guard<std::mutex> guard(lock_);
+    auto it = apps_.find(bundle_id);
+    if (it == apps_.end()) {
+        return false;
+    }
+
+    if (!vfs.exists(it->second.install_dir)) {
+        it->second.state = InstallationState::Corrupted;
+        return false;
+    }
+
+    const std::string exec_full = it->second.install_dir + "/" + it->second.exec_path;
+    if (!vfs.exists(exec_full)) {
+        it->second.state = InstallationState::Corrupted;
+        return false;
+    }
+
+    std::vector<std::uint8_t> data;
+    if (!vfs.read_file(exec_full, data) || data.empty()) {
+        it->second.state = InstallationState::Corrupted;
+        return false;
+    }
+
+    it->second.state = InstallationState::Installed;
+    return true;
+}
+
 bool ApplicationRegistry::set_default_app_for_type(const std::string& doc_type, const std::string& bundle_id) {
     if (doc_type.empty() || bundle_id.empty()) {
         return false;
@@ -100,8 +161,20 @@ bool ApplicationRegistry::set_default_app_for_type(const std::string& doc_type, 
     return true;
 }
 
+bool ApplicationRegistry::remove_default_app_for_type(const std::string& doc_type) {
+    std::lock_guard<std::mutex> guard(lock_);
+    return default_associations_.erase(doc_type) > 0;
+}
+
+std::string ApplicationRegistry::resolve_app_for_path(const std::string& file_path) const {
+    if (file_path.empty()) return "";
+    auto dot_pos = file_path.rfind('.');
+    if (dot_pos == std::string::npos) return "";
+    std::string ext = file_path.substr(dot_pos);
+    return get_default_app_for_type(ext);
+}
+
 std::string ApplicationRegistry::get_default_app_for_type(const std::string& doc_type) const {
-    if (doc_type.empty()) return {};
     std::lock_guard<std::mutex> guard(lock_);
     auto it = default_associations_.find(doc_type);
     if (it != default_associations_.end()) {
@@ -110,26 +183,23 @@ std::string ApplicationRegistry::get_default_app_for_type(const std::string& doc
             return it->second;
         }
     }
-    // Safe fallback to first active app that supports doc_type
+    // Fallback: search all apps that declare this type
     for (const auto& [bid, app] : apps_) {
         if (!app.is_active) continue;
-        for (const auto& stype : app.supported_doc_types) {
-            if (stype == doc_type) {
-                return bid;
-            }
+        for (const auto& dt : app.supported_doc_types) {
+            if (dt == doc_type) return bid;
         }
     }
-    return {};
+    return "";
 }
 
 std::vector<AppRegistration> ApplicationRegistry::get_apps_for_type(const std::string& doc_type, bool active_only) const {
-    if (doc_type.empty()) return {};
     std::lock_guard<std::mutex> guard(lock_);
     std::vector<AppRegistration> result;
     for (const auto& [_, app] : apps_) {
         if (active_only && !app.is_active) continue;
-        for (const auto& stype : app.supported_doc_types) {
-            if (stype == doc_type) {
+        for (const auto& dt : app.supported_doc_types) {
+            if (dt == doc_type) {
                 result.push_back(app);
                 break;
             }
@@ -152,7 +222,12 @@ std::string ApplicationRegistry::serialize() const {
         ss << "[app]\n";
         ss << "bundle_id=" << app.bundle_id << "\n";
         ss << "name=" << app.name << "\n";
+        if (!app.display_name.empty()) ss << "display_name=" << app.display_name << "\n";
         ss << "version=" << app.version << "\n";
+        ss << "package_version=" << app.package_version << "\n";
+        ss << "min_sdk_version=" << app.min_sdk_version << "\n";
+        ss << "target_abi=" << app.target_abi << "\n";
+        ss << "state=" << static_cast<std::uint32_t>(app.state) << "\n";
         ss << "exec_path=" << app.exec_path << "\n";
         ss << "install_dir=" << app.install_dir << "\n";
         ss << "icon_path=" << app.icon_path << "\n";
@@ -202,6 +277,7 @@ bool ApplicationRegistry::deserialize(const std::string& data) {
 
     auto finish_app = [&]() {
         if (in_app && !current.bundle_id.empty()) {
+            if (current.display_name.empty()) current.display_name = current.name;
             apps_[current.bundle_id] = current;
         }
         current = AppRegistration{};
@@ -244,7 +320,16 @@ bool ApplicationRegistry::deserialize(const std::string& data) {
 
         if (key == "bundle_id") current.bundle_id = val;
         else if (key == "name") current.name = val;
+        else if (key == "display_name") current.display_name = val;
         else if (key == "version") current.version = val;
+        else if (key == "package_version") current.package_version = val;
+        else if (key == "min_sdk_version") {
+            try { current.min_sdk_version = static_cast<std::uint32_t>(std::stoul(val)); } catch (...) {}
+        }
+        else if (key == "target_abi") current.target_abi = val;
+        else if (key == "state") {
+            try { current.state = static_cast<InstallationState>(std::stoul(val)); } catch (...) {}
+        }
         else if (key == "exec_path") current.exec_path = val;
         else if (key == "install_dir") current.install_dir = val;
         else if (key == "icon_path") current.icon_path = val;

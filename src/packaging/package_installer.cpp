@@ -171,7 +171,11 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
     AppRegistration reg{};
     reg.bundle_id = bundle_id;
     reg.name = pkg.manifest.name;
+    reg.display_name = pkg.manifest.display_name.empty() ? pkg.manifest.name : pkg.manifest.display_name;
     reg.version = pkg.manifest.version;
+    reg.package_version = pkg.manifest.format_version;
+    reg.min_sdk_version = pkg.manifest.min_sdk_version_u32;
+    reg.target_abi = pkg.manifest.target_abi_version;
     reg.exec_path = pkg.manifest.executable_name;
     reg.install_dir = target_dir;
     reg.icon_path = pkg.manifest.icon_path;
@@ -179,6 +183,7 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
     reg.storage_quota_bytes = pkg.manifest.storage_quota_bytes;
     reg.permissions = pkg.manifest.permissions;
     reg.optional_permissions = pkg.manifest.optional_permissions;
+    reg.supported_doc_types = pkg.manifest.supported_doc_types;
     reg.install_time_us = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -189,7 +194,25 @@ InstallStatus PackageInstaller::install(const AppPackage& pkg) {
         return InstallStatus::CommitFailed;
     }
 
+    for (const auto& dt : pkg.manifest.supported_doc_types) {
+        registry_->set_default_app_for_type(dt, bundle_id);
+    }
+
     return InstallStatus::Success;
+}
+
+std::size_t PackageInstaller::recover_interrupted_installations() {
+    if (!vfs_ || !vfs_->exists("/staging")) return 0;
+    std::vector<vfs::VfsDirEntry> entries;
+    if (!vfs_->readdir("/staging", entries)) return 0;
+    std::size_t recovered = 0;
+    for (const auto& e : entries) {
+        if (e.name == "." || e.name == "..") continue;
+        const std::string path = "/staging/" + e.name;
+        rollback_staging(path);
+        ++recovered;
+    }
+    return recovered;
 }
 
 InstallStatus PackageInstaller::update(const AppPackage& pkg, bool allow_downgrade) {

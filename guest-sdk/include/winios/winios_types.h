@@ -9,10 +9,11 @@ extern "C" {
 #endif
 
 #define WINIOS_SDK_VERSION_MAJOR 2
-#define WINIOS_SDK_VERSION_MINOR 3
+#define WINIOS_SDK_VERSION_MINOR 4
 #define WINIOS_SDK_VERSION_PATCH 0
-#define WINIOS_SDK_VERSION       0x00020300
+#define WINIOS_SDK_VERSION       0x00020400
 
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_4 0x00020400
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_3 0x00020300
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_2 0x00020200
 
@@ -222,6 +223,8 @@ typedef struct {
 #define WINIOS_SYS_ACCESSIBILITY_GET      589
 #define WINIOS_SYS_ACCESSIBILITY_SET      590
 #define WINIOS_SYS_DIAG_EVENT_QUERY       591
+#define WINIOS_SYS_APP_INFO               592
+#define WINIOS_SYS_APP_LIST               593
 
 // ABI v2.3 Diagnostic Event Record (48 bytes)
 typedef struct {
@@ -243,6 +246,25 @@ typedef struct {
     uint32_t returned_entries;
     uint64_t buffer_va;
 } winios_diag_query_req_t;
+
+// ABI v2.4 Application Info Record (128 bytes)
+typedef struct {
+    char     bundle_id[64];
+    char     display_name[32];
+    char     version[16];
+    uint32_t min_sdk_version;
+    uint32_t state;
+    uint64_t storage_quota_bytes;
+} winios_app_info_t;
+
+// ABI v2.4 Application List Request (24 bytes)
+typedef struct {
+    uint32_t max_entries;
+    uint32_t returned_entries;
+    uint32_t active_only;
+    uint32_t reserved;
+    uint64_t buffer_va;
+} winios_app_list_req_t;
 
 #pragma pack(pop)
 

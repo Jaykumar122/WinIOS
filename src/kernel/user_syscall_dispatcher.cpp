@@ -48,6 +48,15 @@
 
 namespace winios::kernel {
 
+namespace {
+inline void safe_copy_str(char* dst, size_t dst_sz, const std::string& src) {
+    if (dst_sz == 0) return;
+    size_t copy_len = (std::min)(src.size(), dst_sz - 1);
+    std::memcpy(dst, src.data(), copy_len);
+    dst[copy_len] = '\0';
+}
+}
+
 static bool read_user_string(memory::UserAddressSpace& uas, std::uint64_t va, std::string& out_str, std::size_t max_len = 1024) {
     out_str.clear();
     for (std::size_t i = 0; i < max_len; ++i) {
@@ -3010,6 +3019,75 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         return record_success(events.size());
+    }
+
+    case kSysWiniosAppInfo: {
+        if (!app_reg_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0 || arg1 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        char bundle_buf[64]{0};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), bundle_buf, sizeof(bundle_buf) - 1)) {
+            return record_error(kErrnoEFAULT);
+        }
+        bundle_buf[sizeof(bundle_buf) - 1] = '\0';
+        std::string bid(bundle_buf);
+
+        auto app_opt = app_reg_->get_app(bid);
+        if (!app_opt.has_value()) {
+            return record_error(kErrnoENOENT);
+        }
+
+        winios_app_info_t info{};
+        safe_copy_str(info.bundle_id, sizeof(info.bundle_id), app_opt->bundle_id);
+        safe_copy_str(info.display_name, sizeof(info.display_name), app_opt->display_name);
+        safe_copy_str(info.version, sizeof(info.version), app_opt->version);
+        info.min_sdk_version = app_opt->min_sdk_version;
+        info.state = static_cast<uint32_t>(app_opt->state);
+        info.storage_quota_bytes = app_opt->storage_quota_bytes;
+
+        if (!uas.copyin(arg1, &info, sizeof(info))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(0);
+    }
+
+    case kSysWiniosAppList: {
+        if (!app_reg_) {
+            return record_error(kErrnoENODEV);
+        }
+        if (arg0 == 0) {
+            return record_error(kErrnoEFAULT);
+        }
+        winios_app_list_req_t req{};
+        if (!uas.copyout(reinterpret_cast<const void*>(arg0), &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+        auto apps = app_reg_->list_apps(req.active_only != 0);
+        uint32_t to_return = std::min(req.max_entries, static_cast<uint32_t>(apps.size()));
+        req.returned_entries = to_return;
+
+        if (to_return > 0 && req.buffer_va != 0) {
+            std::vector<winios_app_info_t> out_list(to_return);
+            for (uint32_t i = 0; i < to_return; ++i) {
+                safe_copy_str(out_list[i].bundle_id, sizeof(out_list[i].bundle_id), apps[i].bundle_id);
+                safe_copy_str(out_list[i].display_name, sizeof(out_list[i].display_name), apps[i].display_name);
+                safe_copy_str(out_list[i].version, sizeof(out_list[i].version), apps[i].version);
+                out_list[i].min_sdk_version = apps[i].min_sdk_version;
+                out_list[i].state = static_cast<uint32_t>(apps[i].state);
+                out_list[i].storage_quota_bytes = apps[i].storage_quota_bytes;
+            }
+            if (!uas.copyin(req.buffer_va, out_list.data(), to_return * sizeof(winios_app_info_t))) {
+                return record_error(kErrnoEFAULT);
+            }
+        }
+
+        if (!uas.copyin(arg0, &req, sizeof(req))) {
+            return record_error(kErrnoEFAULT);
+        }
+        return record_success(to_return);
     }
 
     default: {

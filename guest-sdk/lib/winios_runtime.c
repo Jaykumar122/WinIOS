@@ -1905,6 +1905,23 @@ int winios_diag_query_events(winios_diag_query_req_t* req, winios_diag_event_rec
     return (int)winios_syscall1(WINIOS_SYS_DIAG_EVENT_QUERY, (uint64_t)(uintptr_t)req);
 }
 
+// -----------------------------------------------------------------------------
+// Category C ABI v2.4 Application Management Syscalls (Syscalls 592, 593)
+// -----------------------------------------------------------------------------
+
+int winios_app_get_info(const char* bundle_id, winios_app_info_t* out_info) {
+    if (!bundle_id || !out_info) return -1;
+    return (int)winios_syscall2(WINIOS_SYS_APP_INFO, (uint64_t)(uintptr_t)bundle_id, (uint64_t)(uintptr_t)out_info);
+}
+
+int winios_app_get_list(winios_app_list_req_t* req, winios_app_info_t* out_entries) {
+    if (!req) return -1;
+    if (out_entries && req->max_entries > 0) {
+        req->buffer_va = (uint64_t)(uintptr_t)out_entries;
+    }
+    return (int)winios_syscall1(WINIOS_SYS_APP_LIST, (uint64_t)(uintptr_t)req);
+}
+
 
 
 

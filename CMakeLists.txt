@@ -5759,6 +5759,110 @@ target_link_libraries(stage229_22_adversarial_tests PRIVATE winios_core)
 winios_set_warnings(stage229_22_adversarial_tests)
 add_test(NAME stage229_22_adversarial_tests COMMAND stage229_22_adversarial_tests)
 
+add_executable(stage230_1_process_identity_tests
+    tests/unit/stage230_1_process_identity_tests.cpp
+)
+target_include_directories(stage230_1_process_identity_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_1_process_identity_tests PRIVATE winios_core)
+winios_set_warnings(stage230_1_process_identity_tests)
+add_test(NAME stage230_1_process_identity_tests COMMAND stage230_1_process_identity_tests)
+
+add_executable(stage230_4_package_v3_tests
+    tests/unit/stage230_4_package_v3_tests.cpp
+)
+target_include_directories(stage230_4_package_v3_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_4_package_v3_tests PRIVATE winios_core)
+winios_set_warnings(stage230_4_package_v3_tests)
+add_test(NAME stage230_4_package_v3_tests COMMAND stage230_4_package_v3_tests)
+
+add_executable(stage230_9_launch_pipeline_tests
+    tests/unit/stage230_9_launch_pipeline_tests.cpp
+)
+target_include_directories(stage230_9_launch_pipeline_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_9_launch_pipeline_tests PRIVATE winios_core)
+winios_set_warnings(stage230_9_launch_pipeline_tests)
+add_test(NAME stage230_9_launch_pipeline_tests COMMAND stage230_9_launch_pipeline_tests)
+
+add_executable(stage230_10_app_cli_generator_tests
+    tests/unit/stage230_10_app_cli_generator_tests.cpp
+)
+target_include_directories(stage230_10_app_cli_generator_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_10_app_cli_generator_tests PRIVATE winios_core)
+winios_set_warnings(stage230_10_app_cli_generator_tests)
+add_test(NAME stage230_10_app_cli_generator_tests COMMAND stage230_10_app_cli_generator_tests)
+
+add_executable(stage230_14_debugger_workflow_tests
+    tests/unit/stage230_14_debugger_workflow_tests.cpp
+)
+target_include_directories(stage230_14_debugger_workflow_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_14_debugger_workflow_tests PRIVATE winios_core)
+winios_set_warnings(stage230_14_debugger_workflow_tests)
+add_test(NAME stage230_14_debugger_workflow_tests COMMAND stage230_14_debugger_workflow_tests)
+
+add_executable(stage230_15_profiler_tests
+    tests/unit/stage230_15_profiler_tests.cpp
+)
+target_include_directories(stage230_15_profiler_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_15_profiler_tests PRIVATE winios_core)
+winios_set_warnings(stage230_15_profiler_tests)
+add_test(NAME stage230_15_profiler_tests COMMAND stage230_15_profiler_tests)
+
+add_executable(stage230_16_compat_framework_tests
+    tests/unit/stage230_16_compat_framework_tests.cpp
+)
+target_include_directories(stage230_16_compat_framework_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_16_compat_framework_tests PRIVATE winios_core)
+winios_set_warnings(stage230_16_compat_framework_tests)
+add_test(NAME stage230_16_compat_framework_tests COMMAND stage230_16_compat_framework_tests)
+
+add_executable(stage230_17_abi_compat_tests
+    tests/unit/stage230_17_abi_compat_tests.cpp
+)
+target_include_directories(stage230_17_abi_compat_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_17_abi_compat_tests PRIVATE winios_core)
+winios_set_warnings(stage230_17_abi_compat_tests)
+add_test(NAME stage230_17_abi_compat_tests COMMAND stage230_17_abi_compat_tests)
+
+add_executable(stage230_18_session_controller_tests
+    tests/unit/stage230_18_session_controller_tests.cpp
+)
+target_include_directories(stage230_18_session_controller_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_18_session_controller_tests PRIVATE winios_core)
+winios_set_warnings(stage230_18_session_controller_tests)
+add_test(NAME stage230_18_session_controller_tests COMMAND stage230_18_session_controller_tests)
+
+add_executable(stage230_19_ipc_workflow_tests
+    tests/unit/stage230_19_ipc_workflow_tests.cpp
+)
+target_include_directories(stage230_19_ipc_workflow_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_19_ipc_workflow_tests PRIVATE winios_core)
+winios_set_warnings(stage230_19_ipc_workflow_tests)
+add_test(NAME stage230_19_ipc_workflow_tests COMMAND stage230_19_ipc_workflow_tests)
+
+add_executable(stage230_20_doc_association_tests
+    tests/unit/stage230_20_doc_association_tests.cpp
+)
+target_include_directories(stage230_20_doc_association_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_20_doc_association_tests PRIVATE winios_core)
+winios_set_warnings(stage230_20_doc_association_tests)
+add_test(NAME stage230_20_doc_association_tests COMMAND stage230_20_doc_association_tests)
+
+add_executable(stage230_21_e2e_developer_workflow_tests
+    tests/unit/stage230_21_e2e_developer_workflow_tests.cpp
+)
+target_include_directories(stage230_21_e2e_developer_workflow_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_21_e2e_developer_workflow_tests PRIVATE winios_core)
+winios_set_warnings(stage230_21_e2e_developer_workflow_tests)
+add_test(NAME stage230_21_e2e_developer_workflow_tests COMMAND stage230_21_e2e_developer_workflow_tests)
+
+add_executable(stage230_22_adversarial_boundary_tests
+    tests/unit/stage230_22_adversarial_boundary_tests.cpp
+)
+target_include_directories(stage230_22_adversarial_boundary_tests PRIVATE guest-sdk/include)
+target_link_libraries(stage230_22_adversarial_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage230_22_adversarial_boundary_tests)
+add_test(NAME stage230_22_adversarial_boundary_tests COMMAND stage230_22_adversarial_boundary_tests)
+
 
 
 

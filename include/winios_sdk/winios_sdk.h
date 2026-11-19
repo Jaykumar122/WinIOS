@@ -126,11 +126,15 @@ extern "C" {
 #define SYS_WINIOS_ACCESSIBILITY_GET      589
 #define SYS_WINIOS_ACCESSIBILITY_SET      590
 #define SYS_WINIOS_DIAG_EVENT_QUERY       591
+#define SYS_WINIOS_APP_INFO               592
+#define SYS_WINIOS_APP_LIST               593
 
+#define WINIOS_CATEGORY_C_ABI_VERSION_2_4 0x00020400
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_3 0x00020300
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_2 0x00020200
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_1 0x00020100
 #define WINIOS_CATEGORY_C_ABI_VERSION_2_0 0x00020000
+#define WINIOS_SDK_VERSION_2_4            0x00020400
 #define WINIOS_SDK_VERSION_2_3            0x00020300
 
 // -----------------------------------------------------------------------------
@@ -402,6 +406,25 @@ typedef struct {
     uint64_t buffer_va;
 } winios_diag_query_req_t;
 
+// ABI v2.4 Application Info Record (128 bytes)
+typedef struct {
+    char     bundle_id[64];
+    char     display_name[32];
+    char     version[16];
+    uint32_t min_sdk_version;
+    uint32_t state;
+    uint64_t storage_quota_bytes;
+} winios_app_info_t;
+
+// ABI v2.4 Application List Request (24 bytes)
+typedef struct {
+    uint32_t max_entries;
+    uint32_t returned_entries;
+    uint32_t active_only;
+    uint32_t reserved;
+    uint64_t buffer_va;
+} winios_app_list_req_t;
+
 #pragma pack(pop)
 
 #ifdef __cplusplus
@@ -426,6 +449,8 @@ static_assert(sizeof(winios_task_entry_t) == 120, "winios_task_entry_t must be 1
 static_assert(sizeof(winios_accessibility_info_t) == 32, "winios_accessibility_info_t must be 32 bytes");
 static_assert(sizeof(winios_diag_event_record_t) == 48, "winios_diag_event_record_t must be 48 bytes");
 static_assert(sizeof(winios_diag_query_req_t) == 32, "winios_diag_query_req_t must be 32 bytes");
+static_assert(sizeof(winios_app_info_t) == 128, "winios_app_info_t must be 128 bytes");
+static_assert(sizeof(winios_app_list_req_t) == 24, "winios_app_list_req_t must be 24 bytes");
 #endif
 
 // -----------------------------------------------------------------------------

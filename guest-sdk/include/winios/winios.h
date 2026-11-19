@@ -31,5 +31,6 @@
 #include "winios/control_center/control_center.h"
 #include "winios/system/tasks.h"
 #include "winios/accessibility/accessibility.h"
+#include "winios/system/app.h"
 
 #endif // WINIOS_GUEST_SDK_H
