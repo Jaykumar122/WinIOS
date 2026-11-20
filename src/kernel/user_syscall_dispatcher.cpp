@@ -1017,8 +1017,22 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
     case kSysWiniosGetAbiVersion: {
         std::uint32_t req_ver = static_cast<std::uint32_t>(arg0);
-        std::uint32_t negotiated = (req_ver > 0) ? std::min(req_ver, kWiniosCategoryCAbiVersion)
-                                                 : kWiniosCategoryCAbiVersion;
+        if (req_ver == 0 || req_ver == kSysWiniosGetAbiVersion) {
+            std::uint32_t negotiated = std::max(proc.category_c_abi_version(), kWiniosCategoryCAbiVersion);
+            category_c_abi_version_ = negotiated;
+            proc.set_category_c_abi_version(negotiated);
+            return record_success(static_cast<std::uint64_t>(negotiated));
+        }
+
+        if (req_ver < kWiniosCategoryCAbi_v1_0) {
+            return record_error(kErrnoEINVAL);
+        }
+
+        if (proc.category_c_abi_version() > kWiniosCategoryCAbi_v1_0 && req_ver < proc.category_c_abi_version()) {
+            return record_error(kErrnoEPERM);
+        }
+
+        std::uint32_t negotiated = std::min(req_ver, kWiniosCategoryCAbiVersion);
         category_c_abi_version_ = negotiated;
         proc.set_category_c_abi_version(negotiated);
         return record_success(static_cast<std::uint64_t>(negotiated));

@@ -6630,6 +6630,50 @@ target_link_libraries(stage238_16_wal_durability_crash_recovery_tests PRIVATE wi
 winios_set_warnings(stage238_16_wal_durability_crash_recovery_tests)
 add_test(NAME stage238_16_wal_durability_crash_recovery_tests COMMAND stage238_16_wal_durability_crash_recovery_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 239 Tests: Guest Application Runtime V3, Lifecycle & Reliability
+# -----------------------------------------------------------------------------
+add_executable(stage239_3_runtime_lifecycle_state_machine_tests
+    tests/unit/stage239_3_runtime_lifecycle_state_machine_tests.cpp
+)
+target_include_directories(stage239_3_runtime_lifecycle_state_machine_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage239_3_runtime_lifecycle_state_machine_tests PRIVATE winios_core)
+winios_set_warnings(stage239_3_runtime_lifecycle_state_machine_tests)
+add_test(NAME stage239_3_runtime_lifecycle_state_machine_tests COMMAND stage239_3_runtime_lifecycle_state_machine_tests)
+
+add_executable(stage239_7_abi_negotiation_conformance_tests
+    tests/unit/stage239_7_abi_negotiation_conformance_tests.cpp
+)
+target_include_directories(stage239_7_abi_negotiation_conformance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage239_7_abi_negotiation_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage239_7_abi_negotiation_conformance_tests)
+add_test(NAME stage239_7_abi_negotiation_conformance_tests COMMAND stage239_7_abi_negotiation_conformance_tests)
+
+add_executable(stage239_8_syscall_registry_contract_tests
+    tests/unit/stage239_8_syscall_registry_contract_tests.cpp
+)
+target_include_directories(stage239_8_syscall_registry_contract_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage239_8_syscall_registry_contract_tests PRIVATE winios_core)
+winios_set_warnings(stage239_8_syscall_registry_contract_tests)
+add_test(NAME stage239_8_syscall_registry_contract_tests COMMAND stage239_8_syscall_registry_contract_tests)
+
+add_executable(stage239_13_resource_budget_tests
+    tests/unit/stage239_13_resource_budget_tests.cpp
+)
+target_include_directories(stage239_13_resource_budget_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage239_13_resource_budget_tests PRIVATE winios_core)
+winios_set_warnings(stage239_13_resource_budget_tests)
+add_test(NAME stage239_13_resource_budget_tests COMMAND stage239_13_resource_budget_tests)
+
+add_executable(stage239_21_multi_app_workload_tests
+    tests/unit/stage239_21_multi_app_workload_tests.cpp
+)
+target_include_directories(stage239_21_multi_app_workload_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage239_21_multi_app_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage239_21_multi_app_workload_tests)
+add_test(NAME stage239_21_multi_app_workload_tests COMMAND stage239_21_multi_app_workload_tests)
+
+
 
 
 
