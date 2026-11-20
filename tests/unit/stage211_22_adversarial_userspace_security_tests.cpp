@@ -90,9 +90,9 @@ void test_adversarial_security_suite() {
     TEST_CHECK(!uas.map_user_page(0x10000ULL, dummy_pa, PagePermissions::KernelExecute),
                "Vector 5: Mapping kernel permission in user address space rejected");
 
-    // Vector 6: Mapping beyond user address space limit (>= 2 GiB)
-    TEST_CHECK(!uas.map_user_page(0x90000000ULL, dummy_pa, PagePermissions::UserReadWrite),
-               "Vector 6: Mapping beyond 2 GiB user address limit rejected");
+    // Vector 6: Mapping beyond user address space limit (>= kUserSpaceLimitVa)
+    TEST_CHECK(!uas.map_user_page(0x0000000800000000ULL, dummy_pa, PagePermissions::UserReadWrite),
+               "Vector 6: Mapping beyond user address space limit rejected");
 
     // Vector 7: User buffer pointer overflow validation (e.g. 0xFFFFFFFFFFFFF000)
     TEST_CHECK(!uas.validate_user_buffer(0xFFFFFFFFFFFFFF00ULL, 0x1000, false),
@@ -108,6 +108,9 @@ void test_adversarial_security_suite() {
     BsdProcessManager proc_mgr;
     proc_mgr.initialize();
     auto* proc = proc_mgr.create_process("sec_proc", 0);
+    proc->fd_table().allocate_fd(FileType::Console, true, false, "stdin");
+    proc->fd_table().allocate_fd(FileType::Console, false, true, "stdout");
+    proc->fd_table().allocate_fd(FileType::Console, false, true, "stderr");
 
     cpu.write_register(16, 999999);
     TEST_CHECK(!dispatcher.handle_syscall(cpu, *proc, uas, sched),

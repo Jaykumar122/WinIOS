@@ -95,7 +95,7 @@ void test_display_syscalls_lifecycle() {
     // X16=500, X0=title_va, X1=len, X2=50(x), X3=100(y), X4=300(w), X5=400(h)
     cpu.write_register(16, kSysWiniosWindowCreate);
     cpu.write_register(0, kUserPageVa);
-    cpu.write_register(1, title.size());
+    cpu.write_register(1, title.size() + 1);
     cpu.write_register(2, 50);
     cpu.write_register(3, 100);
     cpu.write_register(4, 300);
@@ -123,9 +123,11 @@ void test_display_syscalls_lifecycle() {
 
     auto win = window_mgr->get_window(wid);
     TEST_CHECK(win && win->surface, "Window has valid surface");
-    std::uint32_t px_val = 0;
-    win->surface->read_pixel(proc->pid(), 20, 20, px_val);
-    TEST_CHECK(px_val == 0xFF00AAFFu, "Filled pixel has color 0xFF00AAFF");
+    if (win && win->surface) {
+        std::uint32_t px_val = 0;
+        win->surface->read_pixel(proc->pid(), 20, 20, px_val);
+        TEST_CHECK(px_val == 0xFF00AAFFu, "Filled pixel has color 0xFF00AAFF");
+    }
 
     // 4. Test Event Polling via SYS_winios_poll_event (504)
     // Queue empty first

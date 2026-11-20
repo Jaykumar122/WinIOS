@@ -181,8 +181,11 @@ void test_inter_app_clipboard_and_storage_isolation() {
     int64_t bytes_copied = static_cast<int64_t>(cpu.read_register(0));
     TEST_ASSERT(bytes_copied > 0);
 
-    char out_buf[256];
+    char out_buf[256]{};
     uas2.copyout(reinterpret_cast<const void*>(read_va), out_buf, bytes_copied);
+    if (static_cast<size_t>(bytes_copied) < sizeof(out_buf)) {
+        out_buf[bytes_copied] = '\0';
+    }
     TEST_ASSERT(std::strcmp(out_buf, clip_text) == 0);
 
     std::cout << "[PASS] Inter-app clipboard sharing verified.\n";

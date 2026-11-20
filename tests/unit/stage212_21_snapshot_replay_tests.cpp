@@ -133,6 +133,7 @@ void test_full_system_state_serialization() {
     KernelThreadManager thread_mgr;
     BsdProcessManager proc_mgr;
     proc_mgr.initialize();
+    proc_mgr.create_process("launchd_proc", 0);
     BootstrapServiceRegistry bootstrap;
     MultiProcessScheduler scheduler(thread_mgr, proc_mgr, mem);
 

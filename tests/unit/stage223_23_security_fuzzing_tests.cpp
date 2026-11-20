@@ -62,7 +62,7 @@ void test_fuzz_layout_engine_limits() {
 void test_fuzz_textarea_buffer_overflow() {
     std::cout << "[Fuzz 2] TextArea buffer capacity boundary protection & UTF-8 typing...\n";
 
-    char small_buf[16];
+    char small_buf[16]{};
     winios_textarea_t ta;
     winios_textarea_init(&ta, 0, 0, 100, 100, small_buf, sizeof(small_buf));
     ta.is_focused = 1;
