@@ -11,10 +11,10 @@
 
 namespace winios::memory {
 
-// Emulated Address Space ID (ASID) Manager V2.
+// Emulated Address Space ID (ASID) Manager V3.
 // Models architectural ASID lifecycle: allocation, generation tracking, rollover,
-// retirement, overflow prevention, and TLB invalidation callbacks to guarantee
-// translation coherence across address-space recycling.
+// retirement, overflow prevention, fail-closed exhaustion, and TLB invalidation callbacks
+// to guarantee translation coherence across address-space recycling.
 class AsidManager {
 public:
     static constexpr std::uint16_t kReservedAsid = 0; // 0 is reserved for global/kernel mappings
@@ -28,8 +28,10 @@ public:
         bool valid{false};
     };
 
-    explicit AsidManager(std::uint16_t max_asid = kDefaultMaxAsid)
+    explicit AsidManager(std::uint16_t max_asid = kDefaultMaxAsid,
+                         std::uint64_t max_generation = std::numeric_limits<std::uint64_t>::max())
         : max_asid_(max_asid > 1 ? max_asid : kDefaultMaxAsid),
+          max_generation_(max_generation > 0 ? max_generation : std::numeric_limits<std::uint64_t>::max()),
           next_candidate_(1),
           generation_(1),
           in_use_(max_asid_ + 1, false),
@@ -48,9 +50,14 @@ public:
 
     // Allocate an ASID for a process. Returns the ASID and its epoch generation.
     // When the ASID pool is exhausted, generation is incremented, and needs_tlb_flush is set to true.
+    // If maximum generation is exceeded, fails closed to prevent stale token resurrection.
     AsidAllocation allocate_asid(bool& out_needs_tlb_flush) {
         std::lock_guard<std::mutex> lock(mutex_);
         out_needs_tlb_flush = false;
+
+        if (is_exhausted_) {
+            return AsidAllocation{0, 0, false};
+        }
 
         // Search for an unused slot starting from next_candidate_
         for (std::size_t i = 0; i < max_asid_; ++i) {
@@ -63,12 +70,16 @@ public:
             }
         }
 
-        // Exhaustion: advance generation epoch, roll over, and require TLB flush
-        if (generation_ == std::numeric_limits<std::uint64_t>::max()) {
-            generation_ = 1; // Controlled generation rollover without silent overflow
-        } else {
-            ++generation_;
+        // Pool exhaustion: verify generation limit before rollover
+        if (generation_ >= max_generation_) {
+            is_exhausted_ = true;
+            if (inval_cb_) {
+                inval_cb_(0, true); // Flush all on permanent retirement
+            }
+            return AsidAllocation{0, 0, false};
         }
+
+        ++generation_;
         out_needs_tlb_flush = true;
 
         if (inval_cb_) {
@@ -107,7 +118,15 @@ public:
             return false;
         }
         std::lock_guard<std::mutex> lock(mutex_);
+        if (is_exhausted_) {
+            return false;
+        }
         return in_use_[asid] && (allocated_generations_[asid] == gen);
+    }
+
+    [[nodiscard]] bool is_exhausted() const noexcept {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return is_exhausted_;
     }
 
     [[nodiscard]] std::uint64_t current_generation() const noexcept {
@@ -125,11 +144,14 @@ public:
     }
 
     [[nodiscard]] std::uint16_t max_asid() const noexcept { return max_asid_; }
+    [[nodiscard]] std::uint64_t max_generation() const noexcept { return max_generation_; }
 
 private:
     const std::uint16_t max_asid_;
+    const std::uint64_t max_generation_;
     std::uint16_t next_candidate_{1};
     std::uint64_t generation_{1};
+    bool is_exhausted_{false};
     std::vector<bool> in_use_;
     std::vector<std::uint64_t> allocated_generations_;
     InvalidationCallback inval_cb_{nullptr};

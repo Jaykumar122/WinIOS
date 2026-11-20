@@ -10,6 +10,8 @@
 #include <sstream>
 #include <iomanip>
 
+#include "crypto/sha256.h"
+
 namespace winios::runtime {
 
 inline constexpr std::uint64_t kReplayMagic = 0x57494F535245504CULL; // "WIOSREPL"
@@ -101,7 +103,7 @@ public:
     ReplayMemoryState memory{};
     std::vector<ReplaySyscallEntry> syscalls{};
 
-    // Helper: compute FNV-1a 64-bit hash
+    // Helper: compute FNV-1a 64-bit non-cryptographic hash
     static std::uint64_t fnv1a_hash(const std::uint8_t* data, std::size_t len) noexcept {
         std::uint64_t hash = 0xcbf29ce484222325ULL;
         for (std::size_t i = 0; i < len; ++i) {
@@ -111,24 +113,18 @@ public:
         return hash;
     }
 
-    // Helper: simple software digest (32 bytes) for memory integrity
-    static std::array<std::uint8_t, 32> compute_digest256(const std::uint8_t* data, std::size_t len) noexcept {
+    // Helper: compute standard FIPS 180-4 SHA-256 cryptographic digest (32 bytes)
+    static std::array<std::uint8_t, 32> compute_sha256(const std::uint8_t* data, std::size_t len) noexcept {
         std::array<std::uint8_t, 32> digest{};
-        std::uint64_t h1 = 0xcbf29ce484222325ULL;
-        std::uint64_t h2 = 0x100000001b3ULL;
-        std::uint64_t h3 = 0x811c9dc5ULL;
-        std::uint64_t h4 = 0x9e3779b97f4a7c15ULL;
-        for (std::size_t i = 0; i < len; ++i) {
-            h1 = (h1 ^ data[i]) * 0x100000001b3ULL;
-            h2 = (h2 + data[i]) * 0xff51afd7ed558ccdULL;
-            h3 = (h3 ^ (data[i] + i)) * 0xc4ceb9fe1a85ec53ULL;
-            h4 = (h4 + (data[i] ^ 0xAA)) * 0x9e3779b97f4a7c15ULL;
-        }
-        std::memcpy(digest.data(), &h1, 8);
-        std::memcpy(digest.data() + 8, &h2, 8);
-        std::memcpy(digest.data() + 16, &h3, 8);
-        std::memcpy(digest.data() + 24, &h4, 8);
+        winios::crypto::Sha256 hasher;
+        hasher.update(data, len);
+        hasher.finalize(digest.data());
         return digest;
+    }
+
+    // Alias for compute_sha256
+    static std::array<std::uint8_t, 32> compute_digest256(const std::uint8_t* data, std::size_t len) noexcept {
+        return compute_sha256(data, len);
     }
 
     // Compare two execution states and report the exact first divergence detected
@@ -165,6 +161,9 @@ public:
         if (a.memory.overall_memory_hash != b.memory.overall_memory_hash) {
             return {true, "memory.overall_memory_hash",
                     "Expected 0x" + to_hex(a.memory.overall_memory_hash) + ", got 0x" + to_hex(b.memory.overall_memory_hash)};
+        }
+        if (a.memory.memory_sha256 != b.memory.memory_sha256) {
+            return {true, "memory.memory_sha256", "SHA-256 digest divergence detected"};
         }
         if (a.memory.page_hashes.size() != b.memory.page_hashes.size()) {
             return {true, "memory.page_count",
