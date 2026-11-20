@@ -47,7 +47,7 @@ void test_user_address_space_mappings() {
                "Kernel permissions in user address space rejected");
 
     // 4. Reject mapping beyond user space limit (e.g. >= 2 GiB)
-    TEST_CHECK(!uas.map_user_page(0x80000000ULL, dummy_pa, PagePermissions::UserReadWrite),
+    TEST_CHECK(!uas.map_user_page(kUserSpaceLimitVa, dummy_pa, PagePermissions::UserReadWrite),
                "Mapping beyond user space limit rejected");
 
     // 5. Translation walk verifications

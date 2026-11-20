@@ -603,8 +603,8 @@ bool CanonicalPathValidator::is_strictly_inside_root(
         return false;
     }
 
-    std::string root_to_check = root_dir;
-    std::string target_to_check = target_path;
+    std::string root_to_check = std::filesystem::path(root_dir).lexically_normal().generic_string();
+    std::string target_to_check = std::filesystem::path(target_path).lexically_normal().generic_string();
 
     std::string physical_root;
     if (resolve_canonical_physical_path(root_dir, physical_root)) {
@@ -617,8 +617,15 @@ bool CanonicalPathValidator::is_strictly_inside_root(
     } else {
         // Target does not exist yet on disk; walk parent chain to verify no parent is a reparse point or junction escaping root
         std::filesystem::path cur = std::filesystem::path(target_path).lexically_normal();
+        std::filesystem::path norm_root_fs = std::filesystem::path(root_dir).lexically_normal();
         auto parent = cur.parent_path();
         while (!parent.empty() && parent != cur) {
+            std::string p_str = parent.generic_string();
+            std::string r_str = norm_root_fs.generic_string();
+            if (p_str.size() <= r_str.size()) {
+                break; // Reached root directory or ancestor; stop checking children
+            }
+
             std::string canon_parent;
             if (resolve_canonical_physical_path(parent.string(), canon_parent)) {
                 std::string norm_r = root_to_check;

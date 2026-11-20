@@ -261,7 +261,7 @@ void test_24_step_multi_process_e2e_scenario() {
     std::cout << "[Step 14] Dispatching Supervisor on CPU (TTBR0 = root_sup)...\n";
     TEST_ASSERT(scheduler.schedule_next(cpu));
     TEST_ASSERT(scheduler.current_thread() == t_sup);
-    TEST_ASSERT(cpu.get_mmu().get_ttbr0_el1() == root_sup);
+    TEST_ASSERT((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_sup);
     TEST_ASSERT(cpu.get_tpidr_el0() == 0x000000010000ULL);
 
     // Step 15: Supervisor Guest Instruction Execution
@@ -311,7 +311,7 @@ void test_24_step_multi_process_e2e_scenario() {
     std::cout << "[Step 17] Supervisor yields; scheduler switches MMU TTBR0 to Worker...\n";
     TEST_ASSERT(scheduler.yield(cpu));
     TEST_ASSERT(scheduler.current_thread() == t_wrk);
-    TEST_ASSERT(cpu.get_mmu().get_ttbr0_el1() == root_wrk);
+    TEST_ASSERT((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_wrk);
     TEST_ASSERT(cpu.get_tpidr_el0() == 0x000000020000ULL);
 
     // Step 18: Worker reads from pipe into its private memory

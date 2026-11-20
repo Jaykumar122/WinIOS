@@ -130,10 +130,10 @@ void run_adversarial_suite() {
     disp.handle_syscall(cpu, *procShell, uas, sched);
     ADV_TEST(cpu.read_register(0) == static_cast<std::uint64_t>(kErrnoENOSYS), 6, "Syscall 999 rejected with ENOSYS");
 
-    // Vector 7: Out-of-bounds Category C syscall 507 rejected with ENOSYS
-    cpu.write_register(16, 507);
+    // Vector 7: Out-of-bounds Category C syscall rejected with ENOSYS
+    cpu.write_register(16, kSysWiniosMaxCategoryC + 1);
     disp.handle_syscall(cpu, *procShell, uas, sched);
-    ADV_TEST(cpu.read_register(0) == static_cast<std::uint64_t>(kErrnoENOSYS), 7, "Syscall 507 rejected with ENOSYS");
+    ADV_TEST(cpu.read_register(0) == static_cast<std::uint64_t>(kErrnoENOSYS), 7, "Syscall out of bounds rejected with ENOSYS");
 
     // Vector 8: Window create with w=0 rejected with EINVAL
     cpu.write_register(16, kSysWiniosWindowCreate);

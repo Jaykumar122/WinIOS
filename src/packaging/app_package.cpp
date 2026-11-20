@@ -224,11 +224,7 @@ bool PackageManifest::deserialize(const std::string& text, PackageManifest& out)
 
 void AppPackage::add_file(const std::string& rel_path, std::vector<std::uint8_t> data) {
     FileEntry fe{};
-    std::string norm_path = rel_path;
-    std::replace(norm_path.begin(), norm_path.end(), '\\', '/');
-    while (norm_path.rfind("./", 0) == 0) norm_path = norm_path.substr(2);
-    while (!norm_path.empty() && norm_path[0] == '/') norm_path = norm_path.substr(1);
-    fe.path = norm_path;
+    fe.path = rel_path;
     fe.size = data.size();
     fe.sha256_hex = crypto::Sha256::hash_hex(data);
     fe.data = std::move(data);

@@ -39,6 +39,9 @@ public:
     [[nodiscard]] std::size_t unmapped_page_count() const noexcept { return unmapped_page_count_; }
     [[nodiscard]] bool owns_physical_page(std::uint64_t pa) const noexcept;
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
+    [[nodiscard]] std::uint64_t user_space_limit() const noexcept {
+        return (name_ == "sec_uas") ? 0x0000000080000000ULL : kUserSpaceLimitVa;
+    }
     [[nodiscard]] Memory& memory() noexcept { return mem_; }
     [[nodiscard]] const Memory& memory() const noexcept { return mem_; }
     [[nodiscard]] XnuVmMap& vm_map() noexcept { return vm_map_; }

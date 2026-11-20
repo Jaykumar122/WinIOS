@@ -28,6 +28,25 @@ uint64_t GuestIpcRouter::CreatePortV2(uint32_t owner_pid, const std::string& nam
     return handle;
 }
 
+uint64_t GuestIpcRouter::CreatePortExplicit(uint32_t owner_pid, uint32_t port_id, const std::string& name) {
+    if (owner_pid == 0 || port_id == 0) return 0;
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    PortEntry p{};
+    p.id = port_id;
+    p.generation = 1;
+    p.owner_pid = owner_pid;
+    p.name = name;
+
+    const uint64_t handle = MakeHandle(port_id, p.generation);
+    ports_[port_id] = std::move(p);
+
+    if (!name.empty()) {
+        name_directory_[name] = handle;
+    }
+    return handle;
+}
+
 bool GuestIpcRouter::DestroyPortV2(uint64_t port_handle, uint32_t caller_pid) {
     std::lock_guard<std::mutex> lock(mutex_);
     const uint32_t id = GetId(port_handle);

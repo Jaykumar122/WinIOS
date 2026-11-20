@@ -266,9 +266,7 @@ bool MultiProcessScheduler::terminate_thread(KernelThread* thread, std::int32_t 
             ++it;
         }
     }
-    if (current_thread_ == thread) {
-        current_thread_ = nullptr;
-    }
+    // Retain current_thread_ so the exited thread's status remains observable until next dispatch
     return true;
 }
 

@@ -71,13 +71,13 @@ void test_cross_process_ttbr0_switching() {
     // 1. Dispatch thread_a -> CPU TTBR0 should become root_a_pa
     TEST_CHECK(sched.schedule_next(cpu), "Dispatched thread_a");
     TEST_CHECK(sched.current_pid() == pid_a, "Current PID is pid_a");
-    TEST_CHECK(cpu.get_mmu().get_ttbr0_el1() == root_a_pa, "CPU TTBR0_EL1 matches root_a_pa");
+    TEST_CHECK((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_a_pa, "CPU TTBR0_EL1 matches root_a_pa");
     TEST_CHECK(sched.stats().total_address_space_switches == 1, "Address space switch count is 1");
 
     // 2. Dispatch thread_b -> CPU TTBR0 should become root_b_pa
     TEST_CHECK(sched.schedule_next(cpu), "Dispatched thread_b");
     TEST_CHECK(sched.current_pid() == pid_b, "Current PID is pid_b");
-    TEST_CHECK(cpu.get_mmu().get_ttbr0_el1() == root_b_pa, "CPU TTBR0_EL1 matches root_b_pa");
+    TEST_CHECK((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_b_pa, "CPU TTBR0_EL1 matches root_b_pa");
     TEST_CHECK(sched.stats().total_address_space_switches == 2, "Address space switch count is 2");
 }
 

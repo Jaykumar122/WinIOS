@@ -1,4 +1,5 @@
 #include "services/service_manager.h"
+#include "runtime/guest_ipc.h"
 #include <algorithm>
 
 namespace winios::services {
@@ -50,6 +51,9 @@ bool ServiceManager::start_service(const std::string& name, std::uint32_t assign
 
     inst.pid = proc->pid();
     inst.ipc_port = assigned_port;
+    if (assigned_port != 0) {
+        runtime::GuestIpcRouter::Get().CreatePortExplicit(proc->pid(), assigned_port, inst.def.name);
+    }
     inst.state = ServiceState::Running;
     return true;
 }
@@ -62,6 +66,10 @@ bool ServiceManager::stop_service(const std::string& name) {
     auto& inst = it->second;
     if (inst.state != ServiceState::Running) {
         return false;
+    }
+
+    if (inst.ipc_port != 0) {
+        runtime::GuestIpcRouter::Get().DestroyPort(inst.ipc_port, inst.pid);
     }
 
     if (inst.pid != 0) {

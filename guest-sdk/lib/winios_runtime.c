@@ -817,7 +817,7 @@ void winios_checkbox_render(uint32_t* fb, uint32_t stride, const winios_checkbox
     draw_fb_rect(fb, stride, cb->bounds.x, by, box_sz, box_sz, cb->box_color, 0);
 
     if (cb->checked) {
-        draw_fb_rect(fb, stride, cb->bounds.x + 3, by + 3, box_sz - 6, box_sz - 6, cb->check_color, 1);
+        draw_fb_rect(fb, stride, cb->bounds.x + 2, by + 2, box_sz - 4, box_sz - 4, cb->check_color, 1);
     }
     if (cb->label) {
         draw_fb_text(fb, stride, cb->bounds.x + box_sz + 6, by + (box_sz - 8) / 2, cb->label, cb->text_color);

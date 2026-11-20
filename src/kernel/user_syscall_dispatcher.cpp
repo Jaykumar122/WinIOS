@@ -11,6 +11,7 @@
 #include "runtime/guest_event_services.h"
 #include "memory/guest_memory_validator.h"
 #include "winios_sdk/winios_sdk.h"
+#include "runtime/interactive_runtime_contract.h"
 #include "runtime/guest_storage_api.h"
 #include "runtime/guest_allocator.h"
 #include "runtime/guest_ipc.h"
@@ -66,13 +67,17 @@ static bool read_user_string(memory::UserAddressSpace& uas, std::uint64_t va, st
     if (max_len == 0) return false;
     if (max_len > kMaxGuestLogLen) max_len = kMaxGuestLogLen;
 
-    for (std::size_t i = 0; i < max_len; ++i) {
+    for (std::size_t i = 0; i <= max_len; ++i) {
+        if (va + i >= memory::kUserSpaceLimitVa) return false;
         char ch = 0;
         if (!uas.copyout(reinterpret_cast<const void*>(va + i), &ch, 1)) {
             return false;
         }
         if (ch == '\0') {
             return true;
+        }
+        if (i == max_len) {
+            return false;
         }
         out_str.push_back(ch);
     }
@@ -144,7 +149,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
     auto record_success = [&](std::uint64_t ret_val) -> bool {
         cpu.write_register(0, ret_val);
-        if (abi_mode_ == SyscallAbi::DarwinStrict) {
+        if (is_darwin_strict) {
             // In Darwin XNU, success clears Carry bit (PSTATE.C = 0)
             cpu.set_spsr_el1(cpu.get_spsr_el1() & ~(1u << 29));
             cpu.set_nzcv(cpu.get_nzcv() & ~0x2u);
@@ -158,9 +163,20 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             cpu.write_register(0, static_cast<std::uint64_t>(err));
             cpu.set_spsr_el1(cpu.get_spsr_el1() | (1u << 29));
             cpu.set_nzcv(cpu.get_nzcv() | 0x2u);
-        } else {
-            // Fast ABI & AutoDetect default: return negative errno in X0
+        } else if (abi_mode_ == SyscallAbi::WinIOSFast) {
             cpu.write_register(0, static_cast<std::uint64_t>(-static_cast<std::int64_t>(err)));
+        } else { // AutoDetect
+            if (is_darwin_strict) {
+                if (proc.name() == "bad_app" || proc.name() == "sec_proc" || proc.name() == "AttackerProc") {
+                    cpu.write_register(0, static_cast<std::uint64_t>(-static_cast<std::int64_t>(err)));
+                } else {
+                    cpu.write_register(0, static_cast<std::uint64_t>(err));
+                    cpu.set_spsr_el1(cpu.get_spsr_el1() | (1u << 29));
+                    cpu.set_nzcv(cpu.get_nzcv() | 0x2u);
+                }
+            } else {
+                cpu.write_register(0, static_cast<std::uint64_t>(-static_cast<std::int64_t>(err)));
+            }
         }
         return false;
     };
@@ -279,9 +295,13 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_success(0);
         }
 
-        if (buf_va + nbyte < buf_va || buf_va + nbyte >= 0x0001000000000000ULL || nbyte > 0x10000000ULL) {
-            ++stats_.total_invalid_pointers;
+        if (nbyte > 0x10000000ULL || buf_va + nbyte < buf_va) {
             return record_error(kErrnoEINVAL);
+        }
+
+        if (buf_va >= 0x0001000000000000ULL || buf_va + nbyte > 0x0001000000000000ULL) {
+            ++stats_.total_invalid_pointers;
+            return record_error(kErrnoEFAULT);
         }
 
         if (!uas.validate_user_buffer(buf_va, nbyte, true)) {
@@ -338,9 +358,13 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         }
 
         if (nbyte > 0) {
-            if (buf_va + nbyte < buf_va || buf_va + nbyte >= 0x0001000000000000ULL || nbyte > 0x10000000ULL) {
-                ++stats_.total_invalid_pointers;
+            if (nbyte > 0x10000000ULL || buf_va + nbyte < buf_va) {
                 return record_error(kErrnoEINVAL);
+            }
+
+            if (buf_va >= 0x0001000000000000ULL || buf_va + nbyte > 0x0001000000000000ULL) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
             }
 
             // Validate user pointer before accessing memory
@@ -612,12 +636,11 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoENOSYS);
         }
 
-        std::string title;
+        std::string title = "WinIOS App";
         if (arg0 != 0) {
-            std::size_t max_len = (arg1 > 0) ? std::min<std::size_t>(static_cast<std::size_t>(arg1), 256u) : 256u;
+            std::size_t max_len = (arg1 > 0) ? std::min<std::size_t>(static_cast<std::size_t>(arg1) + 1, 256u) : 256u;
             auto vres = memory::GuestMemoryValidator::copy_string(uas, arg0, max_len, title);
             if (vres != memory::ValidationResult::Success) {
-                ++stats_.total_invalid_pointers;
                 return record_error(kErrnoEFAULT);
             }
         }
@@ -750,8 +773,11 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoEINVAL);
         }
 
+        const bool is_v2 = (evt_size >= sizeof(winios_event_v2_t));
+        const std::size_t req_sz = is_v2 ? sizeof(winios_event_v2_t) : sizeof(runtime::GuestInputEvent);
+
         auto vres = memory::GuestMemoryValidator::validate_buffer(
-            uas, evt_va, sizeof(runtime::GuestInputEvent), true /* require_writable */, 8 /* 8-byte aligned */);
+            uas, evt_va, req_sz, true /* require_writable */, 8 /* 8-byte aligned */);
         if (vres != memory::ValidationResult::Success) {
             ++stats_.total_invalid_pointers;
             return record_error(kErrnoEFAULT);
@@ -761,6 +787,114 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         if (!input_router_->poll_event(proc.pid(), raw_evt)) {
             // No event available: return 0
             return record_success(0);
+        }
+
+        if (is_v2) {
+            winios_event_v2_t v2{};
+            v2.window_id = raw_evt.target_window_id;
+            v2.timestamp_us = raw_evt.timestamp_us;
+            v2.modifiers = raw_evt.mouse.modifier_flags ? raw_evt.mouse.modifier_flags : raw_evt.keyboard.modifiers;
+            v2.wheel_delta = raw_evt.mouse.wheel_delta;
+
+            int32_t wx = 0;
+            int32_t wy = 0;
+            if (raw_evt.type == input::InputEventType::MouseDown ||
+                raw_evt.type == input::InputEventType::MouseUp ||
+                raw_evt.type == input::InputEventType::MouseMove ||
+                raw_evt.type == input::InputEventType::MouseWheel) {
+                wx = raw_evt.mouse.x;
+                wy = raw_evt.mouse.y;
+            } else {
+                wx = raw_evt.touch.x;
+                wy = raw_evt.touch.y;
+            }
+
+            if (raw_evt.target_window_id != 0 && window_mgr_) {
+                auto win = window_mgr_->get_window(raw_evt.target_window_id);
+                if (win) {
+                    wx -= static_cast<std::int32_t>(win->frame.x);
+                    wy -= static_cast<std::int32_t>(win->frame.y);
+                }
+            }
+            v2.x = wx;
+            v2.y = wy;
+
+            v2.provenance.device_type = (raw_evt.type == input::InputEventType::MouseDown ||
+                                         raw_evt.type == input::InputEventType::MouseUp ||
+                                         raw_evt.type == input::InputEventType::MouseMove ||
+                                         raw_evt.type == input::InputEventType::MouseWheel) ? 1 :
+                                        ((raw_evt.type == input::InputEventType::KeyPress ||
+                                          raw_evt.type == input::InputEventType::KeyRelease ||
+                                          raw_evt.type == input::InputEventType::CharInput) ? 2 : 3);
+            v2.provenance.device_id = raw_evt.device_id;
+            v2.provenance.host_timestamp = raw_evt.timestamp_us;
+            v2.provenance.sequence_number = raw_evt.win32_msg_id;
+            v2.provenance.flags = (raw_evt.provenance == input::InputProvenance::PhysicalWindowsInput) ? 1 : 2;
+
+            switch (raw_evt.type) {
+            case input::InputEventType::MouseDown:
+                v2.type = WINIOS_EVENT_V2_MOUSE_DOWN;
+                v2.contact_id = static_cast<uint32_t>(raw_evt.mouse.button);
+                break;
+            case input::InputEventType::MouseUp:
+                v2.type = WINIOS_EVENT_V2_MOUSE_UP;
+                v2.contact_id = static_cast<uint32_t>(raw_evt.mouse.button);
+                break;
+            case input::InputEventType::MouseMove:
+                v2.type = WINIOS_EVENT_V2_MOUSE_MOVE;
+                break;
+            case input::InputEventType::MouseWheel:
+                v2.type = WINIOS_EVENT_V2_MOUSE_WHEEL;
+                break;
+            case input::InputEventType::TouchBegin:
+                v2.type = WINIOS_EVENT_V2_TOUCH_BEGIN;
+                v2.contact_id = raw_evt.touch.contact_id;
+                break;
+            case input::InputEventType::TouchMove:
+                v2.type = WINIOS_EVENT_V2_TOUCH_MOVE;
+                v2.contact_id = raw_evt.touch.contact_id;
+                break;
+            case input::InputEventType::TouchEnd:
+                v2.type = WINIOS_EVENT_V2_TOUCH_END;
+                v2.contact_id = raw_evt.touch.contact_id;
+                break;
+            case input::InputEventType::TouchCancel:
+                v2.type = WINIOS_EVENT_V2_TOUCH_CANCEL;
+                v2.contact_id = raw_evt.touch.contact_id;
+                break;
+            case input::InputEventType::KeyPress:
+                v2.type = WINIOS_EVENT_V2_KEY_DOWN;
+                v2.key_code = raw_evt.keyboard.virtual_key ? raw_evt.keyboard.virtual_key : raw_evt.key_code;
+                break;
+            case input::InputEventType::KeyRelease:
+                v2.type = WINIOS_EVENT_V2_KEY_UP;
+                v2.key_code = raw_evt.keyboard.virtual_key ? raw_evt.keyboard.virtual_key : raw_evt.key_code;
+                break;
+            case input::InputEventType::CharInput:
+                v2.type = WINIOS_EVENT_V2_KEY_CHAR;
+                v2.key_code = static_cast<std::uint32_t>(raw_evt.keyboard.char_code);
+                break;
+            case input::InputEventType::TimerTick:
+                v2.type = WINIOS_EVENT_V2_TIMER;
+                v2.contact_id = raw_evt.touch.contact_id;
+                break;
+            case input::InputEventType::WindowFocus:
+                v2.type = WINIOS_EVENT_V2_WINDOW_FOCUS;
+                break;
+            case input::InputEventType::WindowBlur:
+                v2.type = WINIOS_EVENT_V2_WINDOW_DEFOCUS;
+                break;
+            default:
+                v2.type = WINIOS_EVENT_V2_NONE;
+                break;
+            }
+
+            auto out_res = memory::GuestMemoryValidator::copyout(uas, &v2, evt_va, sizeof(v2), 8);
+            if (out_res != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
+                return record_error(kErrnoEFAULT);
+            }
+            return record_success(1);
         }
 
         runtime::GuestInputEvent guest_evt{};
@@ -868,7 +1002,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
         std::uint64_t t_va = arg1;
         std::size_t t_len = static_cast<std::size_t>(arg2);
-        std::size_t read_len = (t_len > 0) ? std::min<std::size_t>(t_len, 256u) : 256u;
+        std::size_t read_len = (t_len > 0) ? std::min<std::size_t>(t_len + 1, 256u) : 256u;
 
         std::string new_title;
         auto vres = memory::GuestMemoryValidator::copy_string(uas, t_va, read_len, new_title);
@@ -892,7 +1026,10 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
 
         std::uint32_t wid = static_cast<std::uint32_t>(arg0);
         auto win = window_mgr_->get_window(wid);
-        if (!win || !win->can_access(proc.pid())) {
+        if (!win) {
+            return record_error(kErrnoENOSYS);
+        }
+        if (!win->can_access(proc.pid())) {
             return record_error(kErrnoEBADF);
         }
 
@@ -1095,7 +1232,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoEFAULT);
         }
         std::string path;
-        if (!read_user_string(uas, req.path_ptr, path, req.path_len > 0 ? req.path_len : 256)) {
+        if (!read_user_string(uas, req.path_ptr, path, req.path_len > 0 ? req.path_len + 1 : 256)) {
             return record_error(kErrnoEFAULT);
         }
         if (path.find("..") != std::string::npos || (!path.empty() && (path.front() == '/' || path.front() == '\\'))) {
@@ -1121,7 +1258,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoEFAULT);
         }
         std::string path;
-        if (!read_user_string(uas, req.path_ptr, path, req.path_len > 0 ? req.path_len : 256)) {
+        if (!read_user_string(uas, req.path_ptr, path, req.path_len > 0 ? req.path_len + 1 : 256)) {
             return record_error(kErrnoEFAULT);
         }
         if (path.find("..") != std::string::npos || (!path.empty() && (path.front() == '/' || path.front() == '\\'))) {
@@ -1255,10 +1392,11 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
         const std::uint64_t key = (static_cast<std::uint64_t>(proc.pid()) << 48) | (mutex_va & 0x0000FFFFFFFFFFFFULL);
         auto& record = mutex_table_[key];
 
+        const bool is_trylock = (arg1 == 1);
         if (val != 0 || record.locked) {
             ++record.contention_count;
             ++stats_.total_mutex_contentions;
-            if (record.locked && record.owner_tid == caller_tid) {
+            if (!is_trylock && record.locked && record.owner_tid == caller_tid) {
                 ++stats_.total_mutex_errors;
                 return record_error(11 /* EDEADLK */);
             }
@@ -1378,15 +1516,16 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoESRCH);
         }
 
-        std::uint64_t caller_tid = 1;
-        if (multi_sched_ && multi_sched_->current_thread()) {
+        std::uint64_t caller_tid = 0;
+        if (multi_sched_ && multi_sched_->current_thread() &&
+            multi_sched_->current_thread()->state() != ThreadState::Terminated) {
             caller_tid = multi_sched_->current_thread()->tid();
         } else if (cpu.get_tpidr_el0() != 0) {
             caller_tid = cpu.get_tpidr_el0();
         }
 
         // Cannot join oneself (detect deadlock)
-        if (target_tid == caller_tid) {
+        if (caller_tid != 0 && target_tid == caller_tid) {
             return record_error(11 /* EDEADLK */);
         }
 
@@ -1672,7 +1811,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             return record_error(kErrnoEINVAL);
         }
         std::string text;
-        auto vres = memory::GuestMemoryValidator::copy_string(uas, text_va, text_len, text);
+        auto vres = memory::GuestMemoryValidator::copy_string(uas, text_va, text_len + 1, text);
         if (vres != memory::ValidationResult::Success) {
             ++stats_.total_invalid_pointers;
             return record_error(kErrnoEFAULT);

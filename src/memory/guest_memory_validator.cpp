@@ -29,7 +29,7 @@ ValidationResult GuestMemoryValidator::validate_buffer(
         return ValidationResult::IntegerOverflow;
     }
 
-    if (va + size > kUserSpaceLimitVa) {
+    if (va + size > uas.user_space_limit()) {
         return ValidationResult::OutOfBounds;
     }
 

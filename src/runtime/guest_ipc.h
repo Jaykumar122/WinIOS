@@ -28,6 +28,7 @@ public:
 
     // 64-bit generation-tagged port creation
     uint64_t CreatePortV2(uint32_t owner_pid, const std::string& name = "");
+    uint64_t CreatePortExplicit(uint32_t owner_pid, uint32_t port_id, const std::string& name = "");
     bool     DestroyPortV2(uint64_t port_handle, uint32_t caller_pid);
     bool     SendV2(uint32_t sender_pid, uint64_t target_port, const void* data, size_t size, uint32_t msg_id = 0);
     bool     ReceiveV2(uint32_t caller_pid, uint64_t port_handle, IpcMessage* msg_out);

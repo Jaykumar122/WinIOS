@@ -12,7 +12,11 @@ InitCoordinator::InitCoordinator(
       bootstrap_registry_(bootstrap_registry),
       thread_mgr_(thread_mgr),
       ppm_(ppm),
-      mem_(mem) {}
+      mem_(mem) {
+    if (!proc_mgr_.get_process(1)) {
+        proc_mgr_.create_process("init", 0);
+    }
+}
 
 pid_t InitCoordinator::spawn_service(
     const std::string& name,

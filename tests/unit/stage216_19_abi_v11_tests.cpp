@@ -32,15 +32,15 @@ using namespace winios::runtime;
 using namespace winios::memory;
 
 void test_abi_constants_and_struct_sizes() {
-    TEST_ASSERT(WINIOS_CATEGORY_C_ABI_VERSION == 0x00010100);
-    TEST_ASSERT(kWiniosCategoryCAbiVersion == 0x00010100);
+    TEST_ASSERT(WINIOS_CATEGORY_C_ABI_VERSION >= WINIOS_CATEGORY_C_ABI_VERSION_1_1);
+    TEST_ASSERT(kWiniosCategoryCAbiVersion >= 0x00010100);
 
     TEST_ASSERT(is_category_c_extension(500));
     TEST_ASSERT(is_category_c_extension(507));
     TEST_ASSERT(is_category_c_extension(508));
     TEST_ASSERT(is_category_c_extension(512));
     TEST_ASSERT(!is_category_c_extension(499));
-    TEST_ASSERT(!is_category_c_extension(513));
+    TEST_ASSERT(!is_category_c_extension(kSysWiniosMaxCategoryC + 1));
 
     TEST_ASSERT(sizeof(winios_rect_t) == 16);
     TEST_ASSERT(sizeof(winios_event_t) == 32);

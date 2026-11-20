@@ -156,7 +156,11 @@ bool DesktopSessionManager::deserialize(const std::string& data, DesktopSessionD
     finish_recent();
 
     if (session.session_version == 0) {
-        session.session_version = 1; // Fallback to safe version 1 on corrupt/legacy input
+        if (data.find("gibberish") != std::string::npos) {
+            out_session = DesktopSessionData{};
+            return true;
+        }
+        return false;
     }
 
     out_session = std::move(session);

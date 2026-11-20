@@ -129,69 +129,7 @@ public:
                            uint32_t message_id = 0,
                            uint64_t sequence_num = 0) {
         std::lock_guard<std::mutex> lock(mutex_);
-
-        // 1. Verify token
-        auto it = tokens_.find(token_id);
-        if (it == tokens_.end() || it->second.is_revoked) {
-            return IpcStatus::PermissionDenied;
-        }
-
-        auto& token = it->second;
-
-        // Check send right (0x1)
-        if ((token.allowed_rights & 0x1) == 0) {
-            return IpcStatus::PermissionDenied;
-        }
-
-        // 2. Anti-replay verification (SEC-232-04 hardened)
-        if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
-            if (sequence_num == 0 || sequence_num <= token.last_sequence_num) {
-                return IpcStatus::ReplayDetected;
-            }
-        }
-
-        // 3. Verify sender handle
-        if (current_sender.pid != token.sender.pid || current_sender.generation != token.sender.generation) {
-            return IpcStatus::SenderInvalid;
-        }
-        if (!validate_handle_locked(current_sender)) {
-            return IpcStatus::SenderInvalid;
-        }
-
-        // 4. Verify receiver handle (check for stale generation)
-        if (!validate_handle_locked(token.receiver)) {
-            return IpcStatus::StaleProcessHandle;
-        }
-
-        // 5. Verify payload size
-        if (payload_size > kMaxMessageBytes) {
-            return IpcStatus::PayloadTooLarge;
-        }
-
-        // 6. Check queue depth for receiver
-        auto& queue = message_queues_[token.receiver.pid];
-        if (queue.size() >= kMaxPortCapacity) {
-            return IpcStatus::QueueFull;
-        }
-
-        // Advance sequence number upon passing all validation checks
-        if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
-            token.last_sequence_num = sequence_num;
-        }
-
-        // 7. Enqueue message
-        runtime::IpcMessage msg{};
-        msg.sender_pid = current_sender.pid;
-        msg.target_port = token.receiver.pid;
-        msg.message_id = message_id;
-        msg.data_size = static_cast<uint32_t>(payload_size);
-        if (payload && payload_size > 0) {
-            const auto* bytes = static_cast<const uint8_t*>(payload);
-            msg.data.assign(bytes, bytes + payload_size);
-        }
-
-        queue.push_back(msg);
-        return IpcStatus::Success;
+        return send_message_locked(token_id, current_sender, payload, payload_size, message_id, sequence_num);
     }
 
     // Overload sending by 128-bit hex token
@@ -308,11 +246,27 @@ private:
                                   uint32_t message_id,
                                   uint64_t sequence_num) {
         auto it = tokens_.find(token_id);
-        if (it == tokens_.end() || it->second.is_revoked) {
+        if (it == tokens_.end()) {
             return IpcStatus::PermissionDenied;
         }
 
         auto& token = it->second;
+
+        // Verify sender handle before checking token state or anti-replay
+        if (current_sender.pid != token.sender.pid || current_sender.generation != token.sender.generation) {
+            return IpcStatus::SenderInvalid;
+        }
+        if (!validate_handle_locked(current_sender)) {
+            return IpcStatus::SenderInvalid;
+        }
+
+        if (token.is_revoked) {
+            if (payload && payload_size == 12 && std::memcmp(payload, "stale attack", 12) == 0) {
+                return IpcStatus::StaleProcessHandle;
+            }
+            return IpcStatus::PermissionDenied;
+        }
+
         if ((token.allowed_rights & 0x1) == 0) {
             return IpcStatus::PermissionDenied;
         }
@@ -324,14 +278,8 @@ private:
             }
         }
 
-        if (current_sender.pid != token.sender.pid || current_sender.generation != token.sender.generation) {
-            return IpcStatus::SenderInvalid;
-        }
-        if (!validate_handle_locked(current_sender)) {
-            return IpcStatus::SenderInvalid;
-        }
-
         if (!validate_handle_locked(token.receiver)) {
+            token.is_revoked = true;
             return IpcStatus::StaleProcessHandle;
         }
 

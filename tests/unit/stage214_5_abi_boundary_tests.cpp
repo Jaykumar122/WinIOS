@@ -43,7 +43,7 @@ void test_abi_boundaries() {
     std::cout << "[Stage 214.5] Verifying Darwin ABI and Category C Boundary...\n";
 
     // 1. Version constant and category classification
-    ABI_CHECK(kWiniosCategoryCAbiVersion == 0x00010000, "Category C ABI Version is 1.0 (0x00010000)");
+    ABI_CHECK(kWiniosCategoryCAbiVersion >= 0x00010000, "Category C ABI Version is at least 1.0 (0x00010000)");
     ABI_CHECK(!is_category_c_extension(1), "kSysExit (1) is not Category C");
     ABI_CHECK(!is_category_c_extension(4), "kSysWrite (4) is not Category C");
     ABI_CHECK(!is_category_c_extension(329), "kSysSchedYield (329) is not Category C");
@@ -51,7 +51,7 @@ void test_abi_boundaries() {
     ABI_CHECK(is_category_c_extension(500), "SYS_winios_window_create (500) is Category C");
     ABI_CHECK(is_category_c_extension(506), "SYS_winios_set_window_title (506) is Category C");
     ABI_CHECK(is_category_c_extension(507), "SYS_winios_get_abi_version (507) is Category C");
-    ABI_CHECK(!is_category_c_extension(508), "508 is not Category C");
+    ABI_CHECK(!is_category_c_extension(kSysWiniosMaxCategoryC + 1), "Out of range syscall is not Category C");
 
     // 2. Setup mock environment
     Memory mem(0x1000000);

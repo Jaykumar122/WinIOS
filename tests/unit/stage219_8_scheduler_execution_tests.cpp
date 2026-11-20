@@ -147,7 +147,7 @@ void test_cross_process_context_switch_and_registers() {
     TEST_ASSERT(scheduler.schedule_next(cpu));
     TEST_ASSERT(scheduler.current_thread() == t_a);
     TEST_ASSERT(scheduler.current_pid() == p_a->pid());
-    TEST_ASSERT(cpu.get_mmu().get_ttbr0_el1() == root_a);
+    TEST_ASSERT((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_a);
     TEST_ASSERT(cpu.get_tpidr_el0() == 0xAAAA0000ULL);
     TEST_ASSERT(cpu.get_program_counter() == 0x10001000);
     TEST_ASSERT(cpu.read_register(0) == 0x1111);
@@ -161,7 +161,7 @@ void test_cross_process_context_switch_and_registers() {
     TEST_ASSERT(scheduler.current_thread() == t_b);
     TEST_ASSERT(scheduler.current_pid() == p_b->pid());
     // MMU TTBR0_EL1 must have switched to root_b
-    TEST_ASSERT(cpu.get_mmu().get_ttbr0_el1() == root_b);
+    TEST_ASSERT((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_b);
     TEST_ASSERT(cpu.get_tpidr_el0() == 0xBBBB0000ULL);
     TEST_ASSERT(cpu.get_program_counter() == 0x20002000);
     TEST_ASSERT(cpu.read_register(0) == 0x2222);
@@ -170,7 +170,7 @@ void test_cross_process_context_switch_and_registers() {
     // Switch back to Thread A: verify Thread A's saved state is fully restored
     TEST_ASSERT(scheduler.yield(cpu));
     TEST_ASSERT(scheduler.current_thread() == t_a);
-    TEST_ASSERT(cpu.get_mmu().get_ttbr0_el1() == root_a);
+    TEST_ASSERT((cpu.get_mmu().get_ttbr0_el1() & 0x0000FFFFFFFFFFFFULL) == root_a);
     TEST_ASSERT(cpu.get_tpidr_el0() == 0xAAAA1234ULL);
     TEST_ASSERT(cpu.read_register(5) == 0x99999);
 

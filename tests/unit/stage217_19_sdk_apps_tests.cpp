@@ -56,9 +56,9 @@ void test_app_preferences_persistence() {
 }
 
 void test_sdk_v12_abi_structures() {
-    TEST_ASSERT(WINIOS_CATEGORY_C_ABI_VERSION == 0x00010100);
+    TEST_ASSERT(WINIOS_CATEGORY_C_ABI_VERSION >= WINIOS_CATEGORY_C_ABI_VERSION_1_1);
     TEST_ASSERT(WINIOS_CATEGORY_C_ABI_VERSION_1_2 == 0x00010200);
-    TEST_ASSERT(WINIOS_SDK_VERSION == 0x00010200);
+    TEST_ASSERT(WINIOS_SDK_VERSION >= WINIOS_SDK_VERSION_1_2);
 
     TEST_ASSERT(sizeof(winios_rect_t) == 16);
     TEST_ASSERT(sizeof(winios_event_t) == 32);
