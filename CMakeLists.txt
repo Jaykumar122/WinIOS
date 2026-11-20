@@ -6716,6 +6716,57 @@ target_link_libraries(stage240_21_adversarial_and_deterministic_tests PRIVATE wi
 winios_set_warnings(stage240_21_adversarial_and_deterministic_tests)
 add_test(NAME stage240_21_adversarial_and_deterministic_tests COMMAND stage240_21_adversarial_and_deterministic_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 241 Tests: Conformance Verification, Mach-O Hardening & Replay Evidence
+# -----------------------------------------------------------------------------
+add_executable(stage241_3_integer_control_flow_conformance_tests
+    tests/unit/stage241_3_integer_control_flow_conformance_tests.cpp
+)
+target_include_directories(stage241_3_integer_control_flow_conformance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage241_3_integer_control_flow_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage241_3_integer_control_flow_conformance_tests)
+add_test(NAME stage241_3_integer_control_flow_conformance_tests COMMAND stage241_3_integer_control_flow_conformance_tests)
+
+add_executable(stage241_5_macho_loader_hardening_tests
+    tests/unit/stage241_5_macho_loader_hardening_tests.cpp
+)
+target_include_directories(stage241_5_macho_loader_hardening_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage241_5_macho_loader_hardening_tests PRIVATE winios_core)
+winios_set_warnings(stage241_5_macho_loader_hardening_tests)
+add_test(NAME stage241_5_macho_loader_hardening_tests COMMAND stage241_5_macho_loader_hardening_tests)
+
+add_executable(stage241_8_runtime_wx_permission_tests
+    tests/unit/stage241_8_runtime_wx_permission_tests.cpp
+)
+target_include_directories(stage241_8_runtime_wx_permission_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage241_8_runtime_wx_permission_tests PRIVATE winios_core)
+winios_set_warnings(stage241_8_runtime_wx_permission_tests)
+add_test(NAME stage241_8_runtime_wx_permission_tests COMMAND stage241_8_runtime_wx_permission_tests)
+
+add_executable(stage241_10_multi_process_isolation_tests
+    tests/unit/stage241_10_multi_process_isolation_tests.cpp
+)
+target_include_directories(stage241_10_multi_process_isolation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage241_10_multi_process_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage241_10_multi_process_isolation_tests)
+add_test(NAME stage241_10_multi_process_isolation_tests COMMAND stage241_10_multi_process_isolation_tests)
+
+add_executable(stage241_17_four_workload_e2e_tests
+    tests/unit/stage241_17_four_workload_e2e_tests.cpp
+)
+target_include_directories(stage241_17_four_workload_e2e_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage241_17_four_workload_e2e_tests PRIVATE winios_core)
+winios_set_warnings(stage241_17_four_workload_e2e_tests)
+add_test(NAME stage241_17_four_workload_e2e_tests COMMAND stage241_17_four_workload_e2e_tests)
+
+add_executable(stage241_20_deterministic_replay_tests
+    tests/unit/stage241_20_deterministic_replay_tests.cpp
+)
+target_include_directories(stage241_20_deterministic_replay_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage241_20_deterministic_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage241_20_deterministic_replay_tests)
+add_test(NAME stage241_20_deterministic_replay_tests COMMAND stage241_20_deterministic_replay_tests)
+
 
 
 
