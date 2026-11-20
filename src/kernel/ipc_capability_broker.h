@@ -52,6 +52,7 @@ struct IpcCapabilityToken {
     bool            is_revoked{false};
     uint64_t        last_sequence_num{0}; // Anti-replay sequence tracking
     bool            require_strict_sequence{false}; // Strict anti-replay: sequence 0 rejected
+    uint32_t        messages_delivered{0}; // Count of successfully delivered messages
 };
 
 class IpcCapabilityBroker {
@@ -252,7 +253,7 @@ private:
 
         auto& token = it->second;
 
-        // Verify sender handle before checking token state or anti-replay
+        // Step 1: Sender identity and generation validation
         if (current_sender.pid != token.sender.pid || current_sender.generation != token.sender.generation) {
             return IpcStatus::SenderInvalid;
         }
@@ -260,8 +261,11 @@ private:
             return IpcStatus::SenderInvalid;
         }
 
+        const bool receiver_valid = validate_handle_locked(token.receiver);
+
+        // Step 2: Capability revocation check
         if (token.is_revoked) {
-            if (payload && payload_size == 12 && std::memcmp(payload, "stale attack", 12) == 0) {
+            if (!receiver_valid && token.messages_delivered > 0) {
                 return IpcStatus::StaleProcessHandle;
             }
             return IpcStatus::PermissionDenied;
@@ -271,14 +275,15 @@ private:
             return IpcStatus::PermissionDenied;
         }
 
-        // 2. Anti-replay verification (SEC-232-04 hardened)
+        // Step 3: Anti-replay verification (SEC-232-04 hardened)
         if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
             if (sequence_num == 0 || sequence_num <= token.last_sequence_num) {
                 return IpcStatus::ReplayDetected;
             }
         }
 
-        if (!validate_handle_locked(token.receiver)) {
+        // Step 4: Recipient identity and generation validation (stale handle detection)
+        if (!receiver_valid) {
             token.is_revoked = true;
             return IpcStatus::StaleProcessHandle;
         }
@@ -296,6 +301,7 @@ private:
         if (token.require_strict_sequence || token.last_sequence_num > 0 || sequence_num > 0) {
             token.last_sequence_num = sequence_num;
         }
+        ++token.messages_delivered;
 
         runtime::IpcMessage msg{};
         msg.sender_pid = current_sender.pid;

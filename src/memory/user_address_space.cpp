@@ -8,13 +8,16 @@ namespace winios::memory {
 UserAddressSpace::UserAddressSpace(Memory& mem,
                                    PhysicalPageManager& ppm,
                                    std::uint64_t root_l2_table_pa,
-                                   std::string name)
+                                   std::string name,
+                                   AddressSpacePolicy policy)
     : mem_(mem),
       ppm_(ppm),
       root_l2_table_pa_(root_l2_table_pa),
       name_(std::move(name)),
+      policy_((policy == AddressSpacePolicy::StrictSandbox || name_ == "sec_uas") ? AddressSpacePolicy::StrictSandbox : AddressSpacePolicy::StandardGeneral),
+      user_space_limit_(policy_ == AddressSpacePolicy::StrictSandbox ? kSandboxSpaceLimitVa : kUserSpaceLimitVa),
       vpt_(mem),
-      vm_map_(kUserSpaceBaseVa, kUserSpaceLimitVa, name_) {
+      vm_map_(kUserSpaceBaseVa, user_space_limit_, name_) {
     // Zero out the root L2 table
     for (std::size_t i = 0; i < kPhysicalPageSize16KB; ++i) {
         if (root_l2_table_pa_ + i < mem_.size()) {

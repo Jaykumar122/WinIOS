@@ -13,15 +13,22 @@
 
 namespace winios::memory {
 
-inline constexpr std::uint64_t kUserSpaceBaseVa = 0x0000000000000000ULL;
-inline constexpr std::uint64_t kUserSpaceLimitVa = 0x0000000800000000ULL; // 32 GiB user address space limit
+enum class AddressSpacePolicy : std::uint8_t {
+    StandardGeneral = 0, // 32 GiB user address space limit (0x800000000ULL)
+    StrictSandbox   = 1  // 2 GiB strict sandbox limit (0x80000000ULL)
+};
+
+inline constexpr std::uint64_t kUserSpaceBaseVa     = 0x0000000000000000ULL;
+inline constexpr std::uint64_t kUserSpaceLimitVa    = 0x0000000800000000ULL; // 32 GiB user address space limit
+inline constexpr std::uint64_t kSandboxSpaceLimitVa = 0x0000000080000000ULL; // 2 GiB strict sandbox limit
 
 class UserAddressSpace {
 public:
     UserAddressSpace(Memory& mem,
                      PhysicalPageManager& ppm,
                      std::uint64_t root_l2_table_pa,
-                     std::string name = "user_space");
+                     std::string name = "user_space",
+                     AddressSpacePolicy policy = AddressSpacePolicy::StandardGeneral);
     ~UserAddressSpace();
 
     [[nodiscard]] std::uint64_t root_table_pa() const noexcept { return root_l2_table_pa_; }
@@ -39,9 +46,8 @@ public:
     [[nodiscard]] std::size_t unmapped_page_count() const noexcept { return unmapped_page_count_; }
     [[nodiscard]] bool owns_physical_page(std::uint64_t pa) const noexcept;
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
-    [[nodiscard]] std::uint64_t user_space_limit() const noexcept {
-        return (name_ == "sec_uas") ? 0x0000000080000000ULL : kUserSpaceLimitVa;
-    }
+    [[nodiscard]] AddressSpacePolicy policy() const noexcept { return policy_; }
+    [[nodiscard]] std::uint64_t user_space_limit() const noexcept { return user_space_limit_; }
     [[nodiscard]] Memory& memory() noexcept { return mem_; }
     [[nodiscard]] const Memory& memory() const noexcept { return mem_; }
     [[nodiscard]] XnuVmMap& vm_map() noexcept { return vm_map_; }
@@ -95,6 +101,8 @@ private:
     PhysicalPageManager& ppm_;
     std::uint64_t root_l2_table_pa_{0};
     std::string name_;
+    AddressSpacePolicy policy_{AddressSpacePolicy::StandardGeneral};
+    std::uint64_t user_space_limit_{kUserSpaceLimitVa};
     VirtualPageTable vpt_;
     XnuVmMap vm_map_;
     std::vector<std::uint64_t> allocated_l3_tables_{};

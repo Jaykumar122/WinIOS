@@ -254,6 +254,9 @@ void BsdProcess::serialize(std::vector<std::uint8_t>& dst) const {
     }
 
     dst.push_back(parent_notified_ ? 1u : 0u);
+
+    const auto* p_abi = reinterpret_cast<const std::uint8_t*>(&category_c_abi_version_);
+    dst.insert(dst.end(), p_abi, p_abi + sizeof(category_c_abi_version_));
 }
 
 std::unique_ptr<BsdProcess> BsdProcess::deserialize(const std::uint8_t*& src, std::size_t& remaining) {
@@ -318,6 +321,12 @@ std::unique_ptr<BsdProcess> BsdProcess::deserialize(const std::uint8_t*& src, st
         if (remaining >= 1) {
             proc->parent_notified_ = (*src++ != 0);
             remaining -= 1;
+        }
+
+        if (remaining >= sizeof(std::uint32_t)) {
+            std::memcpy(&proc->category_c_abi_version_, src, sizeof(std::uint32_t));
+            src += sizeof(std::uint32_t);
+            remaining -= sizeof(std::uint32_t);
         }
     }
 

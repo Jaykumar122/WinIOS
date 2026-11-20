@@ -55,6 +55,16 @@ std::string DesktopSessionManager::serialize(const DesktopSessionData& session) 
 bool DesktopSessionManager::deserialize(const std::string& data, DesktopSessionData& out_session) const {
     if (data.empty()) return false;
 
+    // Fast check: reject binary data containing null bytes
+    if (data.find('\0') != std::string::npos) return false;
+
+    // Fast check: reject JSON payloads (DesktopSession uses INI key-value format)
+    const auto first_non_ws = data.find_first_not_of(" \t\r\n");
+    if (first_non_ws == std::string::npos) return false;
+    if (data[first_non_ws] == '{') {
+        return false;
+    }
+
     DesktopSessionData session{};
     session.session_version = 0;
     std::istringstream ss(data);
@@ -63,6 +73,8 @@ bool DesktopSessionManager::deserialize(const std::string& data, DesktopSessionD
     RecentDocumentEntry cur_rec{};
     bool in_window = false;
     bool in_recent = false;
+    std::size_t valid_kv_lines = 0;
+    std::size_t valid_section_headers = 0;
 
     auto finish_window = [&]() {
         if (in_window && !cur_win.bundle_id.empty()) {
@@ -82,21 +94,33 @@ bool DesktopSessionManager::deserialize(const std::string& data, DesktopSessionD
 
     while (std::getline(ss, line)) {
         if (line.empty()) continue;
+        if (line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+
         if (line == "[window]") {
             finish_recent();
             finish_window();
             in_window = true;
+            ++valid_section_headers;
             continue;
         }
         if (line == "[recent]") {
             finish_window();
             finish_recent();
             in_recent = true;
+            ++valid_section_headers;
+            continue;
+        }
+        if (!line.empty() && line.front() == '[' && line.back() == ']') {
+            finish_window();
+            finish_recent();
+            ++valid_section_headers;
             continue;
         }
 
         const auto eq = line.find('=');
         if (eq == std::string::npos) continue;
+        ++valid_kv_lines;
         const std::string key = line.substr(0, eq);
         const std::string val = line.substr(eq + 1);
 
@@ -155,9 +179,15 @@ bool DesktopSessionManager::deserialize(const std::string& data, DesktopSessionD
     finish_window();
     finish_recent();
 
+    constexpr std::uint32_t kMaxSupportedSessionVersion = 2;
+    if (session.session_version > kMaxSupportedSessionVersion) {
+        return false;
+    }
+
     if (session.session_version == 0) {
-        if (data.find("gibberish") != std::string::npos) {
+        if (valid_kv_lines > 0 && valid_section_headers > 0) {
             out_session = DesktopSessionData{};
+            out_session.session_version = 1;
             return true;
         }
         return false;

@@ -151,13 +151,13 @@ ValidationResult GuestMemoryValidator::copy_string(
         return ValidationResult::NullPointer;
     }
 
-    if (user_va >= kUserSpaceLimitVa) {
+    if (user_va >= uas.user_space_limit()) {
         return ValidationResult::OutOfBounds;
     }
 
     for (std::size_t i = 0; i < max_bytes; ++i) {
         const std::uint64_t cur_va = user_va + i;
-        if (cur_va >= kUserSpaceLimitVa || cur_va < user_va) {
+        if (cur_va >= uas.user_space_limit() || cur_va < user_va) {
             out_str.clear();
             return ValidationResult::OutOfBounds;
         }

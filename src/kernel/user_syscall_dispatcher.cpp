@@ -641,6 +641,7 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
             std::size_t max_len = (arg1 > 0) ? std::min<std::size_t>(static_cast<std::size_t>(arg1) + 1, 256u) : 256u;
             auto vres = memory::GuestMemoryValidator::copy_string(uas, arg0, max_len, title);
             if (vres != memory::ValidationResult::Success) {
+                ++stats_.total_invalid_pointers;
                 return record_error(kErrnoEFAULT);
             }
         }
@@ -1015,21 +1016,26 @@ bool UserSyscallDispatcher::handle_syscall(CPU& cpu,
     }
 
     case kSysWiniosGetAbiVersion: {
-        return record_success(static_cast<std::uint64_t>(kWiniosCategoryCAbiVersion));
+        std::uint32_t req_ver = static_cast<std::uint32_t>(arg0);
+        std::uint32_t negotiated = (req_ver > 0) ? std::min(req_ver, kWiniosCategoryCAbiVersion)
+                                                 : kWiniosCategoryCAbiVersion;
+        category_c_abi_version_ = negotiated;
+        proc.set_category_c_abi_version(negotiated);
+        return record_success(static_cast<std::uint64_t>(negotiated));
     }
 
     case kSysWiniosWindowGetGeometry: {
         ++stats_.total_display_syscalls;
+        if (effective_category_c_abi(proc) < kWiniosCategoryCAbi_v1_1) {
+            return record_error(kErrnoENOSYS);
+        }
         if (!window_mgr_) {
             return record_error(kErrnoENOSYS);
         }
 
         std::uint32_t wid = static_cast<std::uint32_t>(arg0);
         auto win = window_mgr_->get_window(wid);
-        if (!win) {
-            return record_error(kErrnoENOSYS);
-        }
-        if (!win->can_access(proc.pid())) {
+        if (!win || !win->can_access(proc.pid())) {
             return record_error(kErrnoEBADF);
         }
 

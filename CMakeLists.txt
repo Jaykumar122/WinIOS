@@ -6553,6 +6553,84 @@ target_link_libraries(stage235_21_security_integration_tests PRIVATE winios_core
 winios_set_warnings(stage235_21_security_integration_tests)
 add_test(NAME stage235_21_security_integration_tests COMMAND stage235_21_security_integration_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 238 Tests: Post-Closure Correctness & Hardening Suites
+# -----------------------------------------------------------------------------
+add_executable(stage238_3_assertion_framework_tests
+    tests/unit/stage238_3_assertion_framework_tests.cpp
+)
+target_include_directories(stage238_3_assertion_framework_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_3_assertion_framework_tests PRIVATE winios_core)
+winios_set_warnings(stage238_3_assertion_framework_tests)
+add_test(NAME stage238_3_assertion_framework_tests COMMAND stage238_3_assertion_framework_tests)
+
+add_executable(stage238_5_syscall508_adversarial_tests
+    tests/unit/stage238_5_syscall508_adversarial_tests.cpp
+)
+target_include_directories(stage238_5_syscall508_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_5_syscall508_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage238_5_syscall508_adversarial_tests)
+add_test(NAME stage238_5_syscall508_adversarial_tests COMMAND stage238_5_syscall508_adversarial_tests)
+
+add_executable(stage238_6_window_creation_pointer_safety_tests
+    tests/unit/stage238_6_window_creation_pointer_safety_tests.cpp
+)
+target_include_directories(stage238_6_window_creation_pointer_safety_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_6_window_creation_pointer_safety_tests PRIVATE winios_core)
+winios_set_warnings(stage238_6_window_creation_pointer_safety_tests)
+add_test(NAME stage238_6_window_creation_pointer_safety_tests COMMAND stage238_6_window_creation_pointer_safety_tests)
+
+add_executable(stage238_7_address_space_policy_tests
+    tests/unit/stage238_7_address_space_policy_tests.cpp
+)
+target_include_directories(stage238_7_address_space_policy_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_7_address_space_policy_tests PRIVATE winios_core)
+winios_set_warnings(stage238_7_address_space_policy_tests)
+add_test(NAME stage238_7_address_space_policy_tests COMMAND stage238_7_address_space_policy_tests)
+
+add_executable(stage238_9_ui_rendering_correctness_tests
+    tests/unit/stage238_9_ui_rendering_correctness_tests.cpp
+    guest-sdk/lib/winios_runtime.c
+)
+target_compile_definitions(stage238_9_ui_rendering_correctness_tests PRIVATE WINIOS_HOST_TEST_OVERRIDE=1)
+target_include_directories(stage238_9_ui_rendering_correctness_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_9_ui_rendering_correctness_tests PRIVATE winios_core)
+winios_set_warnings(stage238_9_ui_rendering_correctness_tests)
+add_test(NAME stage238_9_ui_rendering_correctness_tests COMMAND stage238_9_ui_rendering_correctness_tests)
+
+add_executable(stage238_11_session_parser_adversarial_tests
+    tests/unit/stage238_11_session_parser_adversarial_tests.cpp
+)
+target_include_directories(stage238_11_session_parser_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_11_session_parser_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage238_11_session_parser_adversarial_tests)
+add_test(NAME stage238_11_session_parser_adversarial_tests COMMAND stage238_11_session_parser_adversarial_tests)
+
+add_executable(stage238_13_ipc_concurrency_anti_replay_tests
+    tests/unit/stage238_13_ipc_concurrency_anti_replay_tests.cpp
+)
+target_include_directories(stage238_13_ipc_concurrency_anti_replay_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_13_ipc_concurrency_anti_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage238_13_ipc_concurrency_anti_replay_tests)
+add_test(NAME stage238_13_ipc_concurrency_anti_replay_tests COMMAND stage238_13_ipc_concurrency_anti_replay_tests)
+
+add_executable(stage238_15_filesystem_confinement_adversarial_tests
+    tests/unit/stage238_15_filesystem_confinement_adversarial_tests.cpp
+)
+target_include_directories(stage238_15_filesystem_confinement_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_15_filesystem_confinement_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage238_15_filesystem_confinement_adversarial_tests)
+add_test(NAME stage238_15_filesystem_confinement_adversarial_tests COMMAND stage238_15_filesystem_confinement_adversarial_tests)
+
+add_executable(stage238_16_wal_durability_crash_recovery_tests
+    tests/unit/stage238_16_wal_durability_crash_recovery_tests.cpp
+)
+target_include_directories(stage238_16_wal_durability_crash_recovery_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage238_16_wal_durability_crash_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage238_16_wal_durability_crash_recovery_tests)
+add_test(NAME stage238_16_wal_durability_crash_recovery_tests COMMAND stage238_16_wal_durability_crash_recovery_tests)
+
+
 
 
 

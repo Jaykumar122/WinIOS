@@ -89,7 +89,11 @@ inline constexpr std::uint64_t kSysFstat64    = 338;
 inline constexpr std::uint64_t kSysStat64     = 339;
 
 // WinIOS Category C Display and Window System Calls
-inline constexpr std::uint32_t kWiniosCategoryCAbiVersion = 0x00010100; // v1.1
+inline constexpr std::uint32_t kWiniosCategoryCAbi_v1_0    = 0x00010000; // v1.0
+inline constexpr std::uint32_t kWiniosCategoryCAbi_v1_1    = 0x00010100; // v1.1
+inline constexpr std::uint32_t kWiniosCategoryCAbi_v1_2    = 0x00010200; // v1.2
+inline constexpr std::uint32_t kWiniosCategoryCAbi_v1_3    = 0x00010300; // v1.3
+inline constexpr std::uint32_t kWiniosCategoryCAbiVersion  = 0x00010100; // v1.1
 inline constexpr std::uint64_t kSysWiniosWindowCreate      = 500;
 inline constexpr std::uint64_t kSysWiniosWindowDestroy     = 501;
 inline constexpr std::uint64_t kSysWiniosSurfaceUpdate     = 502;
@@ -270,6 +274,12 @@ public:
     [[nodiscard]] SyscallAbi abi_mode() const noexcept { return abi_mode_; }
     [[nodiscard]] SyscallAbi last_used_abi() const noexcept { return last_used_abi_; }
 
+    void set_category_c_abi_version(std::uint32_t ver) noexcept { category_c_abi_version_ = ver; }
+    [[nodiscard]] std::uint32_t category_c_abi_version() const noexcept { return category_c_abi_version_; }
+    [[nodiscard]] std::uint32_t effective_category_c_abi(const BsdProcess& proc) const noexcept {
+        return std::max(proc.category_c_abi_version(), category_c_abi_version_);
+    }
+
     void set_process_manager(BsdProcessManager* mgr) noexcept { proc_mgr_ = mgr; }
     [[nodiscard]] BsdProcessManager* process_manager() noexcept { return proc_mgr_; }
 
@@ -378,6 +388,7 @@ private:
     SyscallStats stats_{};
     SyscallAbi abi_mode_{SyscallAbi::AutoDetect};
     SyscallAbi last_used_abi_{SyscallAbi::DarwinStrict};
+    std::uint32_t category_c_abi_version_{kWiniosCategoryCAbi_v1_0};
     BsdProcessManager* proc_mgr_{nullptr};
     vfs::VirtualFileSystem* vfs_{nullptr};
     graphics::WindowManager* window_mgr_{nullptr};

@@ -103,6 +103,9 @@ public:
     [[nodiscard]] std::uint64_t virtual_memory_size() const noexcept { return virtual_memory_size_; }
     void set_virtual_memory_size(std::uint64_t size) noexcept { virtual_memory_size_ = size; }
 
+    [[nodiscard]] std::uint32_t category_c_abi_version() const noexcept { return category_c_abi_version_; }
+    void set_category_c_abi_version(std::uint32_t ver) noexcept { category_c_abi_version_ = ver; }
+
     [[nodiscard]] const std::vector<pid_t>& children() const noexcept { return children_; }
     void add_child(pid_t child_pid);
     bool remove_child(pid_t child_pid);
@@ -135,6 +138,7 @@ private:
     memory::UserAddressSpace* address_space_{nullptr};
     std::size_t resident_page_count_{0};
     std::uint64_t virtual_memory_size_{0};
+    std::uint32_t category_c_abi_version_{0x00010000}; // Defaults to Category C ABI v1.0 (0x00010000)
     std::vector<pid_t> children_{};
     bool parent_notified_{false};
 };
