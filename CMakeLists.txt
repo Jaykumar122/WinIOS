@@ -6842,6 +6842,66 @@ target_link_libraries(stage242_20_four_workload_stress_tests PRIVATE winios_core
 winios_set_warnings(stage242_20_four_workload_stress_tests)
 add_test(NAME stage242_20_four_workload_stress_tests COMMAND stage242_20_four_workload_stress_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 243 Tests: Deterministic Replay V2, Translation Coherence & ABI
+# -----------------------------------------------------------------------------
+add_executable(stage243_2_replay_v2_serialization_tests
+    tests/unit/stage243_2_replay_v2_serialization_tests.cpp
+)
+target_include_directories(stage243_2_replay_v2_serialization_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_2_replay_v2_serialization_tests PRIVATE winios_core)
+winios_set_warnings(stage243_2_replay_v2_serialization_tests)
+add_test(NAME stage243_2_replay_v2_serialization_tests COMMAND stage243_2_replay_v2_serialization_tests)
+
+add_executable(stage243_10_asid_generation_invalidation_tests
+    tests/unit/stage243_10_asid_generation_invalidation_tests.cpp
+)
+target_include_directories(stage243_10_asid_generation_invalidation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_10_asid_generation_invalidation_tests PRIVATE winios_core)
+winios_set_warnings(stage243_10_asid_generation_invalidation_tests)
+add_test(NAME stage243_10_asid_generation_invalidation_tests COMMAND stage243_10_asid_generation_invalidation_tests)
+
+add_executable(stage243_13_multi_process_isolation_stress_tests
+    tests/unit/stage243_13_multi_process_isolation_stress_tests.cpp
+)
+target_include_directories(stage243_13_multi_process_isolation_stress_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_13_multi_process_isolation_stress_tests PRIVATE winios_core)
+winios_set_warnings(stage243_13_multi_process_isolation_stress_tests)
+add_test(NAME stage243_13_multi_process_isolation_stress_tests COMMAND stage243_13_multi_process_isolation_stress_tests)
+
+add_executable(stage243_14_aapcs64_lr_preservation_tests
+    tests/unit/stage243_14_aapcs64_lr_preservation_tests.cpp
+)
+target_include_directories(stage243_14_aapcs64_lr_preservation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_14_aapcs64_lr_preservation_tests PRIVATE winios_core)
+winios_set_warnings(stage243_14_aapcs64_lr_preservation_tests)
+add_test(NAME stage243_14_aapcs64_lr_preservation_tests COMMAND stage243_14_aapcs64_lr_preservation_tests)
+
+add_executable(stage243_15_fp_simd_matrix_tests
+    tests/unit/stage243_15_fp_simd_matrix_tests.cpp
+)
+target_include_directories(stage243_15_fp_simd_matrix_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_15_fp_simd_matrix_tests PRIVATE winios_core)
+winios_set_warnings(stage243_15_fp_simd_matrix_tests)
+add_test(NAME stage243_15_fp_simd_matrix_tests COMMAND stage243_15_fp_simd_matrix_tests)
+
+add_executable(stage243_17_darwin_syscall_nzcv_conformance_tests
+    tests/unit/stage243_17_darwin_syscall_nzcv_conformance_tests.cpp
+)
+target_include_directories(stage243_17_darwin_syscall_nzcv_conformance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_17_darwin_syscall_nzcv_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage243_17_darwin_syscall_nzcv_conformance_tests)
+add_test(NAME stage243_17_darwin_syscall_nzcv_conformance_tests COMMAND stage243_17_darwin_syscall_nzcv_conformance_tests)
+
+add_executable(stage243_20_four_workload_replay_lifecycle_tests
+    tests/unit/stage243_20_four_workload_replay_lifecycle_tests.cpp
+)
+target_include_directories(stage243_20_four_workload_replay_lifecycle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage243_20_four_workload_replay_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage243_20_four_workload_replay_lifecycle_tests)
+add_test(NAME stage243_20_four_workload_replay_lifecycle_tests COMMAND stage243_20_four_workload_replay_lifecycle_tests)
+
+
 
 
 

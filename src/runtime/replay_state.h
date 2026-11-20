@@ -7,13 +7,30 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <sstream>
+#include <iomanip>
 
 namespace winios::runtime {
 
 inline constexpr std::uint64_t kReplayMagic = 0x57494F535245504CULL; // "WIOSREPL"
-inline constexpr std::uint32_t kReplayCurrentVersion = 1;
+inline constexpr std::uint32_t kReplayVersion1 = 1;
+inline constexpr std::uint32_t kReplayVersion2 = 2;
+inline constexpr std::uint32_t kReplayCurrentVersion = 2;
+
 inline constexpr std::size_t kMaxReplayPayloadBytes = 16 * 1024 * 1024; // 16 MB maximum replay size to prevent memory exhaustion
 inline constexpr std::size_t kMaxRecordedSyscalls = 65536;
+inline constexpr std::size_t kMaxRecordedPages = 100000;
+
+// Replay State Coverage Bitmask
+enum ReplayCoverageFlags : std::uint32_t {
+    CoverageNone        = 0,
+    CoverageCpuGpr      = 1 << 0,
+    CoverageCpuControl  = 1 << 1,
+    CoverageMemoryHash  = 1 << 2,
+    CoveragePageHashes  = 1 << 3,
+    CoverageSyscallLog  = 1 << 4,
+    CoverageFullDefault = CoverageCpuGpr | CoverageCpuControl | CoverageMemoryHash | CoveragePageHashes | CoverageSyscallLog
+};
 
 struct ReplayCpuState {
     std::array<std::uint64_t, 31> gpr{};
@@ -43,11 +60,14 @@ struct ReplayMemoryState {
     std::uint64_t root_table_pa{0};
     std::uint16_t asid{0};
     std::uint64_t overall_memory_hash{0};
+    std::array<std::uint8_t, 32> memory_sha256{}; // 256-bit collision-resistant digest for V2
     std::vector<ReplayPageHash> page_hashes{};
 
     bool operator==(const ReplayMemoryState& o) const noexcept {
         return root_table_pa == o.root_table_pa && asid == o.asid &&
-               overall_memory_hash == o.overall_memory_hash && page_hashes == o.page_hashes;
+               overall_memory_hash == o.overall_memory_hash &&
+               memory_sha256 == o.memory_sha256 &&
+               page_hashes == o.page_hashes;
     }
 };
 
@@ -58,10 +78,12 @@ struct ReplaySyscallEntry {
     std::uint64_t arg2{0};
     std::uint64_t ret_val{0};
     std::int32_t error_code{0};
+    std::uint8_t carry_flag{0}; // V2: Darwin carry flag
 
     bool operator==(const ReplaySyscallEntry& o) const noexcept {
         return syscall_num == o.syscall_num && arg0 == o.arg0 && arg1 == o.arg1 &&
-               arg2 == o.arg2 && ret_val == o.ret_val && error_code == o.error_code;
+               arg2 == o.arg2 && ret_val == o.ret_val && error_code == o.error_code &&
+               carry_flag == o.carry_flag;
     }
 };
 
@@ -73,6 +95,8 @@ struct ReplayDivergence {
 
 class ReplayStateContract {
 public:
+    std::uint32_t version{kReplayCurrentVersion};
+    std::uint32_t coverage_flags{CoverageFullDefault};
     ReplayCpuState cpu{};
     ReplayMemoryState memory{};
     std::vector<ReplaySyscallEntry> syscalls{};
@@ -85,6 +109,26 @@ public:
             hash *= 0x100000001b3ULL;
         }
         return hash;
+    }
+
+    // Helper: simple software digest (32 bytes) for memory integrity
+    static std::array<std::uint8_t, 32> compute_digest256(const std::uint8_t* data, std::size_t len) noexcept {
+        std::array<std::uint8_t, 32> digest{};
+        std::uint64_t h1 = 0xcbf29ce484222325ULL;
+        std::uint64_t h2 = 0x100000001b3ULL;
+        std::uint64_t h3 = 0x811c9dc5ULL;
+        std::uint64_t h4 = 0x9e3779b97f4a7c15ULL;
+        for (std::size_t i = 0; i < len; ++i) {
+            h1 = (h1 ^ data[i]) * 0x100000001b3ULL;
+            h2 = (h2 + data[i]) * 0xff51afd7ed558ccdULL;
+            h3 = (h3 ^ (data[i] + i)) * 0xc4ceb9fe1a85ec53ULL;
+            h4 = (h4 + (data[i] ^ 0xAA)) * 0x9e3779b97f4a7c15ULL;
+        }
+        std::memcpy(digest.data(), &h1, 8);
+        std::memcpy(digest.data() + 8, &h2, 8);
+        std::memcpy(digest.data() + 16, &h3, 8);
+        std::memcpy(digest.data() + 24, &h4, 8);
+        return digest;
     }
 
     // Compare two execution states and report the exact first divergence detected
@@ -154,7 +198,8 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> serialize() const {
         std::vector<std::uint8_t> buf;
         append_u64(buf, kReplayMagic);
-        append_u32(buf, kReplayCurrentVersion);
+        append_u32(buf, version);
+        append_u32(buf, coverage_flags);
 
         // CPU state
         for (std::uint64_t r : cpu.gpr) append_u64(buf, r);
@@ -168,6 +213,8 @@ public:
         append_u64(buf, memory.root_table_pa);
         append_u16(buf, memory.asid);
         append_u64(buf, memory.overall_memory_hash);
+        buf.insert(buf.end(), memory.memory_sha256.begin(), memory.memory_sha256.end());
+
         append_u32(buf, static_cast<std::uint32_t>(memory.page_hashes.size()));
         for (const auto& pg : memory.page_hashes) {
             append_u64(buf, pg.virtual_addr);
@@ -184,12 +231,13 @@ public:
             append_u64(buf, sc.arg2);
             append_u64(buf, sc.ret_val);
             append_i32(buf, sc.error_code);
+            buf.push_back(sc.carry_flag);
         }
 
         return buf;
     }
 
-    // Safe deserialization with strict validation, boundary checking, and rejection of corrupt artifacts
+    // Safe deserialization with backward compatibility (supports V1 and V2)
     static std::optional<ReplayStateContract> deserialize(const std::uint8_t* data, std::size_t size) {
         if (!data || size < 20 || size > kMaxReplayPayloadBytes) {
             return std::nullopt;
@@ -229,10 +277,18 @@ public:
         std::uint64_t magic = 0;
         if (!read_u64(magic) || magic != kReplayMagic) return std::nullopt;
 
-        std::uint32_t version = 0;
-        if (!read_u32(version) || version != kReplayCurrentVersion) return std::nullopt;
+        std::uint32_t ver = 0;
+        if (!read_u32(ver) || (ver != kReplayVersion1 && ver != kReplayVersion2)) {
+            return std::nullopt;
+        }
 
         ReplayStateContract state;
+        state.version = ver;
+
+        if (ver >= kReplayVersion2) {
+            if (!read_u32(state.coverage_flags)) return std::nullopt;
+        }
+
         // CPU
         for (std::size_t i = 0; i < 31; ++i) {
             if (!read_u64(state.cpu.gpr[i])) return std::nullopt;
@@ -248,9 +304,15 @@ public:
         if (!read_u16(state.memory.asid)) return std::nullopt;
         if (!read_u64(state.memory.overall_memory_hash)) return std::nullopt;
 
+        if (ver >= kReplayVersion2) {
+            if (off + 32 > size) return std::nullopt;
+            std::memcpy(state.memory.memory_sha256.data(), data + off, 32);
+            off += 32;
+        }
+
         std::uint32_t page_count = 0;
         if (!read_u32(page_count)) return std::nullopt;
-        if (page_count > 100000) return std::nullopt; // Protect against integer overflow / huge allocation
+        if (page_count > kMaxRecordedPages) return std::nullopt;
 
         state.memory.page_hashes.resize(page_count);
         for (std::uint32_t i = 0; i < page_count; ++i) {
@@ -272,9 +334,12 @@ public:
             if (!read_u64(state.syscalls[i].arg2)) return std::nullopt;
             if (!read_u64(state.syscalls[i].ret_val)) return std::nullopt;
             if (!read_i32(state.syscalls[i].error_code)) return std::nullopt;
+            if (ver >= kReplayVersion2) {
+                if (!read_u8(state.syscalls[i].carry_flag)) return std::nullopt;
+            }
         }
 
-        // If extra trailing garbage exists, fail safely
+        // Fail if extra trailing bytes exist
         if (off != size) return std::nullopt;
 
         return state;

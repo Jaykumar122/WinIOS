@@ -5,18 +5,22 @@
 #include <vector>
 #include <mutex>
 #include <optional>
-#include <stdexcept>
+#include <functional>
+#include <limits>
 #include <string>
 
 namespace winios::memory {
 
-// Emulated Address Space ID (ASID) Manager.
+// Emulated Address Space ID (ASID) Manager V2.
 // Models architectural ASID lifecycle: allocation, generation tracking, rollover,
-// retirement, and TLB invalidation epochs to prevent stale guest translations.
+// retirement, overflow prevention, and TLB invalidation callbacks to guarantee
+// translation coherence across address-space recycling.
 class AsidManager {
 public:
     static constexpr std::uint16_t kReservedAsid = 0; // 0 is reserved for global/kernel mappings
     static constexpr std::uint16_t kDefaultMaxAsid = 255; // 8-bit ASID range (1..255)
+
+    using InvalidationCallback = std::function<void(std::uint16_t asid, bool all_asids)>;
 
     struct AsidAllocation {
         std::uint16_t asid{0};
@@ -36,6 +40,12 @@ public:
 
     ~AsidManager() = default;
 
+    // Register an invalidation hook (e.g. connecting to MMU::invalidate_tlb_asid or invalidate_tlb_all)
+    void set_invalidation_callback(InvalidationCallback cb) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        inval_cb_ = std::move(cb);
+    }
+
     // Allocate an ASID for a process. Returns the ASID and its epoch generation.
     // When the ASID pool is exhausted, generation is incremented, and needs_tlb_flush is set to true.
     AsidAllocation allocate_asid(bool& out_needs_tlb_flush) {
@@ -54,8 +64,17 @@ public:
         }
 
         // Exhaustion: advance generation epoch, roll over, and require TLB flush
-        ++generation_;
+        if (generation_ == std::numeric_limits<std::uint64_t>::max()) {
+            generation_ = 1; // Controlled generation rollover without silent overflow
+        } else {
+            ++generation_;
+        }
         out_needs_tlb_flush = true;
+
+        if (inval_cb_) {
+            inval_cb_(0, true); // Flush all TLB translations on epoch rollover
+        }
+
         // All non-reserved slots become free for reallocation in the new generation
         std::fill(in_use_.begin() + 1, in_use_.end(), false);
 
@@ -66,7 +85,7 @@ public:
         return AsidAllocation{chosen, generation_, true};
     }
 
-    // Release an ASID upon process termination
+    // Release an ASID upon process termination and trigger invalidation
     bool release_asid(std::uint16_t asid) {
         if (asid == kReservedAsid || asid > max_asid_) {
             return false;
@@ -76,6 +95,9 @@ public:
             return false;
         }
         in_use_[asid] = false;
+        if (inval_cb_) {
+            inval_cb_(asid, false); // Invalidate translations for retired ASID
+        }
         return true;
     }
 
@@ -110,6 +132,7 @@ private:
     std::uint64_t generation_{1};
     std::vector<bool> in_use_;
     std::vector<std::uint64_t> allocated_generations_;
+    InvalidationCallback inval_cb_{nullptr};
     mutable std::mutex mutex_;
 };
 
