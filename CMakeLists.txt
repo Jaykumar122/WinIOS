@@ -6767,6 +6767,82 @@ target_link_libraries(stage241_20_deterministic_replay_tests PRIVATE winios_core
 winios_set_warnings(stage241_20_deterministic_replay_tests)
 add_test(NAME stage241_20_deterministic_replay_tests COMMAND stage241_20_deterministic_replay_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 242 Tests: Guest Memory Coherence, Replay Verification & Reliability
+# -----------------------------------------------------------------------------
+add_executable(stage242_3_guest_memory_boundary_tests
+    tests/unit/stage242_3_guest_memory_boundary_tests.cpp
+)
+target_include_directories(stage242_3_guest_memory_boundary_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_3_guest_memory_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage242_3_guest_memory_boundary_tests)
+add_test(NAME stage242_3_guest_memory_boundary_tests COMMAND stage242_3_guest_memory_boundary_tests)
+
+add_executable(stage242_5_asid_lifecycle_tests
+    tests/unit/stage242_5_asid_lifecycle_tests.cpp
+)
+target_include_directories(stage242_5_asid_lifecycle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_5_asid_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage242_5_asid_lifecycle_tests)
+add_test(NAME stage242_5_asid_lifecycle_tests COMMAND stage242_5_asid_lifecycle_tests)
+
+add_executable(stage242_7_cross_process_memory_isolation_tests
+    tests/unit/stage242_7_cross_process_memory_isolation_tests.cpp
+)
+target_include_directories(stage242_7_cross_process_memory_isolation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_7_cross_process_memory_isolation_tests PRIVATE winios_core)
+winios_set_warnings(stage242_7_cross_process_memory_isolation_tests)
+add_test(NAME stage242_7_cross_process_memory_isolation_tests COMMAND stage242_7_cross_process_memory_isolation_tests)
+
+add_executable(stage242_11_guest_memory_replay_tests
+    tests/unit/stage242_11_guest_memory_replay_tests.cpp
+)
+target_include_directories(stage242_11_guest_memory_replay_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_11_guest_memory_replay_tests PRIVATE winios_core)
+winios_set_warnings(stage242_11_guest_memory_replay_tests)
+add_test(NAME stage242_11_guest_memory_replay_tests COMMAND stage242_11_guest_memory_replay_tests)
+
+add_executable(stage242_14_replay_corruption_handling_tests
+    tests/unit/stage242_14_replay_corruption_handling_tests.cpp
+)
+target_include_directories(stage242_14_replay_corruption_handling_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_14_replay_corruption_handling_tests PRIVATE winios_core)
+winios_set_warnings(stage242_14_replay_corruption_handling_tests)
+add_test(NAME stage242_14_replay_corruption_handling_tests COMMAND stage242_14_replay_corruption_handling_tests)
+
+add_executable(stage242_15_aapcs64_abi_verification_tests
+    tests/unit/stage242_15_aapcs64_abi_verification_tests.cpp
+)
+target_include_directories(stage242_15_aapcs64_abi_verification_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_15_aapcs64_abi_verification_tests PRIVATE winios_core)
+winios_set_warnings(stage242_15_aapcs64_abi_verification_tests)
+add_test(NAME stage242_15_aapcs64_abi_verification_tests COMMAND stage242_15_aapcs64_abi_verification_tests)
+
+add_executable(stage242_16_fp_simd_contract_tests
+    tests/unit/stage242_16_fp_simd_contract_tests.cpp
+)
+target_include_directories(stage242_16_fp_simd_contract_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_16_fp_simd_contract_tests PRIVATE winios_core)
+winios_set_warnings(stage242_16_fp_simd_contract_tests)
+add_test(NAME stage242_16_fp_simd_contract_tests COMMAND stage242_16_fp_simd_contract_tests)
+
+add_executable(stage242_18_syscall_pointer_boundary_tests
+    tests/unit/stage242_18_syscall_pointer_boundary_tests.cpp
+)
+target_include_directories(stage242_18_syscall_pointer_boundary_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_18_syscall_pointer_boundary_tests PRIVATE winios_core)
+winios_set_warnings(stage242_18_syscall_pointer_boundary_tests)
+add_test(NAME stage242_18_syscall_pointer_boundary_tests COMMAND stage242_18_syscall_pointer_boundary_tests)
+
+add_executable(stage242_20_four_workload_stress_tests
+    tests/unit/stage242_20_four_workload_stress_tests.cpp
+)
+target_include_directories(stage242_20_four_workload_stress_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage242_20_four_workload_stress_tests PRIVATE winios_core)
+winios_set_warnings(stage242_20_four_workload_stress_tests)
+add_test(NAME stage242_20_four_workload_stress_tests COMMAND stage242_20_four_workload_stress_tests)
+
+
 
 
 
