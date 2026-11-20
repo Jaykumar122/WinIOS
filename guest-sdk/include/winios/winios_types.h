@@ -44,6 +44,7 @@ typedef enum {
 #define WINIOS_SYS_CLOSE         6
 #define WINIOS_SYS_WAIT4         7
 #define WINIOS_SYS_GETPID        20
+#define WINIOS_SYS_GETUID        24
 #define WINIOS_SYS_PIPE          42
 #define WINIOS_SYS_SCHED_YIELD   334
 

@@ -6673,6 +6673,50 @@ target_link_libraries(stage239_21_multi_app_workload_tests PRIVATE winios_core)
 winios_set_warnings(stage239_21_multi_app_workload_tests)
 add_test(NAME stage239_21_multi_app_workload_tests COMMAND stage239_21_multi_app_workload_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 240 Tests: ARM64 Guest Execution, Mach-O Conformance & Runtime Validation
+# -----------------------------------------------------------------------------
+add_executable(stage240_2_macho_loader_conformance_tests
+    tests/unit/stage240_2_macho_loader_conformance_tests.cpp
+)
+target_include_directories(stage240_2_macho_loader_conformance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage240_2_macho_loader_conformance_tests PRIVATE winios_core)
+winios_set_warnings(stage240_2_macho_loader_conformance_tests)
+add_test(NAME stage240_2_macho_loader_conformance_tests COMMAND stage240_2_macho_loader_conformance_tests)
+
+add_executable(stage240_5_arm64_instruction_execution_tests
+    tests/unit/stage240_5_arm64_instruction_execution_tests.cpp
+)
+target_include_directories(stage240_5_arm64_instruction_execution_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage240_5_arm64_instruction_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage240_5_arm64_instruction_execution_tests)
+add_test(NAME stage240_5_arm64_instruction_execution_tests COMMAND stage240_5_arm64_instruction_execution_tests)
+
+add_executable(stage240_15_compiled_guest_workload_tests
+    tests/unit/stage240_15_compiled_guest_workload_tests.cpp
+)
+target_include_directories(stage240_15_compiled_guest_workload_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage240_15_compiled_guest_workload_tests PRIVATE winios_core)
+winios_set_warnings(stage240_15_compiled_guest_workload_tests)
+add_test(NAME stage240_15_compiled_guest_workload_tests COMMAND stage240_15_compiled_guest_workload_tests)
+
+add_executable(stage240_19_multi_app_runtime_tests
+    tests/unit/stage240_19_multi_app_runtime_tests.cpp
+)
+target_include_directories(stage240_19_multi_app_runtime_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage240_19_multi_app_runtime_tests PRIVATE winios_core)
+winios_set_warnings(stage240_19_multi_app_runtime_tests)
+add_test(NAME stage240_19_multi_app_runtime_tests COMMAND stage240_19_multi_app_runtime_tests)
+
+add_executable(stage240_21_adversarial_and_deterministic_tests
+    tests/unit/stage240_21_adversarial_and_deterministic_tests.cpp
+)
+target_include_directories(stage240_21_adversarial_and_deterministic_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage240_21_adversarial_and_deterministic_tests PRIVATE winios_core)
+winios_set_warnings(stage240_21_adversarial_and_deterministic_tests)
+add_test(NAME stage240_21_adversarial_and_deterministic_tests COMMAND stage240_21_adversarial_and_deterministic_tests)
+
+
 
 
 
