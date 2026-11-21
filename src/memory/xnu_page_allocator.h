@@ -21,6 +21,12 @@ public:
     static constexpr std::uint64_t kPageSize16K = 16384ULL;
     static constexpr std::uint64_t kPageMask16K = ~16383ULL;
 
+    enum class PageState : std::uint8_t {
+        Free = 0,
+        Allocated = 1,
+        Reserved = 2
+    };
+
     XnuPhysicalPageAllocator() = default;
     ~XnuPhysicalPageAllocator() = default;
 
@@ -42,6 +48,11 @@ public:
     std::size_t allocated_pages_count() const noexcept { return allocated_pages_count_; }
     std::size_t reserved_pages_count() const noexcept { return reserved_pages_count_; }
 
+    PageState get_frame_state(std::size_t frame_index) const;
+    bool is_frame_reserved(std::size_t frame_index) const;
+    bool is_frame_free(std::size_t frame_index) const;
+    bool is_frame_allocated(std::size_t frame_index) const;
+
     std::uint64_t ram_base() const noexcept { return ram_base_; }
     std::uint64_t ram_size() const noexcept { return ram_size_; }
 
@@ -58,14 +69,6 @@ private:
     std::size_t free_pages_count_{0};
     std::size_t allocated_pages_count_{0};
     std::size_t reserved_pages_count_{0};
-
-    // Bitmaps: 0 = Free, 1 = Allocated/Reserved
-    // 0 = Free, 1 = InUse, 2 = Reserved
-    enum class PageState : std::uint8_t {
-        Free = 0,
-        Allocated = 1,
-        Reserved = 2
-    };
 
     std::vector<PageState> page_states_;
     std::vector<PhysicalMemoryRegion> reserved_regions_;

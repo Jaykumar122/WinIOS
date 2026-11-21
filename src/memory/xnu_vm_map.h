@@ -93,7 +93,9 @@ public:
     void set_strict_wx(bool enable) noexcept { strict_wx_ = enable; }
     [[nodiscard]] bool is_strict_wx() const noexcept { return strict_wx_; }
     bool register_physical_alias(std::uint64_t va, std::uint64_t pa, std::uint64_t size, std::uint32_t prot, std::string* out_error = nullptr);
+    bool unregister_physical_alias(std::uint64_t va, std::uint64_t size, std::string* out_error = nullptr);
     [[nodiscard]] bool check_alias_wx(std::uint64_t pa, std::uint64_t size, std::uint32_t requested_prot, std::string* out_error = nullptr) const;
+    [[nodiscard]] std::size_t alias_count() const noexcept;
 
     [[nodiscard]] std::uint64_t min_offset() const noexcept { return min_offset_; }
     [[nodiscard]] std::uint64_t max_offset() const noexcept { return max_offset_; }

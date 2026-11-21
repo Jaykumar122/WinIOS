@@ -249,4 +249,24 @@ bool XnuPhysicalPageAllocator::deserialize(const std::uint8_t* data, std::size_t
     return true;
 }
 
+XnuPhysicalPageAllocator::PageState XnuPhysicalPageAllocator::get_frame_state(std::size_t frame_index) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (frame_index >= total_pages_) {
+        return PageState::Reserved;
+    }
+    return page_states_[frame_index];
+}
+
+bool XnuPhysicalPageAllocator::is_frame_reserved(std::size_t frame_index) const {
+    return get_frame_state(frame_index) == PageState::Reserved;
+}
+
+bool XnuPhysicalPageAllocator::is_frame_free(std::size_t frame_index) const {
+    return get_frame_state(frame_index) == PageState::Free;
+}
+
+bool XnuPhysicalPageAllocator::is_frame_allocated(std::size_t frame_index) const {
+    return get_frame_state(frame_index) == PageState::Allocated;
+}
+
 } // namespace winios::memory

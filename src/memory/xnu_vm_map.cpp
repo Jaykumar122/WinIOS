@@ -101,6 +101,11 @@ bool XnuVmMap::vm_map_remove(std::uint64_t start,
     }
 
     entries_.erase(it, entries_.end());
+    aliases_.erase(
+        std::remove_if(aliases_.begin(), aliases_.end(), [start, end](const PhysicalAliasRecord& a) {
+            return a.va >= start && (a.va + a.size) <= end;
+        }),
+        aliases_.end());
     return true;
 }
 
@@ -369,6 +374,25 @@ bool XnuVmMap::register_physical_alias(std::uint64_t va, std::uint64_t pa, std::
     std::lock_guard<std::mutex> lock(mutex_);
     aliases_.push_back({va, pa, size, prot});
     return true;
+}
+
+bool XnuVmMap::unregister_physical_alias(std::uint64_t va, std::uint64_t size, std::string* out_error) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const std::uint64_t end = va + size;
+    auto it = std::remove_if(aliases_.begin(), aliases_.end(), [va, end](const PhysicalAliasRecord& a) {
+        return a.va >= va && (a.va + a.size) <= end;
+    });
+    if (it == aliases_.end()) {
+        if (out_error) *out_error = "No matching physical alias found to unregister";
+        return false;
+    }
+    aliases_.erase(it, aliases_.end());
+    return true;
+}
+
+std::size_t XnuVmMap::alias_count() const noexcept {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return aliases_.size();
 }
 
 } // namespace winios::memory
