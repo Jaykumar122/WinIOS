@@ -24,6 +24,7 @@ inline constexpr std::uint64_t kBytesTransferred  = 0x20; // Completed byte coun
 inline constexpr std::uint64_t kErrorCode         = 0x28; // Last error code
 inline constexpr std::uint64_t kInterruptId       = 0x30; // Interrupt line ID
 inline constexpr std::uint64_t kDeviceId          = 0x38; // Device identification magic
+inline constexpr std::uint64_t kOwnerPid          = 0x40; // Submitting / authorized process ID
 } // namespace dma_reg
 
 // Control Register Bits
@@ -31,11 +32,13 @@ inline constexpr std::uint64_t kControlEnable     = 1ULL << 0;
 inline constexpr std::uint64_t kControlStart      = 1ULL << 1;
 inline constexpr std::uint64_t kControlReset      = 1ULL << 2;
 inline constexpr std::uint64_t kControlIrqEnable  = 1ULL << 3;
+inline constexpr std::uint64_t kControlCancel     = 1ULL << 4; // Abort active transfer
 
 // Status Register Bits
 inline constexpr std::uint64_t kStatusBusy        = 1ULL << 0;
 inline constexpr std::uint64_t kStatusComplete    = 1ULL << 1;
 inline constexpr std::uint64_t kStatusError       = 1ULL << 2;
+inline constexpr std::uint64_t kStatusCancelled   = 1ULL << 3; // Transfer was cancelled/aborted
 
 inline constexpr std::uint32_t kDefaultDmaDeviceIdMagic = 0x56444D41u; // 'VDMA'
 
@@ -87,6 +90,11 @@ public:
     // Explicit submission trigger
     VirtualDmaEngineResult trigger_transfer(std::uint64_t desc_addr, std::size_t core_id = 0);
 
+    // Process ownership, authorization & cancellation
+    void set_owner_pid(std::int32_t pid) noexcept { owner_pid_ = pid; }
+    [[nodiscard]] std::int32_t owner_pid() const noexcept { return owner_pid_; }
+    bool cancel_transfer(std::int32_t pid = -1) noexcept;
+
 private:
     void execute_submission(std::size_t core_id = 0);
 
@@ -102,6 +110,7 @@ private:
     std::uint64_t reg_bytes_transferred_{0};
     std::uint64_t reg_error_code_{0};
     std::uint64_t reg_interrupt_id_{48};
+    std::int32_t owner_pid_{-1};
 };
 
 } // namespace winios::device

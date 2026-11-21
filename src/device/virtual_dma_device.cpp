@@ -28,6 +28,7 @@ void VirtualDmaDevice::reset() noexcept {
     reg_transfer_count_ = 0;
     reg_bytes_transferred_ = 0;
     reg_error_code_ = 0;
+    owner_pid_ = -1;
     engine_.reset_telemetry();
     set_status(VirtualDeviceStatus::Idle);
 }
@@ -43,8 +44,19 @@ std::uint64_t VirtualDmaDevice::read_register(std::uint64_t offset, unsigned wid
     case dma_reg::kErrorCode:        return reg_error_code_;
     case dma_reg::kInterruptId:      return reg_interrupt_id_;
     case dma_reg::kDeviceId:         return kDefaultDmaDeviceIdMagic;
+    case dma_reg::kOwnerPid:         return static_cast<std::uint64_t>(static_cast<std::int64_t>(owner_pid_));
     default:                         return 0;
     }
+}
+
+bool VirtualDmaDevice::cancel_transfer(std::int32_t pid) noexcept {
+    if (pid == -1 || owner_pid_ == -1 || pid == owner_pid_) {
+        reg_status_ &= ~kStatusBusy;
+        reg_status_ |= kStatusCancelled;
+        set_status(VirtualDeviceStatus::Idle);
+        return true;
+    }
+    return false;
 }
 
 void VirtualDmaDevice::write_register(std::uint64_t offset, std::uint64_t value, unsigned width) {
@@ -55,6 +67,10 @@ void VirtualDmaDevice::write_register(std::uint64_t offset, std::uint64_t value,
             reset();
             return;
         }
+        if ((value & kControlCancel) != 0) {
+            cancel_transfer(owner_pid_);
+            return;
+        }
         reg_control_ = value & (kControlEnable | kControlIrqEnable);
         set_enabled((reg_control_ & kControlEnable) != 0);
         if ((value & kControlStart) != 0) {
@@ -63,13 +79,16 @@ void VirtualDmaDevice::write_register(std::uint64_t offset, std::uint64_t value,
         break;
 
     case dma_reg::kStatus:
-        // Guest can write 1 to complete/error bits to acknowledge/clear
+        // Guest can write 1 to complete/error/cancelled bits to acknowledge/clear
         if ((value & kStatusComplete) != 0) {
             reg_status_ &= ~kStatusComplete;
         }
         if ((value & kStatusError) != 0) {
             reg_status_ &= ~kStatusError;
             reg_error_code_ = 0;
+        }
+        if ((value & kStatusCancelled) != 0) {
+            reg_status_ &= ~kStatusCancelled;
         }
         break;
 
@@ -80,6 +99,10 @@ void VirtualDmaDevice::write_register(std::uint64_t offset, std::uint64_t value,
     case dma_reg::kInterruptId:
         reg_interrupt_id_ = value;
         irq_line_ = static_cast<std::uint32_t>(value);
+        break;
+
+    case dma_reg::kOwnerPid:
+        owner_pid_ = static_cast<std::int32_t>(value);
         break;
 
     default:

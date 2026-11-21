@@ -17,21 +17,25 @@ namespace winios::runtime {
 inline constexpr std::uint64_t kReplayMagic = 0x57494F535245504CULL; // "WIOSREPL"
 inline constexpr std::uint32_t kReplayVersion1 = 1;
 inline constexpr std::uint32_t kReplayVersion2 = 2;
+inline constexpr std::uint32_t kReplayVersion3 = 3;
 inline constexpr std::uint32_t kReplayCurrentVersion = 2;
 
 inline constexpr std::size_t kMaxReplayPayloadBytes = 16 * 1024 * 1024; // 16 MB maximum replay size to prevent memory exhaustion
 inline constexpr std::size_t kMaxRecordedSyscalls = 65536;
 inline constexpr std::size_t kMaxRecordedPages = 100000;
+inline constexpr std::size_t kMaxRecordedPeripheralEvents = 65536;
 
 // Replay State Coverage Bitmask
 enum ReplayCoverageFlags : std::uint32_t {
-    CoverageNone        = 0,
-    CoverageCpuGpr      = 1 << 0,
-    CoverageCpuControl  = 1 << 1,
-    CoverageMemoryHash  = 1 << 2,
-    CoveragePageHashes  = 1 << 3,
-    CoverageSyscallLog  = 1 << 4,
-    CoverageFullDefault = CoverageCpuGpr | CoverageCpuControl | CoverageMemoryHash | CoveragePageHashes | CoverageSyscallLog
+    CoverageNone             = 0,
+    CoverageCpuGpr           = 1 << 0,
+    CoverageCpuControl       = 1 << 1,
+    CoverageMemoryHash       = 1 << 2,
+    CoveragePageHashes       = 1 << 3,
+    CoverageSyscallLog       = 1 << 4,
+    CoveragePeripheralEvents = 1 << 5,
+    CoverageFullV2           = CoverageCpuGpr | CoverageCpuControl | CoverageMemoryHash | CoveragePageHashes | CoverageSyscallLog,
+    CoverageFullDefault      = CoverageFullV2 | CoveragePeripheralEvents
 };
 
 struct ReplayCpuState {
@@ -89,6 +93,40 @@ struct ReplaySyscallEntry {
     }
 };
 
+enum class ReplayPeripheralEventType : std::uint32_t {
+    None                   = 0,
+    TimerProgression       = 1,
+    TimerExpiry            = 2,
+    InterruptAssert        = 3,
+    InterruptAcknowledge   = 4,
+    InterruptPriorityDrop  = 5,
+    InterruptDeactivate    = 6,
+    DmaDescriptorSubmit    = 7,
+    DmaTransferComplete    = 8,
+    DmaTransferCancelled   = 9,
+    UartInputInjected      = 10,
+    UartOutputTransmitted  = 11,
+    DeviceReset            = 12,
+    SchedulerContextSwitch = 13
+};
+
+struct ReplayPeripheralEvent {
+    std::uint32_t event_type{0};
+    std::uint64_t sequence{0};
+    std::uint64_t timestamp{0};
+    std::uint32_t source_id{0};
+    std::uint32_t target_id{0};
+    std::uint64_t payload{0};
+    std::uint64_t extra_data{0};
+
+    bool operator==(const ReplayPeripheralEvent& o) const noexcept {
+        return event_type == o.event_type && sequence == o.sequence &&
+               timestamp == o.timestamp && source_id == o.source_id &&
+               target_id == o.target_id && payload == o.payload &&
+               extra_data == o.extra_data;
+    }
+};
+
 struct ReplayDivergence {
     bool has_diverged{false};
     std::string field_name;
@@ -102,6 +140,7 @@ public:
     ReplayCpuState cpu{};
     ReplayMemoryState memory{};
     std::vector<ReplaySyscallEntry> syscalls{};
+    std::vector<ReplayPeripheralEvent> peripheral_events{};
 
     // Helper: compute FNV-1a 64-bit non-cryptographic hash
     static std::uint64_t fnv1a_hash(const std::uint8_t* data, std::size_t len) noexcept {
@@ -190,6 +229,35 @@ public:
             }
         }
 
+        // 4. Peripheral Event Stream comparison (V3)
+        if (a.peripheral_events.size() != b.peripheral_events.size()) {
+            return {true, "peripherals.count",
+                    "Expected " + std::to_string(a.peripheral_events.size()) + ", got " + std::to_string(b.peripheral_events.size())};
+        }
+        for (std::size_t i = 0; i < a.peripheral_events.size(); ++i) {
+            const auto& e1 = a.peripheral_events[i];
+            const auto& e2 = b.peripheral_events[i];
+            if (!(e1 == e2)) {
+                if (e1.event_type != e2.event_type) {
+                    return {true, "peripherals[" + std::to_string(i) + "].event_type",
+                            "Expected " + std::to_string(e1.event_type) + ", got " + std::to_string(e2.event_type)};
+                }
+                if (e1.payload != e2.payload) {
+                    return {true, "peripherals[" + std::to_string(i) + "].payload",
+                            "Expected 0x" + to_hex(e1.payload) + ", got 0x" + to_hex(e2.payload)};
+                }
+                if (e1.source_id != e2.source_id) {
+                    return {true, "peripherals[" + std::to_string(i) + "].source_id",
+                            "Expected " + std::to_string(e1.source_id) + ", got " + std::to_string(e2.source_id)};
+                }
+                if (e1.sequence != e2.sequence) {
+                    return {true, "peripherals[" + std::to_string(i) + "].sequence",
+                            "Expected " + std::to_string(e1.sequence) + ", got " + std::to_string(e2.sequence)};
+                }
+                return {true, "peripherals[" + std::to_string(i) + "]", "Peripheral event mismatch"};
+            }
+        }
+
         return {false, "", "Identical replay state"};
     }
 
@@ -233,10 +301,24 @@ public:
             buf.push_back(sc.carry_flag);
         }
 
+        // V3: Peripheral Events
+        if (version >= kReplayVersion3) {
+            append_u32(buf, static_cast<std::uint32_t>(peripheral_events.size()));
+            for (const auto& ev : peripheral_events) {
+                append_u32(buf, ev.event_type);
+                append_u64(buf, ev.sequence);
+                append_u64(buf, ev.timestamp);
+                append_u32(buf, ev.source_id);
+                append_u32(buf, ev.target_id);
+                append_u64(buf, ev.payload);
+                append_u64(buf, ev.extra_data);
+            }
+        }
+
         return buf;
     }
 
-    // Safe deserialization with backward compatibility (supports V1 and V2)
+    // Safe deserialization with backward compatibility (supports V1, V2, and V3)
     static std::optional<ReplayStateContract> deserialize(const std::uint8_t* data, std::size_t size) {
         if (!data || size < 20 || size > kMaxReplayPayloadBytes) {
             return std::nullopt;
@@ -277,7 +359,7 @@ public:
         if (!read_u64(magic) || magic != kReplayMagic) return std::nullopt;
 
         std::uint32_t ver = 0;
-        if (!read_u32(ver) || (ver != kReplayVersion1 && ver != kReplayVersion2)) {
+        if (!read_u32(ver) || (ver != kReplayVersion1 && ver != kReplayVersion2 && ver != kReplayVersion3)) {
             return std::nullopt;
         }
 
@@ -335,6 +417,24 @@ public:
             if (!read_i32(state.syscalls[i].error_code)) return std::nullopt;
             if (ver >= kReplayVersion2) {
                 if (!read_u8(state.syscalls[i].carry_flag)) return std::nullopt;
+            }
+        }
+
+        // Peripheral Events (V3)
+        if (ver >= kReplayVersion3) {
+            std::uint32_t ev_count = 0;
+            if (!read_u32(ev_count)) return std::nullopt;
+            if (ev_count > kMaxRecordedPeripheralEvents) return std::nullopt;
+
+            state.peripheral_events.resize(ev_count);
+            for (std::uint32_t i = 0; i < ev_count; ++i) {
+                if (!read_u32(state.peripheral_events[i].event_type)) return std::nullopt;
+                if (!read_u64(state.peripheral_events[i].sequence)) return std::nullopt;
+                if (!read_u64(state.peripheral_events[i].timestamp)) return std::nullopt;
+                if (!read_u32(state.peripheral_events[i].source_id)) return std::nullopt;
+                if (!read_u32(state.peripheral_events[i].target_id)) return std::nullopt;
+                if (!read_u64(state.peripheral_events[i].payload)) return std::nullopt;
+                if (!read_u64(state.peripheral_events[i].extra_data)) return std::nullopt;
             }
         }
 
