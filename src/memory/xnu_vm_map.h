@@ -89,6 +89,12 @@ public:
     bool vm_map_wire(std::uint64_t start, std::uint64_t size, std::string* out_error = nullptr);
     bool vm_map_unwire(std::uint64_t start, std::uint64_t size, std::string* out_error = nullptr);
 
+    // W^X Enforcement & Alias Tracking
+    void set_strict_wx(bool enable) noexcept { strict_wx_ = enable; }
+    [[nodiscard]] bool is_strict_wx() const noexcept { return strict_wx_; }
+    bool register_physical_alias(std::uint64_t va, std::uint64_t pa, std::uint64_t size, std::uint32_t prot, std::string* out_error = nullptr);
+    [[nodiscard]] bool check_alias_wx(std::uint64_t pa, std::uint64_t size, std::uint32_t requested_prot, std::string* out_error = nullptr) const;
+
     [[nodiscard]] std::uint64_t min_offset() const noexcept { return min_offset_; }
     [[nodiscard]] std::uint64_t max_offset() const noexcept { return max_offset_; }
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
@@ -104,6 +110,16 @@ private:
     std::uint64_t max_offset_;
     std::string   name_;
     std::vector<VmMapEntry> entries_;
+    bool strict_wx_{false};
+
+    struct PhysicalAliasRecord {
+        std::uint64_t va{0};
+        std::uint64_t pa{0};
+        std::uint64_t size{0};
+        std::uint32_t prot{0};
+    };
+    std::vector<PhysicalAliasRecord> aliases_;
+
     mutable std::mutex mutex_;
 
     void sort_entries_locked();

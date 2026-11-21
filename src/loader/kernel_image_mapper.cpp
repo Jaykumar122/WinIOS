@@ -55,11 +55,23 @@ KernelMappingResult KernelImageMapper::map_image(
             return result;
         }
 
+        // Check for integer overflow
+        if (seg.vmaddr + seg.vmsize < seg.vmaddr) {
+            result.error_message = "Segment '" + seg.name + "' address range overflows 64-bit integer";
+            rollback(memory, result.mapped_ranges);
+            return result;
+        }
+
         std::uint64_t rel_offset = seg.vmaddr - lowest_va;
+        if (ram_base + rel_offset < ram_base) {
+            result.error_message = "Physical address calculation overflowed for segment '" + seg.name + "'";
+            rollback(memory, result.mapped_ranges);
+            return result;
+        }
         std::uint64_t phys_addr = ram_base + rel_offset;
 
         // Check RAM capacity bounds
-        if (rel_offset + seg.vmsize > ram_size) {
+        if (rel_offset + seg.vmsize < rel_offset || rel_offset + seg.vmsize > ram_size) {
             result.error_message = "Segment '" + seg.name + "' exceeds RAM capacity";
             rollback(memory, result.mapped_ranges);
             return result;
@@ -79,8 +91,8 @@ KernelMappingResult KernelImageMapper::map_image(
 
         // Validate file offsets
         if (seg.filesize > 0) {
-            if (seg.fileoff + seg.filesize > raw_image_size) {
-                result.error_message = "Segment '" + seg.name + "' file offset exceeds raw image size";
+            if (seg.fileoff + seg.filesize < seg.fileoff || seg.fileoff + seg.filesize > raw_image_size) {
+                result.error_message = "Segment '" + seg.name + "' file offset exceeds raw image size or overflows";
                 rollback(memory, result.mapped_ranges);
                 return result;
             }

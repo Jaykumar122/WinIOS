@@ -8,6 +8,7 @@
 
 #include "loader/kernel_image_parser.h"
 #include "loader/kernel_image_mapper.h"
+#include "loader/kernel_interval_map.h"
 #include "device/kernel_boot_devicetree.h"
 #include "firmware/kernel_boot_args_builder.h"
 #include "cpu/arm64_cpu_boot_state.h"
@@ -59,6 +60,8 @@ struct KernelBootResult {
     std::size_t   segments_mapped{0};
     std::size_t   bytes_mapped{0};
     std::shared_ptr<device::AppleAIC> aic{nullptr};
+    loader::KernelPhysicalIntervalMap physical_intervals;
+    loader::KernelVirtualIntervalMap  virtual_intervals;
 };
 
 // -----------------------------------------------------------------------------

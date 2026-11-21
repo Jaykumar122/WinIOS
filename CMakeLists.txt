@@ -88,6 +88,7 @@ add_library(winios_core STATIC
     src/loader/macho_fixture_corpus.cpp
     src/loader/kernel_image_parser.cpp
     src/loader/kernel_image_mapper.cpp
+    src/loader/kernel_interval_map.cpp
     src/runtime/kernel_boot_coordinator.cpp
     src/runtime/early_kernel_services.cpp
     src/runtime/smp_kernel_boot_manager.cpp
@@ -7194,6 +7195,55 @@ target_include_directories(stage250_21_kernel_replay_and_runtime_certification_t
 target_link_libraries(stage250_21_kernel_replay_and_runtime_certification_tests PRIVATE winios_core)
 winios_set_warnings(stage250_21_kernel_replay_and_runtime_certification_tests)
 add_test(NAME stage250_21_kernel_replay_and_runtime_certification_tests COMMAND stage250_21_kernel_replay_and_runtime_certification_tests)
+
+# Campaign 251 Test Targets
+add_executable(stage251_4_memory_overlap_and_wx_tests
+    tests/unit/stage251_4_memory_overlap_and_wx_tests.cpp
+)
+target_include_directories(stage251_4_memory_overlap_and_wx_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage251_4_memory_overlap_and_wx_tests PRIVATE winios_core)
+winios_set_warnings(stage251_4_memory_overlap_and_wx_tests)
+add_test(NAME stage251_4_memory_overlap_and_wx_tests COMMAND stage251_4_memory_overlap_and_wx_tests)
+
+add_executable(stage251_8_mmu_descriptors_and_aic2_tests
+    tests/unit/stage251_8_mmu_descriptors_and_aic2_tests.cpp
+)
+target_include_directories(stage251_8_mmu_descriptors_and_aic2_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage251_8_mmu_descriptors_and_aic2_tests PRIVATE winios_core)
+winios_set_warnings(stage251_8_mmu_descriptors_and_aic2_tests)
+add_test(NAME stage251_8_mmu_descriptors_and_aic2_tests COMMAND stage251_8_mmu_descriptors_and_aic2_tests)
+
+add_executable(stage251_12_source_provenance_and_entry_tests
+    tests/unit/stage251_12_source_provenance_and_entry_tests.cpp
+)
+target_include_directories(stage251_12_source_provenance_and_entry_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage251_12_source_provenance_and_entry_tests PRIVATE winios_core)
+winios_set_warnings(stage251_12_source_provenance_and_entry_tests)
+add_test(NAME stage251_12_source_provenance_and_entry_tests COMMAND stage251_12_source_provenance_and_entry_tests)
+
+add_executable(stage251_16_kernel_allocator_and_task_lifecycle_tests
+    tests/unit/stage251_16_kernel_allocator_and_task_lifecycle_tests.cpp
+)
+target_include_directories(stage251_16_kernel_allocator_and_task_lifecycle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage251_16_kernel_allocator_and_task_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage251_16_kernel_allocator_and_task_lifecycle_tests)
+add_test(NAME stage251_16_kernel_allocator_and_task_lifecycle_tests COMMAND stage251_16_kernel_allocator_and_task_lifecycle_tests)
+
+add_executable(stage251_20_scheduler_sync_and_ipc_tests
+    tests/unit/stage251_20_scheduler_sync_and_ipc_tests.cpp
+)
+target_include_directories(stage251_20_scheduler_sync_and_ipc_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage251_20_scheduler_sync_and_ipc_tests PRIVATE winios_core)
+winios_set_warnings(stage251_20_scheduler_sync_and_ipc_tests)
+add_test(NAME stage251_20_scheduler_sync_and_ipc_tests COMMAND stage251_20_scheduler_sync_and_ipc_tests)
+
+add_executable(stage251_22_boot_replay_and_security_audit_tests
+    tests/unit/stage251_22_boot_replay_and_security_audit_tests.cpp
+)
+target_include_directories(stage251_22_boot_replay_and_security_audit_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage251_22_boot_replay_and_security_audit_tests PRIVATE winios_core)
+winios_set_warnings(stage251_22_boot_replay_and_security_audit_tests)
+add_test(NAME stage251_22_boot_replay_and_security_audit_tests COMMAND stage251_22_boot_replay_and_security_audit_tests)
 
 
 

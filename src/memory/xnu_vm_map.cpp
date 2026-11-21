@@ -47,6 +47,16 @@ bool XnuVmMap::vm_map_enter(std::uint64_t start,
         return false;
     }
 
+    // Enforce W^X: cannot be simultaneously writable and executable
+    if ((prot & (kVmProtWrite | kVmProtExecute)) == (kVmProtWrite | kVmProtExecute)) {
+        if (out_error) *out_error = "vm_map_enter: W^X violation - simultaneously writable and executable";
+        return false;
+    }
+    if (strict_wx_ && ((max_prot & (kVmProtWrite | kVmProtExecute)) == (kVmProtWrite | kVmProtExecute))) {
+        if (out_error) *out_error = "vm_map_enter: W^X violation - max protection allows write and execute";
+        return false;
+    }
+
     // Check for overlap
     for (const auto& entry : entries_) {
         if (entry.overlaps(start, end)) {
@@ -101,6 +111,16 @@ bool XnuVmMap::vm_map_protect(std::uint64_t start,
                               std::string* out_error) {
     if (size == 0) {
         if (out_error) *out_error = "vm_map_protect: size cannot be zero";
+        return false;
+    }
+
+    // Enforce W^X: cannot escalate to simultaneously writable and executable
+    if ((new_prot & (kVmProtWrite | kVmProtExecute)) == (kVmProtWrite | kVmProtExecute)) {
+        if (out_error) *out_error = "vm_map_protect: W^X violation - cannot set simultaneously writable and executable";
+        return false;
+    }
+    if (strict_wx_ && set_max && ((new_prot & (kVmProtWrite | kVmProtExecute)) == (kVmProtWrite | kVmProtExecute))) {
+        if (out_error) *out_error = "vm_map_protect: W^X violation - max protection allows write and execute";
         return false;
     }
     const std::uint64_t end = start + size;
@@ -315,6 +335,39 @@ bool XnuVmMap::deserialize(const std::uint8_t* data, std::size_t size, std::stri
 
     entries_ = std::move(new_entries);
     sort_entries_locked();
+    return true;
+}
+
+bool XnuVmMap::check_alias_wx(std::uint64_t pa, std::uint64_t size, std::uint32_t requested_prot, std::string* out_error) const {
+    if (size == 0) return true;
+    const std::uint64_t pa_end = pa + size;
+    const bool req_write = (requested_prot & kVmProtWrite) != 0;
+    const bool req_exec  = (requested_prot & kVmProtExecute) != 0;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& a : aliases_) {
+        const std::uint64_t a_end = a.pa + a.size;
+        if (pa < a_end && a.pa < pa_end) {
+            const bool ex_write = (a.prot & kVmProtWrite) != 0;
+            const bool ex_exec  = (a.prot & kVmProtExecute) != 0;
+            if ((req_write && ex_exec) || (req_exec && ex_write)) {
+                if (out_error) {
+                    *out_error = "W^X violation: conflicting physical alias on PA [0x" +
+                                 std::to_string(pa) + "]: one alias is writable and another is executable";
+                }
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool XnuVmMap::register_physical_alias(std::uint64_t va, std::uint64_t pa, std::uint64_t size, std::uint32_t prot, std::string* out_error) {
+    if (!check_alias_wx(pa, size, prot, out_error)) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    aliases_.push_back({va, pa, size, prot});
     return true;
 }
 

@@ -128,6 +128,82 @@ KernelBootResult KernelBootCoordinator::prepare_and_boot(
     }
 
     // 7. Configure and Apply CPU Boot State
+    // Populate and validate machine-readable physical and virtual interval maps
+    loader::KernelPhysicalIntervalMap phys_map(config.dram_base, config.dram_size);
+    loader::KernelVirtualIntervalMap virt_map(0x0ULL, 0xFFFFFFFFFFFFFFFFULL);
+
+    for (const auto& seg : parsed_image.segments) {
+        if (seg.vmsize == 0) continue;
+        const auto itype = (seg.name == "__TEXT") ? loader::IntervalType::KernelText : loader::IntervalType::KernelData;
+        
+        loader::MemoryInterval p_iv{};
+        p_iv.name = seg.name;
+        p_iv.type = itype;
+        p_iv.base = config.dram_base + (seg.vmaddr - lowest_va);
+        p_iv.size = seg.vmsize;
+        p_iv.is_reserved = true;
+        p_iv.source_tag = "Mach-O Segment";
+        std::string p_err;
+        if (!phys_map.add_interval(p_iv, &p_err)) {
+            result.error_message = "Physical interval conflict: " + p_err;
+            return result;
+        }
+
+        loader::MemoryInterval v_iv{};
+        v_iv.name = seg.name;
+        v_iv.type = itype;
+        v_iv.base = seg.vmaddr;
+        v_iv.size = seg.vmsize;
+        v_iv.prot = seg.initprot;
+        // Enforce W^X: if segment is writable, maxprot cannot be executable
+        v_iv.max_prot = (seg.name == "__DATA" && (seg.maxprot & 0x4u)) ? (seg.maxprot & ~0x4u) : seg.maxprot;
+        v_iv.source_tag = "Mach-O Segment";
+        std::string v_err;
+        if (!virt_map.add_interval(v_iv, &v_err)) {
+            result.error_message = "Virtual interval conflict: " + v_err;
+            return result;
+        }
+    }
+
+    // Add DeviceTree interval
+    const std::uint64_t dt_aligned_size = align_up(static_cast<std::uint64_t>(dt_blob.size()), kGranule16K);
+    loader::MemoryInterval dt_piv{"DeviceTree", loader::IntervalType::DeviceTree, dt_phys, dt_aligned_size, 0x3, 0x3, true, "Boot Metadata"};
+    phys_map.add_interval(dt_piv);
+    loader::MemoryInterval dt_viv{"DeviceTree", loader::IntervalType::DeviceTree, lowest_va + (dt_phys - config.dram_base), dt_aligned_size, 0x3, 0x3, true, "Boot Metadata"};
+    virt_map.add_interval(dt_viv);
+
+    // Add BootArgs interval
+    loader::MemoryInterval ba_piv{"BootArgs", loader::IntervalType::BootArgs, ba_phys, kGranule16K, 0x3, 0x3, true, "Boot Metadata"};
+    phys_map.add_interval(ba_piv);
+    loader::MemoryInterval ba_viv{"BootArgs", loader::IntervalType::BootArgs, lowest_va + (ba_phys - config.dram_base), kGranule16K, 0x3, 0x3, true, "Boot Metadata"};
+    virt_map.add_interval(ba_viv);
+
+    // Add BootstrapStack interval
+    loader::MemoryInterval stack_piv{"BootstrapStack", loader::IntervalType::BootstrapStack, stack_base, kStackSize, 0x3, 0x3, true, "Stack"};
+    phys_map.add_interval(stack_piv);
+    loader::MemoryInterval stack_viv{"BootstrapStack", loader::IntervalType::BootstrapStack, lowest_va + (stack_base - config.dram_base), kStackSize, 0x3, 0x3, true, "Stack"};
+    virt_map.add_interval(stack_viv);
+
+    // Add PageTables interval
+    const std::uint64_t pt_base = stack_top;
+    const std::uint64_t pt_size = 0x8000ULL; // 32 KB for L1+L2 bootstrap tables
+    loader::MemoryInterval pt_piv{"PageTables", loader::IntervalType::PageTables, pt_base, pt_size, 0x3, 0x3, true, "MMU"};
+    phys_map.add_interval(pt_piv);
+
+    // Add DynamicPool interval (aligned at Frame 16: 0x40000 to reconcile with 496 managed pages)
+    std::uint64_t pool_start = pt_base + pt_size;
+    if (pool_start < 0x40000ULL) {
+        pool_start = 0x40000ULL;
+    }
+    if (pool_start < config.dram_base + config.dram_size) {
+        const std::uint64_t pool_size = (config.dram_base + config.dram_size) - pool_start;
+        loader::MemoryInterval pool_piv{"DynamicPool", loader::IntervalType::DynamicPool, pool_start, pool_size, 0x3, 0x3, false, "Free Pool"};
+        phys_map.add_interval(pool_piv);
+    }
+
+    result.physical_intervals = std::move(phys_map);
+    result.virtual_intervals = std::move(virt_map);
+
     cpu::CpuBootConfig cpu_cfg;
     cpu_cfg.initial_pc = parsed_image.entry_point_vaddr;
     cpu_cfg.initial_sp = (config.custom_initial_sp != 0) ? config.custom_initial_sp : stack_top;
