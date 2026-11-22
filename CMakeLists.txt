@@ -7584,6 +7584,59 @@ target_link_libraries(stage258_23_adversarial_lifecycle_and_maturity_gate_tests 
 winios_set_warnings(stage258_23_adversarial_lifecycle_and_maturity_gate_tests)
 add_test(NAME stage258_23_adversarial_lifecycle_and_maturity_gate_tests COMMAND stage258_23_adversarial_lifecycle_and_maturity_gate_tests)
 
+# ==============================================================================
+# Campaign 259 Targets: Authoritative XNU Saved-State ABI, Complete Context,
+# End-to-End Guest IRQ Execution & Source-to-Binary Verification (Stages 259.0 - 259.24)
+# ==============================================================================
+
+add_executable(stage259_4_upstream_abi_and_layout_verification_tests
+    tests/unit/stage259_4_upstream_abi_and_layout_verification_tests.cpp
+)
+target_include_directories(stage259_4_upstream_abi_and_layout_verification_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage259_4_upstream_abi_and_layout_verification_tests PRIVATE winios_core)
+winios_set_warnings(stage259_4_upstream_abi_and_layout_verification_tests)
+add_test(NAME stage259_4_upstream_abi_and_layout_verification_tests COMMAND stage259_4_upstream_abi_and_layout_verification_tests)
+
+add_executable(stage259_8_complete_context_save_restore_tests
+    tests/unit/stage259_8_complete_context_save_restore_tests.cpp
+)
+target_include_directories(stage259_8_complete_context_save_restore_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage259_8_complete_context_save_restore_tests PRIVATE winios_core)
+winios_set_warnings(stage259_8_complete_context_save_restore_tests)
+add_test(NAME stage259_8_complete_context_save_restore_tests COMMAND stage259_8_complete_context_save_restore_tests)
+
+add_executable(stage259_12_stack_ownership_cache_and_wx_tests
+    tests/unit/stage259_12_stack_ownership_cache_and_wx_tests.cpp
+)
+target_include_directories(stage259_12_stack_ownership_cache_and_wx_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage259_12_stack_ownership_cache_and_wx_tests PRIVATE winios_core)
+winios_set_warnings(stage259_12_stack_ownership_cache_and_wx_tests)
+add_test(NAME stage259_12_stack_ownership_cache_and_wx_tests COMMAND stage259_12_stack_ownership_cache_and_wx_tests)
+
+add_executable(stage259_16_single_end_to_end_exception_lifecycle_tests
+    tests/unit/stage259_16_single_end_to_end_exception_lifecycle_tests.cpp
+)
+target_include_directories(stage259_16_single_end_to_end_exception_lifecycle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage259_16_single_end_to_end_exception_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage259_16_single_end_to_end_exception_lifecycle_tests)
+add_test(NAME stage259_16_single_end_to_end_exception_lifecycle_tests COMMAND stage259_16_single_end_to_end_exception_lifecycle_tests)
+
+add_executable(stage259_20_eret_continuation_smp_and_provenance_tests
+    tests/unit/stage259_20_eret_continuation_smp_and_provenance_tests.cpp
+)
+target_include_directories(stage259_20_eret_continuation_smp_and_provenance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage259_20_eret_continuation_smp_and_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage259_20_eret_continuation_smp_and_provenance_tests)
+add_test(NAME stage259_20_eret_continuation_smp_and_provenance_tests COMMAND stage259_20_eret_continuation_smp_and_provenance_tests)
+
+add_executable(stage259_23_adversarial_lifecycle_and_maturity_gate_tests
+    tests/unit/stage259_23_adversarial_lifecycle_and_maturity_gate_tests.cpp
+)
+target_include_directories(stage259_23_adversarial_lifecycle_and_maturity_gate_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage259_23_adversarial_lifecycle_and_maturity_gate_tests PRIVATE winios_core)
+winios_set_warnings(stage259_23_adversarial_lifecycle_and_maturity_gate_tests)
+add_test(NAME stage259_23_adversarial_lifecycle_and_maturity_gate_tests COMMAND stage259_23_adversarial_lifecycle_and_maturity_gate_tests)
+
 
 
 

@@ -8,13 +8,23 @@ namespace winios::cpu {
 // =============================================================================
 // ARM64 Saved State ABI Specification
 // Reference: Apple Public XNU xnu-10002.1.13
-// Header: osfmk/mach/arm/thread_status.h (arm_saved_state64_t)
+// Header: osfmk/mach/arm/thread_status.h (arm_saved_state64_t, arm_saved_state_t)
 // =============================================================================
 
-// Flavor identifiers matching upstream Apple XNU osfmk/mach/arm/thread_status.h
-constexpr std::uint32_t ARM_SAVED_STATE64 = 1;
-// Count in natural_t (32-bit words): 288 bytes / 4 bytes = 72 words (previously misstated as 68).
-constexpr std::uint32_t ARM_SAVED_STATE64_COUNT = 72;
+// Apple XNU upstream kernel-private thread state flavors (osfmk/mach/arm/thread_status.h):
+//   #define THREAD_STATE_LAST 8
+//   #define ARM_SAVED_STATE32 (THREAD_STATE_LAST + 1) // 9
+//   #define ARM_SAVED_STATE64 (THREAD_STATE_LAST + 2) // 10
+constexpr std::uint32_t THREAD_STATE_LAST            = 8;
+constexpr std::uint32_t ARM_SAVED_STATE32_UPSTREAM   = THREAD_STATE_LAST + 1; // 9
+constexpr std::uint32_t ARM_SAVED_STATE64_UPSTREAM   = THREAD_STATE_LAST + 2; // 10
+
+// WinIOS historical internal flavor identifier (retained for backward compatibility):
+constexpr std::uint32_t ARM_SAVED_STATE64_WINIOS     = 1;
+constexpr std::uint32_t ARM_SAVED_STATE64            = ARM_SAVED_STATE64_WINIOS;
+
+// Count in natural_t (32-bit words): 288 bytes / 4 bytes = 72 words.
+constexpr std::uint32_t ARM_SAVED_STATE64_COUNT      = 72;
 
 #pragma pack(push, 8)
 
@@ -33,12 +43,28 @@ struct ArmSavedState64 {
     std::uint32_t exception;// 0x11C: Exception code / syndrome type
 };
 
-/// Tagged container matching Apple XNU arm_saved_state_t header + 64-bit state.
-/// Upstream reference: osfmk/mach/arm/thread_status.h struct arm_saved_state
-/// arm_state_hdr_t ash: flavor (ARM_SAVED_STATE64 = 1), count (ARM_SAVED_STATE64_COUNT = 72 words)
+/// Upstream arm_state_hdr_t matching Apple XNU osfmk/mach/arm/thread_status.h.
+/// Total size is exactly 8 bytes (0x08).
+struct arm_state_hdr_t {
+    std::uint32_t flavor;   // 0x00: Thread state flavor (e.g., ARM_SAVED_STATE64_UPSTREAM = 10)
+    std::uint32_t count;    // 0x04: Word count in 32-bit natural_t units (72 words)
+};
+
+/// Exact upstream union container matching Apple XNU struct arm_saved_state:
+/// Total size is exactly 296 bytes (0x128).
+struct ArmSavedState {
+    arm_state_hdr_t ash;    // 0x000: Upstream header (flavor + count)
+    union {
+        ArmSavedState64 ss_64; // 0x008 .. 0x128: 288-byte 64-bit frame
+    } uss;
+};
+
+using arm_saved_state_t = ArmSavedState;
+
+/// WinIOS direct wrapper container (retained for backward compatibility with existing tests).
 /// Total size is exactly 296 bytes (0x128).
 struct ArmSavedStateTagged {
-    std::uint32_t flavor;   // 0x00: ARM_SAVED_STATE64 (1)
+    std::uint32_t flavor;   // 0x00: ARM_SAVED_STATE64 (1 in WinIOS, 10 upstream)
     std::uint32_t count;    // 0x04: ARM_SAVED_STATE64_COUNT (72 words)
     ArmSavedState64 ss;     // 0x08 .. 0x128: 288-byte state frame
 };
@@ -65,6 +91,16 @@ static_assert(offsetof(ArmSavedState64, pad)      == 0x10C, "pad at offset 0x10C
 static_assert(offsetof(ArmSavedState64, far)      == 0x110, "far at offset 0x110");
 static_assert(offsetof(ArmSavedState64, esr)      == 0x118, "esr at offset 0x118");
 static_assert(offsetof(ArmSavedState64, exception)== 0x11C, "exception at offset 0x11C");
+
+// Header and Tagged Container Assertions
+static_assert(sizeof(arm_state_hdr_t) == 8, "arm_state_hdr_t must be exactly 8 bytes");
+static_assert(offsetof(arm_state_hdr_t, flavor) == 0, "arm_state_hdr_t::flavor at offset 0");
+static_assert(offsetof(arm_state_hdr_t, count)  == 4, "arm_state_hdr_t::count at offset 4");
+
+static_assert(sizeof(ArmSavedState) == 296, "ArmSavedState must be exactly 296 bytes (0x128)");
+static_assert(alignof(ArmSavedState) == 8,  "ArmSavedState alignment must be 8 bytes");
+static_assert(offsetof(ArmSavedState, ash) == 0, "ArmSavedState::ash at offset 0");
+static_assert(offsetof(ArmSavedState, uss.ss_64) == 8, "ArmSavedState::uss.ss_64 at offset 8");
 
 static_assert(sizeof(ArmSavedStateTagged) == 296, "ArmSavedStateTagged must be exactly 296 bytes (0x128)");
 static_assert(offsetof(ArmSavedStateTagged, ss) == 0x008, "ArmSavedStateTagged::ss at offset 0x008");
