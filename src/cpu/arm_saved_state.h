@@ -11,6 +11,11 @@ namespace winios::cpu {
 // Header: osfmk/mach/arm/thread_status.h (arm_saved_state64_t)
 // =============================================================================
 
+// Flavor identifiers matching upstream Apple XNU osfmk/mach/arm/thread_status.h
+constexpr std::uint32_t ARM_SAVED_STATE64 = 1;
+// Count in natural_t (32-bit words): 288 bytes / 4 bytes = 72 words (previously misstated as 68).
+constexpr std::uint32_t ARM_SAVED_STATE64_COUNT = 72;
+
 #pragma pack(push, 8)
 
 /// Exact 64-bit exception register frame matching Apple XNU arm_saved_state64_t.
@@ -29,10 +34,12 @@ struct ArmSavedState64 {
 };
 
 /// Tagged container matching Apple XNU arm_saved_state_t header + 64-bit state.
+/// Upstream reference: osfmk/mach/arm/thread_status.h struct arm_saved_state
+/// arm_state_hdr_t ash: flavor (ARM_SAVED_STATE64 = 1), count (ARM_SAVED_STATE64_COUNT = 72 words)
 /// Total size is exactly 296 bytes (0x128).
 struct ArmSavedStateTagged {
     std::uint32_t flavor;   // 0x00: ARM_SAVED_STATE64 (1)
-    std::uint32_t count;    // 0x04: ARM_SAVED_STATE64_COUNT (68 words)
+    std::uint32_t count;    // 0x04: ARM_SAVED_STATE64_COUNT (72 words)
     ArmSavedState64 ss;     // 0x08 .. 0x128: 288-byte state frame
 };
 
@@ -43,6 +50,9 @@ struct ArmSavedStateTagged {
 // -----------------------------------------------------------------------------
 static_assert(sizeof(ArmSavedState64) == 288, "ArmSavedState64 must be exactly 288 bytes (0x120)");
 static_assert(alignof(ArmSavedState64) == 8,  "ArmSavedState64 alignment must be 8 bytes");
+static_assert(sizeof(ArmSavedState64) / sizeof(std::uint32_t) == ARM_SAVED_STATE64_COUNT,
+              "ARM_SAVED_STATE64_COUNT must equal 72 words (288 bytes)");
+static_assert(ARM_SAVED_STATE64_COUNT == 72, "ARM_SAVED_STATE64_COUNT must be 72");
 
 static_assert(offsetof(ArmSavedState64, x[0])     == 0x000, "x[0] at offset 0x000");
 static_assert(offsetof(ArmSavedState64, x[28])    == 0x0E0, "x[28] at offset 0x0E0");
