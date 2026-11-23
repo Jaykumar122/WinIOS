@@ -53,13 +53,19 @@ constexpr std::uint32_t ARM_SAVED_STATE64_CAMPAIGN259    = 10; // Miscalculated 
 constexpr std::uint32_t ARM_SAVED_STATE64_WINIOS         = 1;  // WinIOS internal test flavor
 constexpr std::uint32_t ARM_SAVED_STATE64                = ARM_SAVED_STATE64_WINIOS;
 
-// Count in natural_t (32-bit words): 288 bytes / 4 bytes = 72 words.
+// Count in natural_t (32-bit words): 288 bytes / 4 bytes = 72 words (non-PAC standard).
 constexpr std::uint32_t ARM_SAVED_STATE64_COUNT          = 72;
+// ARM64e PAC Word count: (288 + 8) / 4 = 74 words (under HAS_APPLE_PAC).
+constexpr std::uint32_t ARM_SAVED_STATE64_PAC_COUNT      = 74;
+
+// Target configuration flag: Apple PAC hardware cryptographic signing engine status
+// WinIOS Level 3 emulation target profile executes non-PAC standard ARM64.
+constexpr bool kTargetHasApplePac                         = false;
 
 #pragma pack(push, 8)
 
-/// Exact 64-bit exception register frame matching Apple XNU struct arm_saved_state64.
-/// Total size is exactly 288 bytes (0x120), 8-byte member alignment.
+/// Standard non-PAC 64-bit exception register frame matching Apple XNU struct arm_saved_state64
+/// without HAS_APPLE_PAC. Total size is exactly 288 bytes (0x120), 8-byte member alignment.
 struct ArmSavedState64 {
     std::uint64_t x[29];    // 0x000 .. 0x0E0: General purpose registers X0..X28 (232 bytes)
     std::uint64_t fp;       // 0x0E8: Frame pointer (X29)
@@ -76,12 +82,34 @@ struct ArmSavedState64 {
     std::uint32_t exception;// 0x11C: Exception number / syndrome type (32-bit)
 };
 using arm_saved_state64_t = ArmSavedState64;
+using ArmSavedState64Standard = ArmSavedState64;
+
+/// Authoritative ARM64e PAC 64-bit exception register frame matching Apple XNU struct arm_saved_state64
+/// when HAS_APPLE_PAC is enabled. Includes 64-bit jophash field appended at offset 0x120.
+/// Total size is exactly 296 bytes (0x128), 8-byte member alignment, 74 natural_t words.
+struct ArmSavedState64Pac {
+    std::uint64_t x[29];    // 0x000 .. 0x0E0: General purpose registers X0..X28 (232 bytes)
+    std::uint64_t fp;       // 0x0E8: Frame pointer (X29)
+    std::uint64_t lr;       // 0x0F0: Link register (X30)
+    std::uint64_t sp;       // 0x0F8: Stack pointer (SP_EL0 or SP_EL1)
+    std::uint64_t pc;       // 0x100: Exception Link Register (ELR_EL1)
+    std::uint32_t cpsr;     // 0x108: Saved Program Status Register (SPSR_EL1)
+    union {
+        std::uint32_t reserved; // 0x10C: Reserved padding
+        std::uint32_t pad;      // 0x10C: Historical compatibility alias
+    };
+    std::uint64_t far;      // 0x110: Fault Address Register (FAR_EL1)
+    std::uint32_t esr;      // 0x118: Exception Syndrome Register (ESR_EL1, 32-bit)
+    std::uint32_t exception;// 0x11C: Exception number / syndrome type (32-bit)
+    std::uint64_t jophash;  // 0x120: JOP/ROP PAC protection hash signature (8 bytes)
+};
+using arm_saved_state64_pac_t = ArmSavedState64Pac;
 
 /// Upstream arm_state_hdr_t matching Apple XNU osfmk/mach/arm/thread_status.h.
 /// Total size is exactly 8 bytes (0x08), 4-byte member alignment.
 struct arm_state_hdr_t {
     std::uint32_t flavor;   // 0x00: Thread state flavor (e.g., ARM_SAVED_STATE64_UPSTREAM = 21)
-    std::uint32_t count;    // 0x04: Word count in 32-bit natural_t units (72 words)
+    std::uint32_t count;    // 0x04: Word count in 32-bit natural_t units (72 or 74 words)
 };
 
 /// Exact upstream tagged structure matching Apple XNU struct arm_saved_state64_tagged.
@@ -93,6 +121,14 @@ struct ArmSavedState64Tagged {
     ArmSavedState64 state;   // 0x008 .. 0x128: 288-byte state frame
 };
 using arm_saved_state64_tagged_t = ArmSavedState64Tagged;
+
+/// Exact upstream tagged structure for ARM64e PAC target.
+/// Total size: 304 bytes (0x130).
+struct ArmSavedState64TaggedPac {
+    std::uint32_t tag;          // 0x000: Tag identifying saved state
+    std::uint32_t pad;          // 0x004: Alignment padding
+    ArmSavedState64Pac state;   // 0x008 .. 0x130: 296-byte PAC state frame
+};
 
 /// WinIOS direct wrapper container (retained for backward compatibility with existing tests).
 /// Total size is exactly 296 bytes (0x128).
@@ -197,6 +233,21 @@ static_assert(std::is_trivially_copyable_v<ArmSavedState>, "ArmSavedState must b
 static_assert(std::is_standard_layout_v<ArmSavedState64Tagged>, "ArmSavedState64Tagged must be standard layout");
 static_assert(std::is_trivially_copyable_v<ArmSavedState64Tagged>, "ArmSavedState64Tagged must be trivially copyable");
 static_assert(std::is_standard_layout_v<ArmSavedStateTagged>, "ArmSavedStateTagged must be standard layout");
+
+// ARM64e PAC Variant Assertions
+static_assert(sizeof(ArmSavedState64Pac) == 296, "ArmSavedState64Pac must be exactly 296 bytes (0x128)");
+static_assert(alignof(ArmSavedState64Pac) == 8,  "ArmSavedState64Pac alignment must be 8 bytes");
+static_assert(offsetof(ArmSavedState64Pac, jophash) == 0x120, "ArmSavedState64Pac::jophash at offset 0x120");
+static_assert(sizeof(ArmSavedState64Pac) / sizeof(std::uint32_t) == ARM_SAVED_STATE64_PAC_COUNT,
+              "ARM_SAVED_STATE64_PAC_COUNT must equal 74 words (296 bytes)");
+static_assert(sizeof(ArmSavedState64TaggedPac) == 304, "ArmSavedState64TaggedPac must be 304 bytes (0x130)");
+static_assert(alignof(ArmSavedState64TaggedPac) == 8,  "ArmSavedState64TaggedPac alignment must be 8 bytes");
+static_assert(offsetof(ArmSavedState64TaggedPac, tag) == 0, "ArmSavedState64TaggedPac::tag at offset 0");
+static_assert(offsetof(ArmSavedState64TaggedPac, state) == 8, "ArmSavedState64TaggedPac::state at offset 8");
+static_assert(std::is_standard_layout_v<ArmSavedState64Pac>, "ArmSavedState64Pac must be standard layout");
+static_assert(std::is_trivially_copyable_v<ArmSavedState64Pac>, "ArmSavedState64Pac must be trivially copyable");
+static_assert(std::is_standard_layout_v<ArmSavedState64TaggedPac>, "ArmSavedState64TaggedPac must be standard layout");
+static_assert(std::is_trivially_copyable_v<ArmSavedState64TaggedPac>, "ArmSavedState64TaggedPac must be trivially copyable");
 static_assert(std::is_trivially_copyable_v<ArmSavedStateTagged>, "ArmSavedStateTagged must be trivially copyable");
 
 } // namespace winios::cpu

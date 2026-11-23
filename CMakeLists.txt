@@ -115,6 +115,7 @@ add_library(winios_core STATIC
     src/memory/kernel_heap_allocator.cpp
     src/memory/xnu_vm_map.cpp
     src/memory/xnu_zone_allocator.cpp
+    src/memory/canonical_physical_memory_map.cpp
     src/memory/user_address_space.cpp
     src/memory/guest_memory_validator.cpp
     src/kernel/task.cpp
@@ -7690,6 +7691,58 @@ target_include_directories(stage260_23_adversarial_maturity_and_regression_tests
 target_link_libraries(stage260_23_adversarial_maturity_and_regression_tests PRIVATE winios_core)
 winios_set_warnings(stage260_23_adversarial_maturity_and_regression_tests)
 add_test(NAME stage260_23_adversarial_maturity_and_regression_tests COMMAND stage260_23_adversarial_maturity_and_regression_tests)
+
+# =============================================================================
+# Campaign 261 Test Suites
+# =============================================================================
+
+add_executable(stage261_5_canonical_memory_map_and_allocator_tests
+    tests/unit/stage261_5_canonical_memory_map_and_allocator_tests.cpp
+)
+target_include_directories(stage261_5_canonical_memory_map_and_allocator_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage261_5_canonical_memory_map_and_allocator_tests PRIVATE winios_core)
+winios_set_warnings(stage261_5_canonical_memory_map_and_allocator_tests)
+add_test(NAME stage261_5_canonical_memory_map_and_allocator_tests COMMAND stage261_5_canonical_memory_map_and_allocator_tests)
+
+add_executable(stage261_8_six_core_stack_and_guard_tests
+    tests/unit/stage261_8_six_core_stack_and_guard_tests.cpp
+)
+target_include_directories(stage261_8_six_core_stack_and_guard_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage261_8_six_core_stack_and_guard_tests PRIVATE winios_core)
+winios_set_warnings(stage261_8_six_core_stack_and_guard_tests)
+add_test(NAME stage261_8_six_core_stack_and_guard_tests COMMAND stage261_8_six_core_stack_and_guard_tests)
+
+add_executable(stage261_11_arm64e_pac_and_abi_tests
+    tests/unit/stage261_11_arm64e_pac_and_abi_tests.cpp
+)
+target_include_directories(stage261_11_arm64e_pac_and_abi_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage261_11_arm64e_pac_and_abi_tests PRIVATE winios_core)
+winios_set_warnings(stage261_11_arm64e_pac_and_abi_tests)
+add_test(NAME stage261_11_arm64e_pac_and_abi_tests COMMAND stage261_11_arm64e_pac_and_abi_tests)
+
+add_executable(stage261_15_exception_save_restore_and_adversarial_tests
+    tests/unit/stage261_15_exception_save_restore_and_adversarial_tests.cpp
+)
+target_include_directories(stage261_15_exception_save_restore_and_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage261_15_exception_save_restore_and_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage261_15_exception_save_restore_and_adversarial_tests)
+add_test(NAME stage261_15_exception_save_restore_and_adversarial_tests COMMAND stage261_15_exception_save_restore_and_adversarial_tests)
+
+add_executable(stage261_19_timer_semantics_aic2_trace_and_smp_tests
+    tests/unit/stage261_19_timer_semantics_aic2_trace_and_smp_tests.cpp
+)
+target_include_directories(stage261_19_timer_semantics_aic2_trace_and_smp_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage261_19_timer_semantics_aic2_trace_and_smp_tests PRIVATE winios_core)
+winios_set_warnings(stage261_19_timer_semantics_aic2_trace_and_smp_tests)
+add_test(NAME stage261_19_timer_semantics_aic2_trace_and_smp_tests COMMAND stage261_19_timer_semantics_aic2_trace_and_smp_tests)
+
+add_executable(stage261_23_independent_auditor_and_maturity_tests
+    tests/unit/stage261_23_independent_auditor_and_maturity_tests.cpp
+)
+target_include_directories(stage261_23_independent_auditor_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage261_23_independent_auditor_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage261_23_independent_auditor_and_maturity_tests)
+add_test(NAME stage261_23_independent_auditor_and_maturity_tests COMMAND stage261_23_independent_auditor_and_maturity_tests)
 
 
 
