@@ -7851,6 +7851,59 @@ target_link_libraries(stage263_24_six_core_provenance_and_maturity_tests PRIVATE
 winios_set_warnings(stage263_24_six_core_provenance_and_maturity_tests)
 add_test(NAME stage263_24_six_core_provenance_and_maturity_tests COMMAND stage263_24_six_core_provenance_and_maturity_tests)
 
+# =============================================================================
+# Campaign 264: Independent ARM64/ARM64e ABI Verification, PAC State Integrity,
+#               Exception Binary Conformance, Memory Ownership & Reproducible Evidence
+# =============================================================================
+
+add_executable(stage264_6_abi_upstream_audit_and_authoritative_frame_tests
+    tests/unit/stage264_6_abi_upstream_audit_and_authoritative_frame_tests.cpp
+)
+target_include_directories(stage264_6_abi_upstream_audit_and_authoritative_frame_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage264_6_abi_upstream_audit_and_authoritative_frame_tests PRIVATE winios_core)
+winios_set_warnings(stage264_6_abi_upstream_audit_and_authoritative_frame_tests)
+add_test(NAME stage264_6_abi_upstream_audit_and_authoritative_frame_tests COMMAND stage264_6_abi_upstream_audit_and_authoritative_frame_tests)
+
+add_executable(stage264_12_dual_origin_entry_restore_and_oracle_tests
+    tests/unit/stage264_12_dual_origin_entry_restore_and_oracle_tests.cpp
+)
+target_include_directories(stage264_12_dual_origin_entry_restore_and_oracle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage264_12_dual_origin_entry_restore_and_oracle_tests PRIVATE winios_core)
+winios_set_warnings(stage264_12_dual_origin_entry_restore_and_oracle_tests)
+add_test(NAME stage264_12_dual_origin_entry_restore_and_oracle_tests COMMAND stage264_12_dual_origin_entry_restore_and_oracle_tests)
+
+add_executable(stage264_14_nested_daif_and_stack_high_water_tests
+    tests/unit/stage264_14_nested_daif_and_stack_high_water_tests.cpp
+)
+target_include_directories(stage264_14_nested_daif_and_stack_high_water_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage264_14_nested_daif_and_stack_high_water_tests PRIVATE winios_core)
+winios_set_warnings(stage264_14_nested_daif_and_stack_high_water_tests)
+add_test(NAME stage264_14_nested_daif_and_stack_high_water_tests COMMAND stage264_14_nested_daif_and_stack_high_water_tests)
+
+add_executable(stage264_16_memory_migration_and_ownership_allocator_tests
+    tests/unit/stage264_16_memory_migration_and_ownership_allocator_tests.cpp
+)
+target_include_directories(stage264_16_memory_migration_and_ownership_allocator_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage264_16_memory_migration_and_ownership_allocator_tests PRIVATE winios_core)
+winios_set_warnings(stage264_16_memory_migration_and_ownership_allocator_tests)
+add_test(NAME stage264_16_memory_migration_and_ownership_allocator_tests COMMAND stage264_16_memory_migration_and_ownership_allocator_tests)
+
+add_executable(stage264_20_timer_property_testing_and_aic2_trace_tests
+    tests/unit/stage264_20_timer_property_testing_and_aic2_trace_tests.cpp
+)
+target_include_directories(stage264_20_timer_property_testing_and_aic2_trace_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage264_20_timer_property_testing_and_aic2_trace_tests PRIVATE winios_core)
+winios_set_warnings(stage264_20_timer_property_testing_and_aic2_trace_tests)
+add_test(NAME stage264_20_timer_property_testing_and_aic2_trace_tests COMMAND stage264_20_timer_property_testing_and_aic2_trace_tests)
+
+add_executable(stage264_24_six_core_mutation_campaign_and_maturity_tests
+    tests/unit/stage264_24_six_core_mutation_campaign_and_maturity_tests.cpp
+)
+target_include_directories(stage264_24_six_core_mutation_campaign_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage264_24_six_core_mutation_campaign_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage264_24_six_core_mutation_campaign_and_maturity_tests)
+add_test(NAME stage264_24_six_core_mutation_campaign_and_maturity_tests COMMAND stage264_24_six_core_mutation_campaign_and_maturity_tests)
+
 
 
 
