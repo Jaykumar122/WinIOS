@@ -371,10 +371,22 @@ bool IndependentStackAndExceptionAuditor::test_mutation_detection(MutationType m
     }
 
     case MutationType::MissingThreadStackGuard: {
-        // Deliberate mutation 5: Layout without thread guard
-        auto map = CanonicalPhysicalMemoryMap::create_canonical_iphone15_layout(); // Legacy layout has no independent thread guard!
-        auto r = audit_canonical_memory_and_stacks(map);
+        // Deliberate mutation 5: Layout without Core 0 thread guard
+        auto map = CanonicalPhysicalMemoryMap::create_canonical_dual_stack_layout();
+        CanonicalPhysicalMemoryMap bad_map;
+        for (const auto& iv : map.intervals()) {
+            if (iv.name != "Core0_ThreadGuard") {
+                bad_map.add_interval(iv);
+            }
+        }
+        auto r = audit_canonical_memory_and_stacks(bad_map);
         if (!r.passed) {
+            for (const auto& err : r.errors) {
+                if (err.find("thread guard") != std::string::npos) {
+                    if (out_detection_msg) *out_detection_msg = err;
+                    return true;
+                }
+            }
             if (out_detection_msg) *out_detection_msg = r.errors.empty() ? "Detected" : r.errors[0];
             return true;
         }
@@ -393,6 +405,12 @@ bool IndependentStackAndExceptionAuditor::test_mutation_detection(MutationType m
         }
         auto r = audit_canonical_memory_and_stacks(bad_map);
         if (!r.passed) {
+            for (const auto& err : r.errors) {
+                if (err.find("interrupt guard") != std::string::npos) {
+                    if (out_detection_msg) *out_detection_msg = err;
+                    return true;
+                }
+            }
             if (out_detection_msg) *out_detection_msg = r.errors.empty() ? "Detected" : r.errors[0];
             return true;
         }
@@ -589,6 +607,38 @@ bool IndependentStackAndExceptionAuditor::test_mutation_detection(MutationType m
     }
     }
 
+    return false;
+}
+
+bool IndependentStackAndExceptionAuditor::audit_single_guard_removal(std::size_t core_id,
+                                                                     bool is_thread_guard,
+                                                                     std::string* out_error) const {
+    if (core_id >= kNumCores) return false;
+
+    std::string target_guard = "Core" + std::to_string(core_id) +
+                               (is_thread_guard ? "_ThreadGuard" : "_InterruptGuard");
+
+    auto map = CanonicalPhysicalMemoryMap::create_canonical_dual_stack_layout();
+    CanonicalPhysicalMemoryMap bad_map;
+    for (const auto& iv : map.intervals()) {
+        if (iv.name != target_guard) {
+            bad_map.add_interval(iv);
+        }
+    }
+
+    auto r = audit_canonical_memory_and_stacks(bad_map);
+    if (!r.passed) {
+        std::string expected_sub = is_thread_guard ? "missing thread guard interval" : "missing interrupt guard interval";
+        std::string core_prefix = "Core " + std::to_string(core_id);
+        for (const auto& err : r.errors) {
+            if (err.find(core_prefix) != std::string::npos && err.find(expected_sub) != std::string::npos) {
+                if (out_error) *out_error = err;
+                return true;
+            }
+        }
+        if (out_error && !r.errors.empty()) *out_error = r.errors[0];
+        return true;
+    }
     return false;
 }
 

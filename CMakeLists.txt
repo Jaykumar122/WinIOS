@@ -7798,6 +7798,59 @@ target_link_libraries(stage262_24_maturity_and_regression_tests PRIVATE winios_c
 winios_set_warnings(stage262_24_maturity_and_regression_tests)
 add_test(NAME stage262_24_maturity_and_regression_tests COMMAND stage262_24_maturity_and_regression_tests)
 
+# =============================================================================
+# Campaign 263: Dual-Origin Exception Integrity, PAC Frames, Nested Safety,
+#               Timer Overflow Hardening & Binary Provenance
+# =============================================================================
+
+add_executable(stage263_4_abi_pac_profiles_and_frame_layout_tests
+    tests/unit/stage263_4_abi_pac_profiles_and_frame_layout_tests.cpp
+)
+target_include_directories(stage263_4_abi_pac_profiles_and_frame_layout_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage263_4_abi_pac_profiles_and_frame_layout_tests PRIVATE winios_core)
+winios_set_warnings(stage263_4_abi_pac_profiles_and_frame_layout_tests)
+add_test(NAME stage263_4_abi_pac_profiles_and_frame_layout_tests COMMAND stage263_4_abi_pac_profiles_and_frame_layout_tests)
+
+add_executable(stage263_11_dual_origin_pac_and_adversarial_tests
+    tests/unit/stage263_11_dual_origin_pac_and_adversarial_tests.cpp
+)
+target_include_directories(stage263_11_dual_origin_pac_and_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage263_11_dual_origin_pac_and_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage263_11_dual_origin_pac_and_adversarial_tests)
+add_test(NAME stage263_11_dual_origin_pac_and_adversarial_tests COMMAND stage263_11_dual_origin_pac_and_adversarial_tests)
+
+add_executable(stage263_14_nested_exception_and_auditor_diagnostic_tests
+    tests/unit/stage263_14_nested_exception_and_auditor_diagnostic_tests.cpp
+)
+target_include_directories(stage263_14_nested_exception_and_auditor_diagnostic_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage263_14_nested_exception_and_auditor_diagnostic_tests PRIVATE winios_core)
+winios_set_warnings(stage263_14_nested_exception_and_auditor_diagnostic_tests)
+add_test(NAME stage263_14_nested_exception_and_auditor_diagnostic_tests COMMAND stage263_14_nested_exception_and_auditor_diagnostic_tests)
+
+add_executable(stage263_16_memory_map_allocator_and_adversarial_tests
+    tests/unit/stage263_16_memory_map_allocator_and_adversarial_tests.cpp
+)
+target_include_directories(stage263_16_memory_map_allocator_and_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage263_16_memory_map_allocator_and_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage263_16_memory_map_allocator_and_adversarial_tests)
+add_test(NAME stage263_16_memory_map_allocator_and_adversarial_tests COMMAND stage263_16_memory_map_allocator_and_adversarial_tests)
+
+add_executable(stage263_20_timer_hardening_oracle_and_aic2_tests
+    tests/unit/stage263_20_timer_hardening_oracle_and_aic2_tests.cpp
+)
+target_include_directories(stage263_20_timer_hardening_oracle_and_aic2_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage263_20_timer_hardening_oracle_and_aic2_tests PRIVATE winios_core)
+winios_set_warnings(stage263_20_timer_hardening_oracle_and_aic2_tests)
+add_test(NAME stage263_20_timer_hardening_oracle_and_aic2_tests COMMAND stage263_20_timer_hardening_oracle_and_aic2_tests)
+
+add_executable(stage263_24_six_core_provenance_and_maturity_tests
+    tests/unit/stage263_24_six_core_provenance_and_maturity_tests.cpp
+)
+target_include_directories(stage263_24_six_core_provenance_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage263_24_six_core_provenance_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage263_24_six_core_provenance_and_maturity_tests)
+add_test(NAME stage263_24_six_core_provenance_and_maturity_tests COMMAND stage263_24_six_core_provenance_and_maturity_tests)
+
 
 
 

@@ -19,10 +19,32 @@ struct PerCoreTimerState {
     std::uint64_t last_rearm_elapsed_periods{0};
 };
 
+enum class TimerRearmStatus : std::uint32_t {
+    Success = 0,
+    InvalidPeriod = 1,
+    InvalidCore = 2,
+    CounterBehindDeadline = 3,
+    MultiplicationOverflow = 4,
+    DeadlineSaturated = 5
+};
+
+constexpr const char* timer_rearm_status_to_string(TimerRearmStatus status) noexcept {
+    switch (status) {
+        case TimerRearmStatus::Success:                return "Success";
+        case TimerRearmStatus::InvalidPeriod:          return "InvalidPeriod";
+        case TimerRearmStatus::InvalidCore:            return "InvalidCore";
+        case TimerRearmStatus::CounterBehindDeadline:   return "CounterBehindDeadline";
+        case TimerRearmStatus::MultiplicationOverflow: return "MultiplicationOverflow";
+        case TimerRearmStatus::DeadlineSaturated:      return "DeadlineSaturated";
+    }
+    return "UnknownStatus";
+}
+
 struct TimerRearmResult {
     std::uint64_t elapsed_periods{0};
     std::uint64_t next_deadline{0};
     std::uint64_t missed_ticks{0};
+    TimerRearmStatus status{TimerRearmStatus::Success};
 };
 
 class DeterministicVirtualTimer {

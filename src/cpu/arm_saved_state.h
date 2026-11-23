@@ -250,4 +250,100 @@ static_assert(std::is_standard_layout_v<ArmSavedState64TaggedPac>, "ArmSavedStat
 static_assert(std::is_trivially_copyable_v<ArmSavedState64TaggedPac>, "ArmSavedState64TaggedPac must be trivially copyable");
 static_assert(std::is_trivially_copyable_v<ArmSavedStateTagged>, "ArmSavedStateTagged must be trivially copyable");
 
+// -----------------------------------------------------------------------------
+// Campaign 263: Execution Profiles & Authoritative Frame Layout Derivation
+// -----------------------------------------------------------------------------
+enum class ExecutionProfile : std::uint32_t {
+    ARM64_Standard = 0, // ARM64 baseline without Apple PAC (288-byte state)
+    ARM64e_PAC     = 1  // ARM64e with Apple PAC (296-byte state, 304-byte aligned frame)
+};
+
+constexpr const char* execution_profile_to_string(ExecutionProfile profile) noexcept {
+    switch (profile) {
+        case ExecutionProfile::ARM64_Standard: return "ARM64_Standard";
+        case ExecutionProfile::ARM64e_PAC:     return "ARM64e_PAC";
+    }
+    return "UnknownProfile";
+}
+
+struct ExceptionFrameLayout {
+    ExecutionProfile profile{ExecutionProfile::ARM64_Standard};
+    std::size_t      raw_saved_state_size{288};
+    std::size_t      frame_allocation_size{288}; // 16-byte aligned for ARM64 stack architecture
+    std::size_t      saved_state_word_count{72};
+    std::size_t      tagged_wrapper_size{296};
+    std::size_t      union_wrapper_size{304};
+    bool             has_apple_pac{false};
+
+    // Member field offsets within the saved state payload
+    std::size_t      gpr_offset{0x000};
+    std::size_t      fp_offset{0x0E8};
+    std::size_t      lr_offset{0x0F0};
+    std::size_t      sp_offset{0x0F8};
+    std::size_t      pc_offset{0x100};
+    std::size_t      cpsr_offset{0x108};
+    std::size_t      far_offset{0x110};
+    std::size_t      esr_offset{0x118};
+    std::size_t      exception_code_offset{0x11C};
+    std::size_t      jophash_offset{0x120}; // Only valid if has_apple_pac is true
+};
+
+constexpr ExceptionFrameLayout get_exception_frame_layout(ExecutionProfile profile) noexcept {
+    if (profile == ExecutionProfile::ARM64e_PAC) {
+        // Under HAS_APPLE_PAC:
+        // Raw state size = 296 bytes (74 words)
+        // Mandatory ARM64 16-byte SP alignment: ceil(296 / 16) * 16 = 304 bytes!
+        return ExceptionFrameLayout{
+            .profile = ExecutionProfile::ARM64e_PAC,
+            .raw_saved_state_size = sizeof(ArmSavedState64Pac),
+            .frame_allocation_size = 304,
+            .saved_state_word_count = ARM_SAVED_STATE64_PAC_COUNT,
+            .tagged_wrapper_size = sizeof(ArmSavedState64TaggedPac),
+            .union_wrapper_size = 320,
+            .has_apple_pac = true,
+            .gpr_offset = offsetof(ArmSavedState64Pac, x[0]),
+            .fp_offset = offsetof(ArmSavedState64Pac, fp),
+            .lr_offset = offsetof(ArmSavedState64Pac, lr),
+            .sp_offset = offsetof(ArmSavedState64Pac, sp),
+            .pc_offset = offsetof(ArmSavedState64Pac, pc),
+            .cpsr_offset = offsetof(ArmSavedState64Pac, cpsr),
+            .far_offset = offsetof(ArmSavedState64Pac, far),
+            .esr_offset = offsetof(ArmSavedState64Pac, esr),
+            .exception_code_offset = offsetof(ArmSavedState64Pac, exception),
+            .jophash_offset = offsetof(ArmSavedState64Pac, jophash),
+        };
+    } else {
+        // Standard non-PAC profile:
+        // Raw state size = 288 bytes (72 words)
+        // 288 % 16 == 0, so frame_allocation_size = 288 bytes!
+        return ExceptionFrameLayout{
+            .profile = ExecutionProfile::ARM64_Standard,
+            .raw_saved_state_size = sizeof(ArmSavedState64),
+            .frame_allocation_size = 288,
+            .saved_state_word_count = ARM_SAVED_STATE64_COUNT,
+            .tagged_wrapper_size = sizeof(ArmSavedStateTagged),
+            .union_wrapper_size = sizeof(ArmSavedState),
+            .has_apple_pac = false,
+            .gpr_offset = offsetof(ArmSavedState64, x[0]),
+            .fp_offset = offsetof(ArmSavedState64, fp),
+            .lr_offset = offsetof(ArmSavedState64, lr),
+            .sp_offset = offsetof(ArmSavedState64, sp),
+            .pc_offset = offsetof(ArmSavedState64, pc),
+            .cpsr_offset = offsetof(ArmSavedState64, cpsr),
+            .far_offset = offsetof(ArmSavedState64, far),
+            .esr_offset = offsetof(ArmSavedState64, esr),
+            .exception_code_offset = offsetof(ArmSavedState64, exception),
+            .jophash_offset = 0,
+        };
+    }
+}
+
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64_Standard).raw_saved_state_size == 288);
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64_Standard).frame_allocation_size == 288);
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64_Standard).frame_allocation_size % 16 == 0);
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64e_PAC).raw_saved_state_size == 296);
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64e_PAC).frame_allocation_size == 304);
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64e_PAC).frame_allocation_size % 16 == 0);
+static_assert(get_exception_frame_layout(ExecutionProfile::ARM64e_PAC).jophash_offset == 0x120);
+
 } // namespace winios::cpu

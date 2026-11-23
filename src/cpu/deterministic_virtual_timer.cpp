@@ -96,7 +96,15 @@ void DeterministicVirtualTimer::acknowledge(std::size_t core_id) noexcept {
 
 TimerRearmResult DeterministicVirtualTimer::rearm_periodic(std::size_t core_id, std::uint64_t interval_ticks) noexcept {
     TimerRearmResult res{};
-    if (core_id >= kMaxCores || interval_ticks == 0) return res;
+    if (core_id >= kMaxCores) {
+        res.status = TimerRearmStatus::InvalidCore;
+        return res;
+    }
+    if (interval_ticks == 0) {
+        res.status = TimerRearmStatus::InvalidPeriod;
+        res.next_deadline = cores_[core_id].comparator;
+        return res;
+    }
     
     auto& cs = cores_[core_id];
     ++cs.total_rearms;
@@ -109,19 +117,36 @@ TimerRearmResult DeterministicVirtualTimer::rearm_periodic(std::size_t core_id, 
         // Initial setup or rearming before expiration
         res.elapsed_periods = 1;
         res.missed_ticks = 0;
-        res.next_deadline = (D == UINT64_MAX) ? (C + P) : (D + P);
+        const std::uint64_t base = (D == UINT64_MAX) ? C : D;
+        if (UINT64_MAX - base < P) {
+            res.next_deadline = UINT64_MAX;
+            res.status = TimerRearmStatus::DeadlineSaturated;
+        } else {
+            res.next_deadline = base + P;
+            res.status = TimerRearmStatus::Success;
+        }
     } else {
         // Delayed service: counter has reached or exceeded comparator deadline D
         // n = floor((C - D) / P) + 1
-        const std::uint64_t n = ((C - D) / P) + 1;
+        const std::uint64_t delta = C - D;
+        const std::uint64_t n = (delta / P) + 1;
         res.elapsed_periods = n;
         res.missed_ticks = (n > 0) ? (n - 1) : 0;
         
-        const std::uint64_t advance = n * P;
-        if (UINT64_MAX - D < advance) {
+        // Checked multiplication: n * P
+        const bool mult_overflow = (n > 0 && P > (UINT64_MAX / n));
+        if (mult_overflow) {
             res.next_deadline = UINT64_MAX;
+            res.status = TimerRearmStatus::MultiplicationOverflow;
         } else {
-            res.next_deadline = D + advance;
+            const std::uint64_t advance = n * P;
+            if (UINT64_MAX - D < advance) {
+                res.next_deadline = UINT64_MAX;
+                res.status = TimerRearmStatus::DeadlineSaturated;
+            } else {
+                res.next_deadline = D + advance;
+                res.status = TimerRearmStatus::Success;
+            }
         }
         
         cs.missed_ticks += res.missed_ticks;
