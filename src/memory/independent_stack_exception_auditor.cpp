@@ -649,4 +649,130 @@ bool IndependentStackAndExceptionAuditor::audit_single_guard_removal(const Canon
     return false;
 }
 
+AuditorCheckResult IndependentStackAndExceptionAuditor::audit_512_frame_ownership_invariants(const CanonicalPhysicalMemoryMap& map) const {
+    AuditorCheckResult result;
+
+    // Check pairwise overlap and duplicate ownership across all intervals
+    const auto& ivs = map.intervals();
+    for (std::size_t i = 0; i < ivs.size(); ++i) {
+        for (std::size_t j = i + 1; j < ivs.size(); ++j) {
+            if (ivs[i].overlaps_with(ivs[j])) {
+                result.passed = false;
+                result.errors.push_back("Duplicate ownership / interval overlap detected between [" + ivs[i].name + "] and [" + ivs[j].name + "]");
+            }
+        }
+    }
+
+    auto inventory = map.generate_512_frame_inventory();
+
+    if (inventory.size() != CanonicalPhysicalMemoryMap::kTotalRamFrames) {
+        result.passed = false;
+        result.errors.push_back("Inventory size mismatch: expected 512 frames, got " + std::to_string(inventory.size()));
+        return result;
+    }
+
+    std::size_t free_frames_count = 0;
+    std::size_t reserved_frames_count = 0;
+    std::size_t guard_frames_count = 0;
+
+    for (std::size_t i = 0; i < inventory.size(); ++i) {
+        const auto& f = inventory[i];
+
+        // 1. Alignment check
+        if (f.frame_index != i) {
+            result.passed = false;
+            result.errors.push_back("Frame index mismatch at position " + std::to_string(i));
+        }
+        if (f.physical_start % CanonicalPhysicalMemoryMap::kPageGranule16K != 0) {
+            result.passed = false;
+            result.errors.push_back("Frame " + std::to_string(i) + " physical start is not 16 KiB aligned");
+        }
+        if (f.physical_end != f.physical_start + CanonicalPhysicalMemoryMap::kPageGranule16K) {
+            result.passed = false;
+            result.errors.push_back("Frame " + std::to_string(i) + " size is not 16 KiB");
+        }
+
+        // 2. Ownership completeness
+        if (f.owner.empty() || f.name == "UnmappedHole") {
+            result.passed = false;
+            result.errors.push_back("Frame " + std::to_string(i) + " is unowned or unmapped hole");
+        }
+
+        // 3. W^X compliance
+        if ((f.permissions & 0x6u) == 0x6u) {
+            result.passed = false;
+            result.errors.push_back("Frame " + std::to_string(i) + " violates W^X policy (both writable and executable)");
+        }
+
+        // 4. Guard properties
+        if (f.region_type == "Guard") {
+            guard_frames_count++;
+            if (f.is_mapped) {
+                result.passed = false;
+                result.errors.push_back("Guard frame " + std::to_string(i) + " must be unmapped");
+            }
+            if (f.permissions != 0) {
+                result.passed = false;
+                result.errors.push_back("Guard frame " + std::to_string(i) + " must have PROT_NONE permissions");
+            }
+            if (f.allocator_eligible) {
+                result.passed = false;
+                result.errors.push_back("Guard frame " + std::to_string(i) + " cannot be allocator eligible");
+            }
+        }
+
+        // 5. Partition tracking
+        if (f.allocator_eligible) {
+            free_frames_count++;
+            if (i < 54) {
+                result.passed = false;
+                result.errors.push_back("Reserved region frame " + std::to_string(i) + " incorrectly marked allocator eligible");
+            }
+        } else {
+            reserved_frames_count++;
+            if (i >= 54) {
+                result.passed = false;
+                result.errors.push_back("Free pool frame " + std::to_string(i) + " incorrectly marked reserved");
+            }
+        }
+    }
+
+    if (reserved_frames_count != 54) {
+        result.passed = false;
+        result.errors.push_back("Reserved frame count mismatch: expected 54, got " + std::to_string(reserved_frames_count));
+    }
+    if (free_frames_count != 458) {
+        result.passed = false;
+        result.errors.push_back("Free pool frame count mismatch: expected 458, got " + std::to_string(free_frames_count));
+    }
+    if (guard_frames_count != 13) { // 12 core guards + 1 diagnostic guard
+        result.passed = false;
+        result.errors.push_back("Guard frame count mismatch: expected 13, got " + std::to_string(guard_frames_count));
+    }
+
+    return result;
+}
+
+bool IndependentStackAndExceptionAuditor::validate_guard_access_rejection(const CanonicalPhysicalMemoryMap& map,
+                                                                         std::uint64_t address,
+                                                                         bool is_write,
+                                                                         std::string* out_diagnostic) const {
+    const auto* iv = map.find_interval_by_address(address);
+    if (!iv) {
+        if (out_diagnostic) *out_diagnostic = "Address 0x" + std::to_string(address) + " unmapped";
+        return true; // Rejected as unmapped
+    }
+
+    if (iv->memory_type == "Guard" || !iv->is_mapped || iv->permissions == 0) {
+        if (out_diagnostic) {
+            *out_diagnostic = "GuardAccessViolation: " + (is_write ? std::string("Write") : std::string("Read")) +
+                              " to guard page [" + iv->name + "] at 0x" + std::to_string(address) + " rejected with PROT_NONE";
+        }
+        return true; // Correctly rejected!
+    }
+
+    if (out_diagnostic) *out_diagnostic = "Access allowed (not a guard)";
+    return false; // Not rejected (allowed access)
+}
+
 } // namespace winios::memory

@@ -145,12 +145,32 @@ public:
     };
     [[nodiscard]] std::optional<CoreStackGeometry> get_core_stack_geometry(std::size_t core_id) const;
 
+    // Frame descriptor for 512-frame line-by-line machine-readable inventory (Stage 266.6)
+    struct FrameDescriptor {
+        std::size_t   frame_index{0};
+        std::uint64_t physical_start{0};
+        std::uint64_t physical_end{0};
+        std::string   name;
+        std::string   owner;
+        std::string   region_type;
+        std::uint32_t permissions{0};
+        bool          is_mapped{false};
+        bool          allocator_eligible{false};
+        std::int32_t  core_ownership{-1};
+        std::string   provenance;
+        std::string   allocation_reason;
+    };
+
+    [[nodiscard]] std::vector<FrameDescriptor> generate_512_frame_inventory() const;
+
     // Build the default authoritative iPhone 15 A16 8 MiB canonical layout
     static CanonicalPhysicalMemoryMap create_canonical_iphone15_layout();
     // Build the Campaign 262 dual-stack, independent-guard canonical layout
     static CanonicalPhysicalMemoryMap create_canonical_dual_stack_layout();
     // Build the Campaign 265 reconstructed six-core (30-frame) authoritative layout
     static CanonicalPhysicalMemoryMap create_canonical_campaign265_layout();
+    // Build the Campaign 266 authoritative 512-frame layout (Stages 266.6-266.10)
+    static CanonicalPhysicalMemoryMap create_canonical_campaign266_layout();
 
 private:
     std::uint64_t ram_base_;

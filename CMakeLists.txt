@@ -7957,6 +7957,58 @@ target_link_libraries(stage265_24_mutation_campaign_provenance_and_maturity_test
 winios_set_warnings(stage265_24_mutation_campaign_provenance_and_maturity_tests)
 add_test(NAME stage265_24_mutation_campaign_provenance_and_maturity_tests COMMAND stage265_24_mutation_campaign_provenance_and_maturity_tests)
 
+# -----------------------------------------------------------------------------
+# Campaign 266: Stages 266.0 - 266.24 Engineering Test Targets
+# -----------------------------------------------------------------------------
+add_executable(stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests
+    tests/unit/stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests.cpp
+)
+target_include_directories(stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests PRIVATE winios_core)
+winios_set_warnings(stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests)
+add_test(NAME stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests COMMAND stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests)
+
+add_executable(stage266_10_512_frame_inventory_migration_and_allocator_tests
+    tests/unit/stage266_10_512_frame_inventory_migration_and_allocator_tests.cpp
+)
+target_include_directories(stage266_10_512_frame_inventory_migration_and_allocator_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage266_10_512_frame_inventory_migration_and_allocator_tests PRIVATE winios_core)
+winios_set_warnings(stage266_10_512_frame_inventory_migration_and_allocator_tests)
+add_test(NAME stage266_10_512_frame_inventory_migration_and_allocator_tests COMMAND stage266_10_512_frame_inventory_migration_and_allocator_tests)
+
+add_executable(stage266_13_pac_jophash_semantics_and_instruction_decoder_tests
+    tests/unit/stage266_13_pac_jophash_semantics_and_instruction_decoder_tests.cpp
+)
+target_include_directories(stage266_13_pac_jophash_semantics_and_instruction_decoder_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage266_13_pac_jophash_semantics_and_instruction_decoder_tests PRIVATE winios_core)
+winios_set_warnings(stage266_13_pac_jophash_semantics_and_instruction_decoder_tests)
+add_test(NAME stage266_13_pac_jophash_semantics_and_instruction_decoder_tests COMMAND stage266_13_pac_jophash_semantics_and_instruction_decoder_tests)
+
+add_executable(stage266_16_saved_state_oracle_daif_and_separate_highwater_tests
+    tests/unit/stage266_16_saved_state_oracle_daif_and_separate_highwater_tests.cpp
+)
+target_include_directories(stage266_16_saved_state_oracle_daif_and_separate_highwater_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage266_16_saved_state_oracle_daif_and_separate_highwater_tests PRIVATE winios_core)
+winios_set_warnings(stage266_16_saved_state_oracle_daif_and_separate_highwater_tests)
+add_test(NAME stage266_16_saved_state_oracle_daif_and_separate_highwater_tests COMMAND stage266_16_saved_state_oracle_daif_and_separate_highwater_tests)
+
+add_executable(stage266_20_timer_oracle_aic2_mapping_and_six_core_tests
+    tests/unit/stage266_20_timer_oracle_aic2_mapping_and_six_core_tests.cpp
+)
+target_include_directories(stage266_20_timer_oracle_aic2_mapping_and_six_core_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage266_20_timer_oracle_aic2_mapping_and_six_core_tests PRIVATE winios_core)
+winios_set_warnings(stage266_20_timer_oracle_aic2_mapping_and_six_core_tests)
+add_test(NAME stage266_20_timer_oracle_aic2_mapping_and_six_core_tests COMMAND stage266_20_timer_oracle_aic2_mapping_and_six_core_tests)
+
+add_executable(stage266_24_provenance_mutation_campaign_and_maturity_tests
+    tests/unit/stage266_24_provenance_mutation_campaign_and_maturity_tests.cpp
+)
+target_include_directories(stage266_24_provenance_mutation_campaign_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage266_24_provenance_mutation_campaign_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage266_24_provenance_mutation_campaign_and_maturity_tests)
+add_test(NAME stage266_24_provenance_mutation_campaign_and_maturity_tests COMMAND stage266_24_provenance_mutation_campaign_and_maturity_tests)
+
+
 
 
 

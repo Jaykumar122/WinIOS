@@ -81,6 +81,15 @@ public:
                                                   std::size_t core_id,
                                                   bool is_thread_guard,
                                                   std::string* out_error) const;
+
+    // Stage 266.7: Audit full 512-frame ownership invariants
+    [[nodiscard]] AuditorCheckResult audit_512_frame_ownership_invariants(const CanonicalPhysicalMemoryMap& map) const;
+
+    // Stage 266.4: Validate guard access rejection
+    [[nodiscard]] bool validate_guard_access_rejection(const CanonicalPhysicalMemoryMap& map,
+                                                       std::uint64_t address,
+                                                       bool is_write,
+                                                       std::string* out_diagnostic) const;
 };
 
 } // namespace winios::memory

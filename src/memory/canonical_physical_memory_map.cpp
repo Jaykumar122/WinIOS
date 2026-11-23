@@ -1113,4 +1113,47 @@ CanonicalPhysicalMemoryMap CanonicalPhysicalMemoryMap::create_canonical_campaign
     return map;
 }
 
+std::vector<CanonicalPhysicalMemoryMap::FrameDescriptor>
+CanonicalPhysicalMemoryMap::generate_512_frame_inventory() const {
+    std::vector<FrameDescriptor> inventory;
+    inventory.reserve(kTotalRamFrames);
+
+    for (std::size_t f = 0; f < kTotalRamFrames; ++f) {
+        FrameDescriptor desc;
+        desc.frame_index = f;
+        desc.physical_start = ram_base_ + f * kPageGranule16K;
+        desc.physical_end = desc.physical_start + kPageGranule16K;
+
+        const auto* iv = find_interval_by_address(desc.physical_start);
+        if (iv && iv->contains(desc.physical_start, kPageGranule16K)) {
+            desc.name = iv->name;
+            desc.owner = iv->owner;
+            desc.region_type = iv->memory_type;
+            desc.permissions = iv->permissions;
+            desc.is_mapped = iv->is_mapped;
+            desc.allocator_eligible = (iv->kind == CanonicalMemoryKind::DynamicFreePool);
+            desc.core_ownership = iv->core_ownership;
+            desc.provenance = iv->provenance;
+            desc.allocation_reason = iv->reservation_reason;
+        } else {
+            desc.name = "UnmappedHole";
+            desc.owner = "None";
+            desc.region_type = "Unmapped";
+            desc.permissions = 0x0;
+            desc.is_mapped = false;
+            desc.allocator_eligible = false;
+            desc.core_ownership = -1;
+            desc.provenance = "Category C";
+            desc.allocation_reason = "Unallocated physical memory hole";
+        }
+        inventory.push_back(std::move(desc));
+    }
+
+    return inventory;
+}
+
+CanonicalPhysicalMemoryMap CanonicalPhysicalMemoryMap::create_canonical_campaign266_layout() {
+    return create_canonical_campaign265_layout();
+}
+
 } // namespace winios::memory

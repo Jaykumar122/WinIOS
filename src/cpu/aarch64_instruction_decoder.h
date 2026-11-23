@@ -51,6 +51,36 @@ public:
             return d;
         }
 
+        // 1b. NOP (0xD503201F)
+        if (word == 0xD503201Fu) {
+            d.mnemonic = "nop";
+            d.is_valid = true;
+            d.disassembly = "nop";
+            return d;
+        }
+
+        // 1c. BL (Branch with link, immediate): 0x94000000 .. 0x97FFFFFF
+        if ((word & 0xFC000000u) == 0x94000000u) {
+            d.mnemonic = "bl";
+            std::int32_t imm26 = static_cast<std::int32_t>(word & 0x03FFFFFFu);
+            if (imm26 & 0x02000000) imm26 |= ~0x03FFFFFF; // sign extend 26-bit
+            d.immediate_offset = static_cast<std::int64_t>(imm26) * 4;
+            d.is_valid = true;
+            d.disassembly = "bl #" + std::to_string(d.immediate_offset);
+            return d;
+        }
+
+        // 1d. B (Branch, immediate): 0x14000000 .. 0x17FFFFFF
+        if ((word & 0xFC000000u) == 0x14000000u) {
+            d.mnemonic = "b";
+            std::int32_t imm26 = static_cast<std::int32_t>(word & 0x03FFFFFFu);
+            if (imm26 & 0x02000000) imm26 |= ~0x03FFFFFF; // sign extend 26-bit
+            d.immediate_offset = static_cast<std::int64_t>(imm26) * 4;
+            d.is_valid = true;
+            d.disassembly = "b #" + std::to_string(d.immediate_offset);
+            return d;
+        }
+
         // 2. SUB (immediate, 64-bit): 0xD1000000 .. 0xD13FFFFF
         // sf=1, op=0, S=0, 100010, sh, imm12, Rn, Rd
         if ((word & 0xFF800000u) == 0xD1000000u) {

@@ -1,0 +1,50 @@
+# WINIOS CAMPAIGN 266 SHA-256 MANIFEST
+# Generated: Campaign 266 Verification & Closeout
+# Repository: D:\WinISO26\WinIOS\
+# Baseline Anchor: aedd1eea724977909f77c9bcc8ff971366c09489
+# Baseline Parent: 4febcb95518347996fd524abf6396812c94ec3f9
+
+# -----------------------------------------------------------------------------
+# 1. Campaign Documentation
+# -----------------------------------------------------------------------------
+BB47C6975D21F0BB0DF7CFC77AD32E85357C63C338A3A83C270F85AFEFF8119C *artifacts/campaign-266/WINIOS_CAMPAIGN_266_FINAL_REPORT.md
+
+# -----------------------------------------------------------------------------
+# 2. Build Configuration & Source Files
+# -----------------------------------------------------------------------------
+ACD1DBF65CF00B9DBF172D08D997DF5DA065D074A1316AEC80E478C20D450748 *CMakeLists.txt
+91520D7143411F9D040327D0CC9AC1078881AACE963CE5E7C92EDDDEBE0F3B68 *src/cpu/aarch64_instruction_decoder.h
+FE76569B7ADFFB20ABA31AAD7B88C5B9336853206B992E254715B48DC45A88AC *src/memory/canonical_physical_memory_map.h
+CB1FEAACCCB63617E70BCE3E74743FB6A054FAC66C8B9E25E701137A9835951A *src/memory/canonical_physical_memory_map.cpp
+16BDB48E9B609ED3AAD0050231B6019569308E87157F3266EE195605A3E4E618 *src/memory/independent_stack_exception_auditor.h
+B3B8113DA4F7900EA72B7F9C1BC301538EFFE4CBD6B040210EDBC1DB5AF1D1F2 *src/memory/independent_stack_exception_auditor.cpp
+
+# -----------------------------------------------------------------------------
+# 3. Automated Stage Unit Test Suites
+# -----------------------------------------------------------------------------
+F689E26B52DE9A40D697E585B2B89353C8783DF26EC91959A230CE22EB0F7CB6 *tests/unit/stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests.cpp
+C8403DDE2E95AD432332C7A1642533BDC667D19D56400A1B520F3690CF8E08FA *tests/unit/stage266_10_512_frame_inventory_migration_and_allocator_tests.cpp
+6478A119CBA1B7692DFC5AAB8ABC8FF240E13E5ABAA8FBCEA8F3854DAB6CC6D1 *tests/unit/stage266_13_pac_jophash_semantics_and_instruction_decoder_tests.cpp
+85DE1396CB1862BBC0422D00649D35619CED837F5479FB63C02B2FD401BB1692 *tests/unit/stage266_16_saved_state_oracle_daif_and_separate_highwater_tests.cpp
+56F423E6BCC6EB7C5504A1B5C44AC9EF14A0E95D8D83F057801592BA171AF742 *tests/unit/stage266_20_timer_oracle_aic2_mapping_and_six_core_tests.cpp
+A362715391CC61BB6AFE64C52EE85B84E3251BD4AED4DCAEAF19EB16C29C6705 *tests/unit/stage266_24_provenance_mutation_campaign_and_maturity_tests.cpp
+
+# -----------------------------------------------------------------------------
+# 4. Verified Target Executables (RelWithDebInfo)
+# -----------------------------------------------------------------------------
+CBDA6B052C35C6A0AD2A820BCD818AF99696400EEE4C2F218C8BB3A5B1DC81A4 *build/RelWithDebInfo/stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests.exe
+FA2297A4F58A384EC0822955D4F2521241315F4B78B3B1C2A286B211671E9157 *build/RelWithDebInfo/stage266_10_512_frame_inventory_migration_and_allocator_tests.exe
+27D2D88DC60962AD4193119FD22BBA41EC94FD8B591A7A477872BE4E11A4D0F8 *build/RelWithDebInfo/stage266_13_pac_jophash_semantics_and_instruction_decoder_tests.exe
+AA4474D607B135797E88CA5194B02F2791A06E37FBEA2987911A71D053ECC40F *build/RelWithDebInfo/stage266_16_saved_state_oracle_daif_and_separate_highwater_tests.exe
+FA4C1F2EE45BB127BD7770C34A78DB14721FD3E285767221A440EB5CF8F6812A *build/RelWithDebInfo/stage266_20_timer_oracle_aic2_mapping_and_six_core_tests.exe
+83CB25F4B8DA2296B3F88AB60B04114968476680CB263D07E77379429E6F2D1D *build/RelWithDebInfo/stage266_24_provenance_mutation_campaign_and_maturity_tests.exe
+
+# -----------------------------------------------------------------------------
+# 5. Verified Target Executables (Debug)
+# -----------------------------------------------------------------------------
+FA1DD3EB43844D21C74397BEBECC80507B309B769C4E3F9D96FE58CD065234D3 *build/Debug/stage266_5_el1_stack_guard_enforcement_and_entry_restore_tests.exe
+C2C9A4A323D645FB26A1ED327F2079A6C336702436A49C72E852039F92647BA6 *build/Debug/stage266_10_512_frame_inventory_migration_and_allocator_tests.exe
+ACE2C03F5EA86B8BD62D610C45F35764AFE5B20B6DF6252BEDE7D991E0143391 *build/Debug/stage266_13_pac_jophash_semantics_and_instruction_decoder_tests.exe
+4A95D63C3B4ACF2E6FF46F6D2FDDE6D64C23203F50B7379EAEBAC00BF28F6A2A *build/Debug/stage266_16_saved_state_oracle_daif_and_separate_highwater_tests.exe
+D3FD4A4822265C722105870EEE0121EA93CAEE3660728AAB4EE243D5B8CB655E *build/Debug/stage266_20_timer_oracle_aic2_mapping_and_six_core_tests.exe
+6BA7B1BE1E1A4669008CD0648FBBB9FEBD8BCEBCC2F14B0917CD2C8B62AC1C68 *build/Debug/stage266_24_provenance_mutation_campaign_and_maturity_tests.exe
