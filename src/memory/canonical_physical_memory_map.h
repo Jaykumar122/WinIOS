@@ -22,6 +22,10 @@ enum class CanonicalMemoryKind {
     BootstrapStack,         // Cold-boot early stack (Frame 14: 0x00038000..0x0003C000)
     PageTables,             // Stage 1 Translation Tables (Frames 18..19: 0x00048000..0x00050000)
     CoreGuard,              // Per-core unmapped fault-trapping stack guard
+    CoreInterruptGuard,     // Independent unmapped guard below interrupt stack (Campaign 262)
+    CoreThreadGuard,        // Independent unmapped guard below thread stack (Campaign 262)
+    SmpSharedMemory,        // SMP shared memory / mailboxes (Campaign 262)
+    DiagnosticGuard,        // Guard protecting staged diagnostic code (Campaign 262)
     CoreInterruptStack,     // Per-core exception / interrupt stack (SP_EL1)
     CoreThreadStack,        // Per-core thread stack / CPU data area (SP_EL0)
     AllocatorMetadata,      // Allocator watermark and management tables (Frame 36: 0x00090000..0x00094000)
@@ -132,11 +136,19 @@ public:
         std::uint64_t thread_stack_base{0};
         std::uint64_t thread_stack_size{0};
         std::uint64_t thread_stack_initial_sp{0};
+
+        // Campaign 262 dual-guard extensions:
+        std::uint64_t int_guard_base{0};
+        std::uint64_t int_guard_size{16384ULL};
+        std::uint64_t thread_guard_base{0};
+        std::uint64_t thread_guard_size{16384ULL};
     };
     [[nodiscard]] std::optional<CoreStackGeometry> get_core_stack_geometry(std::size_t core_id) const;
 
     // Build the default authoritative iPhone 15 A16 8 MiB canonical layout
     static CanonicalPhysicalMemoryMap create_canonical_iphone15_layout();
+    // Build the Campaign 262 dual-stack, independent-guard canonical layout
+    static CanonicalPhysicalMemoryMap create_canonical_dual_stack_layout();
 
 private:
     std::uint64_t ram_base_;

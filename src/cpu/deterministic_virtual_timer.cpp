@@ -94,12 +94,49 @@ void DeterministicVirtualTimer::acknowledge(std::size_t core_id) noexcept {
     cores_[core_id].interrupt_asserted = false;
 }
 
-void DeterministicVirtualTimer::rearm_periodic(std::size_t core_id, std::uint64_t interval_ticks) noexcept {
-    if (core_id >= kMaxCores || interval_ticks == 0) return;
-    ++cores_[core_id].total_rearms;
-    cores_[core_id].comparator = cores_[core_id].counter + interval_ticks;
-    cores_[core_id].interrupt_asserted = false;
+TimerRearmResult DeterministicVirtualTimer::rearm_periodic(std::size_t core_id, std::uint64_t interval_ticks) noexcept {
+    TimerRearmResult res{};
+    if (core_id >= kMaxCores || interval_ticks == 0) return res;
+    
+    auto& cs = cores_[core_id];
+    ++cs.total_rearms;
+    
+    const std::uint64_t C = cs.counter;
+    const std::uint64_t D = cs.comparator;
+    const std::uint64_t P = interval_ticks;
+    
+    if (D == UINT64_MAX || C < D) {
+        // Initial setup or rearming before expiration
+        res.elapsed_periods = 1;
+        res.missed_ticks = 0;
+        res.next_deadline = (D == UINT64_MAX) ? (C + P) : (D + P);
+    } else {
+        // Delayed service: counter has reached or exceeded comparator deadline D
+        // n = floor((C - D) / P) + 1
+        const std::uint64_t n = ((C - D) / P) + 1;
+        res.elapsed_periods = n;
+        res.missed_ticks = (n > 0) ? (n - 1) : 0;
+        
+        const std::uint64_t advance = n * P;
+        if (UINT64_MAX - D < advance) {
+            res.next_deadline = UINT64_MAX;
+        } else {
+            res.next_deadline = D + advance;
+        }
+        
+        cs.missed_ticks += res.missed_ticks;
+    }
+    
+    cs.last_rearm_elapsed_periods = res.elapsed_periods;
+    cs.comparator = res.next_deadline;
+    cs.interrupt_asserted = false;
     evaluate_core_timer(core_id);
+    return res;
+}
+
+std::uint64_t DeterministicVirtualTimer::missed_ticks(std::size_t core_id) const noexcept {
+    if (core_id >= kMaxCores) return 0;
+    return cores_[core_id].missed_ticks;
 }
 
 const PerCoreTimerState& DeterministicVirtualTimer::core_state(std::size_t core_id) const noexcept {

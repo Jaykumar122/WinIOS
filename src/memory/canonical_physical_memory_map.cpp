@@ -17,6 +17,10 @@ const char* canonical_memory_kind_to_string(CanonicalMemoryKind kind) noexcept {
     case CanonicalMemoryKind::BootstrapStack:      return "BootstrapStack";
     case CanonicalMemoryKind::PageTables:          return "PageTables";
     case CanonicalMemoryKind::CoreGuard:           return "CoreGuard";
+    case CanonicalMemoryKind::CoreInterruptGuard:  return "CoreInterruptGuard";
+    case CanonicalMemoryKind::CoreThreadGuard:     return "CoreThreadGuard";
+    case CanonicalMemoryKind::SmpSharedMemory:     return "SmpSharedMemory";
+    case CanonicalMemoryKind::DiagnosticGuard:     return "DiagnosticGuard";
     case CanonicalMemoryKind::CoreInterruptStack:  return "CoreInterruptStack";
     case CanonicalMemoryKind::CoreThreadStack:     return "CoreThreadStack";
     case CanonicalMemoryKind::AllocatorMetadata:   return "AllocatorMetadata";
@@ -106,18 +110,41 @@ CanonicalPhysicalMemoryMap::get_core_stack_geometry(std::size_t core_id) const {
     CoreStackGeometry geom;
     geom.core_id = core_id;
 
-    std::string guard_name = "Core" + std::to_string(core_id) + "_Guard";
-    std::string int_name   = "Core" + std::to_string(core_id) + "_InterruptStack";
-    std::string thr_name   = "Core" + std::to_string(core_id) + "_ThreadStack";
+    std::string int_guard_name = "Core" + std::to_string(core_id) + "_InterruptGuard";
+    std::string thr_guard_name = "Core" + std::to_string(core_id) + "_ThreadGuard";
+    std::string leg_guard_name = "Core" + std::to_string(core_id) + "_Guard";
+    std::string int_name       = "Core" + std::to_string(core_id) + "_InterruptStack";
+    std::string thr_name       = "Core" + std::to_string(core_id) + "_ThreadStack";
 
-    const auto* guard = find_interval_by_name(guard_name);
-    const auto* int_stk = find_interval_by_name(int_name);
-    const auto* thr_stk = find_interval_by_name(thr_name);
+    const auto* int_guard = find_interval_by_name(int_guard_name);
+    const auto* thr_guard = find_interval_by_name(thr_guard_name);
+    const auto* leg_guard = find_interval_by_name(leg_guard_name);
+    const auto* int_stk   = find_interval_by_name(int_name);
+    const auto* thr_stk   = find_interval_by_name(thr_name);
 
-    if (!guard || !int_stk || !thr_stk) return std::nullopt;
+    if (!int_stk || !thr_stk) return std::nullopt;
 
-    geom.guard_base = guard->start_address;
-    geom.guard_size = guard->size;
+    if (int_guard && thr_guard) {
+        // Dual-guard layout (Campaign 262)
+        geom.int_guard_base = int_guard->start_address;
+        geom.int_guard_size = int_guard->size;
+        geom.thread_guard_base = thr_guard->start_address;
+        geom.thread_guard_size = thr_guard->size;
+        // Primary guard accessor points to interrupt stack guard
+        geom.guard_base = int_guard->start_address;
+        geom.guard_size = int_guard->size;
+    } else if (leg_guard) {
+        // Single-guard legacy layout (Campaign 261)
+        geom.guard_base = leg_guard->start_address;
+        geom.guard_size = leg_guard->size;
+        geom.int_guard_base = leg_guard->start_address;
+        geom.int_guard_size = leg_guard->size;
+        geom.thread_guard_base = leg_guard->start_address;
+        geom.thread_guard_size = leg_guard->size;
+    } else {
+        return std::nullopt;
+    }
+
     geom.int_stack_base = int_stk->start_address;
     geom.int_stack_size = int_stk->size;
     geom.int_stack_initial_sp = int_stk->end_address; // Downward-growing stack: initial SP is top
@@ -475,6 +502,14 @@ bool PhysicalMemoryOverlapAuditor::audit_six_core_stack_isolation(std::vector<st
             out_errors.push_back("Core " + std::to_string(c) + " guard is not contiguous with interrupt stack base");
         }
 
+        // Verify independent thread guard if present (Campaign 262 dual-guard)
+        if (geom->thread_guard_base != 0 && geom->thread_guard_base != geom->guard_base) {
+            if (geom->thread_guard_base + geom->thread_guard_size != geom->thread_stack_base) {
+                passed = false;
+                out_errors.push_back("Core " + std::to_string(c) + " thread guard is not contiguous with thread stack base");
+            }
+        }
+
         // Verify stack sizes are exactly 16 KiB
         if (geom->int_stack_size != CanonicalPhysicalMemoryMap::kPageGranule16K) {
             passed = false;
@@ -549,6 +584,264 @@ bool PhysicalMemoryOverlapAuditor::run_full_audit(std::vector<std::string>& out_
     for (const auto& err : alloc_errors) out_report.push_back("   - " + err);
 
     return c_ok && w_ok && a_ok && s_ok && e_ok;
+}
+
+CanonicalPhysicalMemoryMap CanonicalPhysicalMemoryMap::create_canonical_dual_stack_layout() {
+    CanonicalPhysicalMemoryMap map(kDefaultRamBase, kDefaultRamSize);
+
+    // Frames 0..14: Early Boot Enclave (0x00000000 .. 0x0003C000)
+    map.add_interval({
+        "KernelTextPrimary", CanonicalMemoryKind::KernelTextPrimary,
+        0x00000000ULL, 0x00004000ULL, 0x00004000ULL,
+        "Mach-O Kernelcache", "Kernel execution entry & exception vectors (VBAR at 0x800)",
+        "RAM", 0x5u /* RX */, true, kPageGranule16K,
+        "Authoritative kernelcode", -1, "Category B", "Mach-O entry point"
+    });
+    map.add_interval({
+        "LowPaddingScratch", CanonicalMemoryKind::LowPaddingScratch,
+        0x00004000ULL, 0x00010000ULL, 0x0000C000ULL,
+        "Bootstrap Loader", "Early scratch workspace and alignment padding",
+        "RAM", 0x3u /* RW */, true, kPageGranule16K,
+        "Reserved bootstrap memory", -1, "Category C", "Bootstrap padding"
+    });
+    map.add_interval({
+        "KernelData", CanonicalMemoryKind::KernelData,
+        0x00010000ULL, 0x00030000ULL, 0x00020000ULL,
+        "Mach-O Kernelcache", "Static kernel variables, dispatch tables, sysregs",
+        "RAM", 0x3u /* RW */, true, kPageGranule16K,
+        "Kernel static state", -1, "Category B", "Mach-O data segment"
+    });
+    map.add_interval({
+        "DeviceTree", CanonicalMemoryKind::DeviceTree,
+        0x00030000ULL, 0x00034000ULL, 0x00004000ULL,
+        "Apple I/O Kit", "Apple flattened device tree (ADTS)",
+        "RAM", 0x3u /* RW */, true, kPageGranule16K,
+        "Hardware topology descriptor", -1, "Category C", "Bootloader DT staging"
+    });
+    map.add_interval({
+        "BootArgs", CanonicalMemoryKind::BootArgs,
+        0x00034000ULL, 0x00038000ULL, 0x00004000ULL,
+        "Apple Bootloader", "Kernel boot arguments (boot_args)",
+        "RAM", 0x3u /* RW */, true, kPageGranule16K,
+        "Boot parameter block", -1, "Category C", "Bootloader parameter block"
+    });
+    map.add_interval({
+        "BootstrapStack", CanonicalMemoryKind::BootstrapStack,
+        0x00038000ULL, 0x0003C000ULL, 0x00004000ULL,
+        "Core 0 Boot", "Early initialization stack before SMP start",
+        "RAM", 0x3u /* RW */, true, kPageGranule16K,
+        "Cold boot execution stack", 0, "Category C", "Early bootstrap stack"
+    });
+
+    // Core 0 (Frames 15..18: 0x0003C000 .. 0x0004C000)
+    map.add_interval({
+        "Core0_InterruptGuard", CanonicalMemoryKind::CoreInterruptGuard,
+        0x0003C000ULL, 0x00040000ULL, 0x00004000ULL,
+        "Core 0 IRQ Guard", "Independent underflow guard for Core 0 interrupt stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 0, "Category C", "Core 0 IRQ guard"
+    });
+    map.add_interval({
+        "Core0_InterruptStack", CanonicalMemoryKind::CoreInterruptStack,
+        0x00040000ULL, 0x00044000ULL, 0x00004000ULL,
+        "Core 0 Exception Subsystem", "Dedicated interrupt stack (SP_EL1 = 0x44000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 0 IRQ stack", 0, "Category B", "Authoritative Frame 16 stack"
+    });
+    map.add_interval({
+        "Core0_ThreadGuard", CanonicalMemoryKind::CoreThreadGuard,
+        0x00044000ULL, 0x00048000ULL, 0x00004000ULL,
+        "Core 0 Thread Guard", "Independent underflow guard for Core 0 thread stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 0, "Category C", "Core 0 thread guard"
+    });
+    map.add_interval({
+        "Core0_ThreadStack", CanonicalMemoryKind::CoreThreadStack,
+        0x00048000ULL, 0x0004C000ULL, 0x00004000ULL,
+        "Core 0 Thread Dispatcher", "Thread stack and per-cpu data area (SP_EL0 = 0x4C000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 0 thread context", 0, "Category B", "Core 0 thread stack"
+    });
+
+    // Frames 19..20: Stage 1 Translation Tables (32 KiB: 0x0004C000 .. 0x00054000)
+    map.add_interval({
+        "Stage1PageTables", CanonicalMemoryKind::PageTables,
+        0x0004C000ULL, 0x00054000ULL, 0x00008000ULL,
+        "Mach VM Pmap", "Stage 1 L1/L2 and L3 page tables",
+        "RAM", 0x3u, true, kPageGranule16K,
+        "Memory management translation tables", -1, "Category C", "Pmap bootstrap tables"
+    });
+
+    // Core 1 (Frames 21..24: 0x00054000 .. 0x00064000)
+    map.add_interval({
+        "Core1_InterruptGuard", CanonicalMemoryKind::CoreInterruptGuard,
+        0x00054000ULL, 0x00058000ULL, 0x00004000ULL,
+        "Core 1 IRQ Guard", "Independent underflow guard for Core 1 interrupt stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 1, "Category C", "Core 1 IRQ guard"
+    });
+    map.add_interval({
+        "Core1_InterruptStack", CanonicalMemoryKind::CoreInterruptStack,
+        0x00058000ULL, 0x0005C000ULL, 0x00004000ULL,
+        "Core 1 Exception Subsystem", "Dedicated interrupt stack (SP_EL1 = 0x5C000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 1 IRQ stack", 1, "Category B", "Core 1 stack"
+    });
+    map.add_interval({
+        "Core1_ThreadGuard", CanonicalMemoryKind::CoreThreadGuard,
+        0x0005C000ULL, 0x00060000ULL, 0x00004000ULL,
+        "Core 1 Thread Guard", "Independent underflow guard for Core 1 thread stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 1, "Category C", "Core 1 thread guard"
+    });
+    map.add_interval({
+        "Core1_ThreadStack", CanonicalMemoryKind::CoreThreadStack,
+        0x00060000ULL, 0x00064000ULL, 0x00004000ULL,
+        "Core 1 Thread Dispatcher", "Thread stack and CPU data (SP_EL0 = 0x64000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 1 thread context", 1, "Category B", "Core 1 thread stack"
+    });
+
+    // Core 2 (Frames 25..28: 0x00064000 .. 0x00074000)
+    map.add_interval({
+        "Core2_InterruptGuard", CanonicalMemoryKind::CoreInterruptGuard,
+        0x00064000ULL, 0x00068000ULL, 0x00004000ULL,
+        "Core 2 IRQ Guard", "Independent underflow guard for Core 2 interrupt stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 2, "Category C", "Core 2 IRQ guard"
+    });
+    map.add_interval({
+        "Core2_InterruptStack", CanonicalMemoryKind::CoreInterruptStack,
+        0x00068000ULL, 0x0006C000ULL, 0x00004000ULL,
+        "Core 2 Exception Subsystem", "Dedicated interrupt stack (SP_EL1 = 0x6C000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 2 IRQ stack", 2, "Category B", "Core 2 stack"
+    });
+    map.add_interval({
+        "Core2_ThreadGuard", CanonicalMemoryKind::CoreThreadGuard,
+        0x0006C000ULL, 0x00070000ULL, 0x00004000ULL,
+        "Core 2 Thread Guard", "Independent underflow guard for Core 2 thread stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 2, "Category C", "Core 2 thread guard"
+    });
+    map.add_interval({
+        "Core2_ThreadStack", CanonicalMemoryKind::CoreThreadStack,
+        0x00070000ULL, 0x00074000ULL, 0x00004000ULL,
+        "Core 2 Thread Dispatcher", "Thread stack and CPU data (SP_EL0 = 0x74000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 2 thread context", 2, "Category B", "Core 2 thread stack"
+    });
+
+    // Frames 29..30: SMP Shared Memory & Mailbox (32 KiB: 0x00074000 .. 0x0007C000)
+    map.add_interval({
+        "SmpMailboxShared", CanonicalMemoryKind::SmpSharedMemory,
+        0x00074000ULL, 0x0007C000ULL, 0x00008000ULL,
+        "SMP Coordination", "Inter-core shared mailbox and message passing buffers",
+        "RAM", 0x3u, true, kPageGranule16K, "SMP messaging", -1, "Category C", "SMP mailbox"
+    });
+
+    // Frame 31: Diagnostic Vector Guard (16 KiB: 0x0007C000 .. 0x00080000)
+    map.add_interval({
+        "DiagnosticVectorGuard", CanonicalMemoryKind::DiagnosticGuard,
+        0x0007C000ULL, 0x00080000ULL, 0x00004000ULL,
+        "Execution Boundary", "Unmapped barrier guard protecting secondary vector page",
+        "Guard", 0x0u, false, kPageGranule16K, "Vector boundary guard", -1, "Category C", "Diagnostic guard"
+    });
+
+    // Frame 32: Secondary Kernel Text / Diagnostic Area (16 KiB: 0x00080000 .. 0x00084000)
+    map.add_interval({
+        "KernelTextSecondary", CanonicalMemoryKind::KernelTextSecondary,
+        0x00080000ULL, 0x00084000ULL, 0x00004000ULL,
+        "Staged Diagnostic Code", "Historical 0x80000 / Category D diagnostic vector staging",
+        "RAM", 0x5u /* RX */, true, kPageGranule16K,
+        "Secondary executable image segment", -1, "Category D", "Historical vector base"
+    });
+
+    // Core 3 (Frames 33..36: 0x00084000 .. 0x00094000)
+    map.add_interval({
+        "Core3_InterruptGuard", CanonicalMemoryKind::CoreInterruptGuard,
+        0x00084000ULL, 0x00088000ULL, 0x00004000ULL,
+        "Core 3 IRQ Guard", "Independent underflow guard for Core 3 interrupt stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 3, "Category C", "Core 3 IRQ guard"
+    });
+    map.add_interval({
+        "Core3_InterruptStack", CanonicalMemoryKind::CoreInterruptStack,
+        0x00088000ULL, 0x0008C000ULL, 0x00004000ULL,
+        "Core 3 Exception Subsystem", "Dedicated interrupt stack (SP_EL1 = 0x8C000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 3 IRQ stack", 3, "Category B", "Core 3 stack"
+    });
+    map.add_interval({
+        "Core3_ThreadGuard", CanonicalMemoryKind::CoreThreadGuard,
+        0x0008C000ULL, 0x00090000ULL, 0x00004000ULL,
+        "Core 3 Thread Guard", "Independent underflow guard for Core 3 thread stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 3, "Category C", "Core 3 thread guard"
+    });
+    map.add_interval({
+        "Core3_ThreadStack", CanonicalMemoryKind::CoreThreadStack,
+        0x00090000ULL, 0x00094000ULL, 0x00004000ULL,
+        "Core 3 Thread Dispatcher", "Thread stack and CPU data (SP_EL0 = 0x94000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 3 thread context", 3, "Category B", "Core 3 thread stack"
+    });
+
+    // Core 4 (Frames 37..40: 0x00094000 .. 0x000A4000)
+    map.add_interval({
+        "Core4_InterruptGuard", CanonicalMemoryKind::CoreInterruptGuard,
+        0x00094000ULL, 0x00098000ULL, 0x00004000ULL,
+        "Core 4 IRQ Guard", "Independent underflow guard for Core 4 interrupt stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 4, "Category C", "Core 4 IRQ guard"
+    });
+    map.add_interval({
+        "Core4_InterruptStack", CanonicalMemoryKind::CoreInterruptStack,
+        0x00098000ULL, 0x0009C000ULL, 0x00004000ULL,
+        "Core 4 Exception Subsystem", "Dedicated interrupt stack (SP_EL1 = 0x9C000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 4 IRQ stack", 4, "Category B", "Core 4 stack"
+    });
+    map.add_interval({
+        "Core4_ThreadGuard", CanonicalMemoryKind::CoreThreadGuard,
+        0x0009C000ULL, 0x000A0000ULL, 0x00004000ULL,
+        "Core 4 Thread Guard", "Independent underflow guard for Core 4 thread stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 4, "Category C", "Core 4 thread guard"
+    });
+    map.add_interval({
+        "Core4_ThreadStack", CanonicalMemoryKind::CoreThreadStack,
+        0x000A0000ULL, 0x000A4000ULL, 0x00004000ULL,
+        "Core 4 Thread Dispatcher", "Thread stack and CPU data (SP_EL0 = 0xA4000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 4 thread context", 4, "Category B", "Core 4 thread stack"
+    });
+
+    // Core 5 (Frames 41..44: 0x000A4000 .. 0x000B4000)
+    map.add_interval({
+        "Core5_InterruptGuard", CanonicalMemoryKind::CoreInterruptGuard,
+        0x000A4000ULL, 0x000A8000ULL, 0x00004000ULL,
+        "Core 5 IRQ Guard", "Independent underflow guard for Core 5 interrupt stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 5, "Category C", "Core 5 IRQ guard"
+    });
+    map.add_interval({
+        "Core5_InterruptStack", CanonicalMemoryKind::CoreInterruptStack,
+        0x000A8000ULL, 0x000AC000ULL, 0x00004000ULL,
+        "Core 5 Exception Subsystem", "Dedicated interrupt stack (SP_EL1 = 0xAC000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 5 IRQ stack", 5, "Category B", "Core 5 stack"
+    });
+    map.add_interval({
+        "Core5_ThreadGuard", CanonicalMemoryKind::CoreThreadGuard,
+        0x000AC000ULL, 0x000B0000ULL, 0x00004000ULL,
+        "Core 5 Thread Guard", "Independent underflow guard for Core 5 thread stack",
+        "Guard", 0x0u, false, kPageGranule16K, "Stack guard page", 5, "Category C", "Core 5 thread guard"
+    });
+    map.add_interval({
+        "Core5_ThreadStack", CanonicalMemoryKind::CoreThreadStack,
+        0x000B0000ULL, 0x000B4000ULL, 0x00004000ULL,
+        "Core 5 Thread Dispatcher", "Thread stack and CPU data (SP_EL0 = 0xB4000)",
+        "RAM", 0x3u, true, kPageGranule16K, "Core 5 thread context", 5, "Category B", "Core 5 thread stack"
+    });
+
+    // Frame 45: Allocator Metadata (16 KiB: 0x000B4000 .. 0x000B8000)
+    map.add_interval({
+        "AllocatorMetadata", CanonicalMemoryKind::AllocatorMetadata,
+        0x000B4000ULL, 0x000B8000ULL, 0x00004000ULL,
+        "Mach VM Zone Allocator", "Allocator management structures and bitmaps",
+        "RAM", 0x3u, true, kPageGranule16K,
+        "Allocator metadata block", -1, "Category C", "Dynamic allocator header"
+    });
+
+    // Frames 46..511: Dynamic Allocator Free Pool (466 frames: 0x000B8000 .. 0x00800000)
+    map.add_interval({
+        "DynamicFreePool", CanonicalMemoryKind::DynamicFreePool,
+        0x000B8000ULL, 0x00800000ULL, 0x00748000ULL,
+        "Mach VM Subsystem", "Unreserved physical memory pool for zone and frame allocators",
+        "RAM", 0x3u, true, kPageGranule16K,
+        "Available physical memory", -1, "Category C", "Zone free pool"
+    });
+
+    return map;
 }
 
 } // namespace winios::memory

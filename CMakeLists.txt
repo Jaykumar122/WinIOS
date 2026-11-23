@@ -116,6 +116,7 @@ add_library(winios_core STATIC
     src/memory/xnu_vm_map.cpp
     src/memory/xnu_zone_allocator.cpp
     src/memory/canonical_physical_memory_map.cpp
+    src/memory/independent_stack_exception_auditor.cpp
     src/memory/user_address_space.cpp
     src/memory/guest_memory_validator.cpp
     src/kernel/task.cpp
@@ -7743,6 +7744,59 @@ target_include_directories(stage261_23_independent_auditor_and_maturity_tests PR
 target_link_libraries(stage261_23_independent_auditor_and_maturity_tests PRIVATE winios_core)
 winios_set_warnings(stage261_23_independent_auditor_and_maturity_tests)
 add_test(NAME stage261_23_independent_auditor_and_maturity_tests COMMAND stage261_23_independent_auditor_and_maturity_tests)
+
+# =============================================================================
+# Campaign 262: Exception Context Integrity, Dual-Stack Guard Isolation,
+#               Nested Exception Safety, Timer Catch-Up & Independent Verification
+# =============================================================================
+
+add_executable(stage262_6_exception_context_and_sp_tests
+    tests/unit/stage262_6_exception_context_and_sp_tests.cpp
+)
+target_include_directories(stage262_6_exception_context_and_sp_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage262_6_exception_context_and_sp_tests PRIVATE winios_core)
+winios_set_warnings(stage262_6_exception_context_and_sp_tests)
+add_test(NAME stage262_6_exception_context_and_sp_tests COMMAND stage262_6_exception_context_and_sp_tests)
+
+add_executable(stage262_11_dual_stack_guard_and_nesting_tests
+    tests/unit/stage262_11_dual_stack_guard_and_nesting_tests.cpp
+)
+target_include_directories(stage262_11_dual_stack_guard_and_nesting_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage262_11_dual_stack_guard_and_nesting_tests PRIVATE winios_core)
+winios_set_warnings(stage262_11_dual_stack_guard_and_nesting_tests)
+add_test(NAME stage262_11_dual_stack_guard_and_nesting_tests COMMAND stage262_11_dual_stack_guard_and_nesting_tests)
+
+add_executable(stage262_15_exception_binary_and_adversarial_tests
+    tests/unit/stage262_15_exception_binary_and_adversarial_tests.cpp
+)
+target_include_directories(stage262_15_exception_binary_and_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage262_15_exception_binary_and_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage262_15_exception_binary_and_adversarial_tests)
+add_test(NAME stage262_15_exception_binary_and_adversarial_tests COMMAND stage262_15_exception_binary_and_adversarial_tests)
+
+add_executable(stage262_18_timer_catch_up_and_coalescing_tests
+    tests/unit/stage262_18_timer_catch_up_and_coalescing_tests.cpp
+)
+target_include_directories(stage262_18_timer_catch_up_and_coalescing_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage262_18_timer_catch_up_and_coalescing_tests PRIVATE winios_core)
+winios_set_warnings(stage262_18_timer_catch_up_and_coalescing_tests)
+add_test(NAME stage262_18_timer_catch_up_and_coalescing_tests COMMAND stage262_18_timer_catch_up_and_coalescing_tests)
+
+add_executable(stage262_21_independent_auditor_and_mutation_tests
+    tests/unit/stage262_21_independent_auditor_and_mutation_tests.cpp
+)
+target_include_directories(stage262_21_independent_auditor_and_mutation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage262_21_independent_auditor_and_mutation_tests PRIVATE winios_core)
+winios_set_warnings(stage262_21_independent_auditor_and_mutation_tests)
+add_test(NAME stage262_21_independent_auditor_and_mutation_tests COMMAND stage262_21_independent_auditor_and_mutation_tests)
+
+add_executable(stage262_24_maturity_and_regression_tests
+    tests/unit/stage262_24_maturity_and_regression_tests.cpp
+)
+target_include_directories(stage262_24_maturity_and_regression_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage262_24_maturity_and_regression_tests PRIVATE winios_core)
+winios_set_warnings(stage262_24_maturity_and_regression_tests)
+add_test(NAME stage262_24_maturity_and_regression_tests COMMAND stage262_24_maturity_and_regression_tests)
 
 
 

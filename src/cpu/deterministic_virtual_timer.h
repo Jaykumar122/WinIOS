@@ -15,6 +15,14 @@ struct PerCoreTimerState {
     std::uint64_t total_timer_firings{0};
     std::uint64_t total_acks{0};
     std::uint64_t total_rearms{0};
+    std::uint64_t missed_ticks{0};
+    std::uint64_t last_rearm_elapsed_periods{0};
+};
+
+struct TimerRearmResult {
+    std::uint64_t elapsed_periods{0};
+    std::uint64_t next_deadline{0};
+    std::uint64_t missed_ticks{0};
 };
 
 class DeterministicVirtualTimer {
@@ -48,7 +56,8 @@ public:
     [[nodiscard]] bool is_interrupt_asserted(std::size_t core_id) const noexcept;
 
     void acknowledge(std::size_t core_id) noexcept;
-    void rearm_periodic(std::size_t core_id, std::uint64_t interval_ticks) noexcept;
+    TimerRearmResult rearm_periodic(std::size_t core_id, std::uint64_t interval_ticks) noexcept;
+    [[nodiscard]] std::uint64_t missed_ticks(std::size_t core_id) const noexcept;
 
     [[nodiscard]] const PerCoreTimerState& core_state(std::size_t core_id) const noexcept;
 
