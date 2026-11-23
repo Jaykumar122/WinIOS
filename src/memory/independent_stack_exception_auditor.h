@@ -72,8 +72,13 @@ public:
     // Stage 262.20: Verify detection of deliberate architectural mutations (1..18)
     [[nodiscard]] bool test_mutation_detection(MutationType mutation, std::string* out_detection_msg) const;
 
-    // Stage 263.14: Audit independent removal and diagnostic for any of the 12 guards
+    // Stage 263.14 / 265.12: Audit independent removal and diagnostic for any of the 12 guards
     [[nodiscard]] bool audit_single_guard_removal(std::size_t core_id,
+                                                  bool is_thread_guard,
+                                                  std::string* out_error) const;
+
+    [[nodiscard]] bool audit_single_guard_removal(const CanonicalPhysicalMemoryMap& base_map,
+                                                  std::size_t core_id,
                                                   bool is_thread_guard,
                                                   std::string* out_error) const;
 };

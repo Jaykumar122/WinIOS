@@ -422,6 +422,33 @@ static_assert(get_exception_frame_layout(ExecutionProfile::ARM64e_PAC).jophash_o
 // Eliminates magic constants by deriving all instruction words directly from
 // ExceptionFrameLayout. Stores 32-bit fields with STR W to avoid clobbering!
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Authoritative AArch64 Instruction Encoding Helpers
+// -----------------------------------------------------------------------------
+inline constexpr std::uint32_t encode_str_w(std::uint32_t rt, std::uint32_t rn, std::uint32_t byte_offset) noexcept {
+    // ARM64 C6.2.254 STR (immediate) unsigned offset 32-bit:
+    // size=10, 111001, opc=00, imm12, Rn, Rt. imm12 = byte_offset / 4
+    return 0xB9000000u | (((byte_offset / 4u) & 0xFFFu) << 10u) | ((rn & 0x1Fu) << 5u) | (rt & 0x1Fu);
+}
+
+inline constexpr std::uint32_t encode_ldr_w(std::uint32_t rt, std::uint32_t rn, std::uint32_t byte_offset) noexcept {
+    // ARM64 C6.2.132 LDR (immediate) unsigned offset 32-bit:
+    // size=10, 111001, opc=01, imm12, Rn, Rt. imm12 = byte_offset / 4
+    return 0xB9400000u | (((byte_offset / 4u) & 0xFFFu) << 10u) | ((rn & 0x1Fu) << 5u) | (rt & 0x1Fu);
+}
+
+inline constexpr std::uint32_t encode_str_x(std::uint32_t rt, std::uint32_t rn, std::uint32_t byte_offset) noexcept {
+    // ARM64 C6.2.254 STR (immediate) unsigned offset 64-bit:
+    // size=11, 111001, opc=00, imm12, Rn, Rt. imm12 = byte_offset / 8
+    return 0xF9000000u | (((byte_offset / 8u) & 0xFFFu) << 10u) | ((rn & 0x1Fu) << 5u) | (rt & 0x1Fu);
+}
+
+inline constexpr std::uint32_t encode_ldr_x(std::uint32_t rt, std::uint32_t rn, std::uint32_t byte_offset) noexcept {
+    // ARM64 C6.2.132 LDR (immediate) unsigned offset 64-bit:
+    // size=11, 111001, opc=01, imm12, Rn, Rt. imm12 = byte_offset / 8
+    return 0xF9400000u | (((byte_offset / 8u) & 0xFFFu) << 10u) | ((rn & 0x1Fu) << 5u) | (rt & 0x1Fu);
+}
+
 inline std::vector<std::uint32_t> encode_exception_entry_sequence(ExecutionProfile profile, bool is_el0_origin) {
     const auto layout = get_exception_frame_layout(profile);
     std::vector<std::uint32_t> code;
@@ -441,45 +468,45 @@ inline std::vector<std::uint32_t> encode_exception_entry_sequence(ExecutionProfi
     }
 
     // 3. Save X30 (LR) at offset 240 (0xF0)
-    code.push_back(0xF9007BFEu); // str x30, [sp, #240]
+    code.push_back(encode_str_x(30, 31, 240)); // str x30, [sp, #240] (0xF9007BFEu)
 
     // 4. Save SP at offset 248 (0xF8)
     if (is_el0_origin) {
         code.push_back(0xD5384100u); // mrs x0, sp_el0
-        code.push_back(0xF9007FE0u); // str x0, [sp, #248]
+        code.push_back(encode_str_x(0, 31, 248)); // str x0, [sp, #248] (0xF9007FE0u)
     } else {
         // Pre-allocation SP = sp + frame_size
         const std::uint32_t add_sp_insn = 0x910003E0u | (static_cast<std::uint32_t>(layout.frame_allocation_size) << 10u);
         code.push_back(add_sp_insn);  // add x0, sp, #frame_size
-        code.push_back(0xF9007FE0u); // str x0, [sp, #248]
+        code.push_back(encode_str_x(0, 31, 248)); // str x0, [sp, #248] (0xF9007FE0u)
     }
 
     // 5. Save PC (ELR_EL1) at offset 256 (0x100)
     code.push_back(0xD5384020u); // mrs x0, elr_el1
-    code.push_back(0xF90083E0u); // str x0, [sp, #256]
+    code.push_back(encode_str_x(0, 31, 256)); // str x0, [sp, #256] (0xF90083E0u)
 
-    // 6. Save CPSR (SPSR_EL1) at offset 264 (0x108) using 32-bit STR W1 to avoid clobbering offset 268!
+    // 6. Save CPSR (SPSR_EL1) at offset 264 (0x108) using 32-bit STR W1
     code.push_back(0xD5384001u); // mrs x1, spsr_el1
-    code.push_back(0xB9042FE1u); // str w1, [sp, #264] (32-bit store, offset 264)
+    code.push_back(encode_str_w(1, 31, 264)); // str w1, [sp, #264] (0xB9010BE1u)
 
     // 7. Save FSR / ESR at offset 268 (0x10C) using 32-bit STR W2
     code.push_back(0xD5385202u); // mrs x2, esr_el1
-    code.push_back(0xB9043FE2u); // str w2, [sp, #268] (32-bit store, offset 268)
+    code.push_back(encode_str_w(2, 31, 268)); // str w2, [sp, #268] (0xB9010FE2u)
 
     // 8. Save FAR at offset 272 (0x110)
     code.push_back(0xD5386003u); // mrs x3, far_el1
-    code.push_back(0xF9008BE3u); // str x3, [sp, #272] (64-bit store, offset 272)
+    code.push_back(encode_str_x(3, 31, 272)); // str x3, [sp, #272] (0xF9008BE3u)
 
     // 9. Save exception metadata at offset 280 (0x118) using 32-bit STR W4
     code.push_back(0x52800024u); // mov w4, #1
-    code.push_back(0xB9046FE4u); // str w4, [sp, #280] (32-bit store, offset 280)
+    code.push_back(encode_str_w(4, 31, 280)); // str w4, [sp, #280] (0xB9011BE4u)
 
     // 10. Save pad at offset 284 (0x11C) using 32-bit STR WZR
-    code.push_back(0xB9047FFFu); // str wzr, [sp, #284] (32-bit store, offset 284)
+    code.push_back(encode_str_w(31, 31, 284)); // str wzr, [sp, #284] (0xB9011FFFu)
 
     // 11. If PAC profile: initialize jophash at offset 288 (0x120) using 64-bit STR XZR
     if (layout.has_apple_pac) {
-        code.push_back(0xF90093FFu); // str xzr, [sp, #288] (64-bit store, offset 288)
+        code.push_back(encode_str_x(31, 31, 288)); // str xzr, [sp, #288] (0xF90093FFu)
     }
 
     // 12. Reload scratch registers X0..X4 from saved frame
@@ -495,21 +522,21 @@ inline std::vector<std::uint32_t> encode_exception_restore_sequence(ExecutionPro
     std::vector<std::uint32_t> code;
 
     // 1. Reload PC (ELR_EL1) from offset 256
-    code.push_back(0xF94083E0u); // ldr x0, [sp, #256]
+    code.push_back(encode_ldr_x(0, 31, 256)); // ldr x0, [sp, #256] (0xF94083E0u)
     code.push_back(0xD5184020u); // msr elr_el1, x0
 
     // 2. Reload CPSR (SPSR_EL1) from offset 264 using 32-bit LDR W1
-    code.push_back(0xB9442FE1u); // ldr w1, [sp, #264] (32-bit load)
+    code.push_back(encode_ldr_w(1, 31, 264)); // ldr w1, [sp, #264] (0xB9410BE1u)
     code.push_back(0xD5184001u); // msr spsr_el1, x1
 
     // 3. If EL0 origin: reload SP_EL0 from offset 248
     if (is_el0_origin) {
-        code.push_back(0xF9407FE0u); // ldr x0, [sp, #248]
+        code.push_back(encode_ldr_x(0, 31, 248)); // ldr x0, [sp, #248] (0xF9407FE0u)
         code.push_back(0xD5184100u); // msr sp_el0, x0
     }
 
     // 4. Reload X30 (LR) from offset 240
-    code.push_back(0xF9407BFEu); // ldr x30, [sp, #240]
+    code.push_back(encode_ldr_x(30, 31, 240)); // ldr x30, [sp, #240] (0xF9407BFEu)
 
     // 5. Reload X2..X29 using 14 LDP instructions in reverse order
     for (int k = 14; k >= 1; --k) {

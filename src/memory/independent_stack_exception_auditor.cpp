@@ -93,9 +93,9 @@ AuditorCheckResult IndependentStackAndExceptionAuditor::audit_canonical_memory_a
             res.passed = false;
             res.errors.push_back("Core " + std::to_string(c) + " missing thread stack interval");
         } else {
-            if (ts->size != kStackSize16K) {
+            if (ts->size != kStackSize16K && ts->size != 2 * kStackSize16K) {
                 res.passed = false;
-                res.errors.push_back("Core " + std::to_string(c) + " thread stack size is not 16 KiB");
+                res.errors.push_back("Core " + std::to_string(c) + " thread stack size is not 16 KiB or 32 KiB");
             }
             if (tg && (tg->start_address + tg->size != ts->start_address)) {
                 res.passed = false;
@@ -613,14 +613,21 @@ bool IndependentStackAndExceptionAuditor::test_mutation_detection(MutationType m
 bool IndependentStackAndExceptionAuditor::audit_single_guard_removal(std::size_t core_id,
                                                                      bool is_thread_guard,
                                                                      std::string* out_error) const {
+    auto map = CanonicalPhysicalMemoryMap::create_canonical_dual_stack_layout();
+    return audit_single_guard_removal(map, core_id, is_thread_guard, out_error);
+}
+
+bool IndependentStackAndExceptionAuditor::audit_single_guard_removal(const CanonicalPhysicalMemoryMap& base_map,
+                                                                     std::size_t core_id,
+                                                                     bool is_thread_guard,
+                                                                     std::string* out_error) const {
     if (core_id >= kNumCores) return false;
 
     std::string target_guard = "Core" + std::to_string(core_id) +
                                (is_thread_guard ? "_ThreadGuard" : "_InterruptGuard");
 
-    auto map = CanonicalPhysicalMemoryMap::create_canonical_dual_stack_layout();
     CanonicalPhysicalMemoryMap bad_map;
-    for (const auto& iv : map.intervals()) {
+    for (const auto& iv : base_map.intervals()) {
         if (iv.name != target_guard) {
             bad_map.add_interval(iv);
         }

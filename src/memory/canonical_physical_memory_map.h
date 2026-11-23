@@ -149,6 +149,8 @@ public:
     static CanonicalPhysicalMemoryMap create_canonical_iphone15_layout();
     // Build the Campaign 262 dual-stack, independent-guard canonical layout
     static CanonicalPhysicalMemoryMap create_canonical_dual_stack_layout();
+    // Build the Campaign 265 reconstructed six-core (30-frame) authoritative layout
+    static CanonicalPhysicalMemoryMap create_canonical_campaign265_layout();
 
 private:
     std::uint64_t ram_base_;

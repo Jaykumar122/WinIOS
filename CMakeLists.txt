@@ -7904,6 +7904,59 @@ target_link_libraries(stage264_24_six_core_mutation_campaign_and_maturity_tests 
 winios_set_warnings(stage264_24_six_core_mutation_campaign_and_maturity_tests)
 add_test(NAME stage264_24_six_core_mutation_campaign_and_maturity_tests COMMAND stage264_24_six_core_mutation_campaign_and_maturity_tests)
 
+# =============================================================================
+# Campaign 265: ARM64 Instruction-Encoding Recovery, Six-Core Stack Geometry
+#               PAC ABI Truth, Exception Reproduction & Binary Provenance
+# =============================================================================
+
+add_executable(stage265_4_instruction_decoder_and_encoding_recovery_tests
+    tests/unit/stage265_4_instruction_decoder_and_encoding_recovery_tests.cpp
+)
+target_include_directories(stage265_4_instruction_decoder_and_encoding_recovery_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage265_4_instruction_decoder_and_encoding_recovery_tests PRIVATE winios_core)
+winios_set_warnings(stage265_4_instruction_decoder_and_encoding_recovery_tests)
+add_test(NAME stage265_4_instruction_decoder_and_encoding_recovery_tests COMMAND stage265_4_instruction_decoder_and_encoding_recovery_tests)
+
+add_executable(stage265_7_pac_abi_truth_and_frame_policy_tests
+    tests/unit/stage265_7_pac_abi_truth_and_frame_policy_tests.cpp
+)
+target_include_directories(stage265_7_pac_abi_truth_and_frame_policy_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage265_7_pac_abi_truth_and_frame_policy_tests PRIVATE winios_core)
+winios_set_warnings(stage265_7_pac_abi_truth_and_frame_policy_tests)
+add_test(NAME stage265_7_pac_abi_truth_and_frame_policy_tests COMMAND stage265_7_pac_abi_truth_and_frame_policy_tests)
+
+add_executable(stage265_12_reconstructed_stack_geometry_and_ownership_tests
+    tests/unit/stage265_12_reconstructed_stack_geometry_and_ownership_tests.cpp
+)
+target_include_directories(stage265_12_reconstructed_stack_geometry_and_ownership_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage265_12_reconstructed_stack_geometry_and_ownership_tests PRIVATE winios_core)
+winios_set_warnings(stage265_12_reconstructed_stack_geometry_and_ownership_tests)
+add_test(NAME stage265_12_reconstructed_stack_geometry_and_ownership_tests COMMAND stage265_12_reconstructed_stack_geometry_and_ownership_tests)
+
+add_executable(stage265_17_corrected_entry_restore_and_state_oracle_tests
+    tests/unit/stage265_17_corrected_entry_restore_and_state_oracle_tests.cpp
+)
+target_include_directories(stage265_17_corrected_entry_restore_and_state_oracle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage265_17_corrected_entry_restore_and_state_oracle_tests PRIVATE winios_core)
+winios_set_warnings(stage265_17_corrected_entry_restore_and_state_oracle_tests)
+add_test(NAME stage265_17_corrected_entry_restore_and_state_oracle_tests COMMAND stage265_17_corrected_entry_restore_and_state_oracle_tests)
+
+add_executable(stage265_21_timer_independent_oracle_and_aic2_trace_tests
+    tests/unit/stage265_21_timer_independent_oracle_and_aic2_trace_tests.cpp
+)
+target_include_directories(stage265_21_timer_independent_oracle_and_aic2_trace_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage265_21_timer_independent_oracle_and_aic2_trace_tests PRIVATE winios_core)
+winios_set_warnings(stage265_21_timer_independent_oracle_and_aic2_trace_tests)
+add_test(NAME stage265_21_timer_independent_oracle_and_aic2_trace_tests COMMAND stage265_21_timer_independent_oracle_and_aic2_trace_tests)
+
+add_executable(stage265_24_mutation_campaign_provenance_and_maturity_tests
+    tests/unit/stage265_24_mutation_campaign_provenance_and_maturity_tests.cpp
+)
+target_include_directories(stage265_24_mutation_campaign_provenance_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage265_24_mutation_campaign_provenance_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage265_24_mutation_campaign_provenance_and_maturity_tests)
+add_test(NAME stage265_24_mutation_campaign_provenance_and_maturity_tests COMMAND stage265_24_mutation_campaign_provenance_and_maturity_tests)
+
 
 
 
