@@ -24,6 +24,8 @@ add_library(winios_core STATIC
     src/cpu/arm64_cpu_boot_state.cpp
     src/cpu/kernel_exception_vectors.cpp
     src/cpu/kernel_boot_timer_interrupt.cpp
+    src/cpu/deterministic_virtual_timer.cpp
+    src/cpu/early_scheduler_accounting.cpp
     src/cpu/sysreg.cpp
     src/cpu/darwin_sysreg_compat.cpp
     src/cpu/pointer_auth.cpp
@@ -7636,6 +7638,61 @@ target_include_directories(stage259_23_adversarial_lifecycle_and_maturity_gate_t
 target_link_libraries(stage259_23_adversarial_lifecycle_and_maturity_gate_tests PRIVATE winios_core)
 winios_set_warnings(stage259_23_adversarial_lifecycle_and_maturity_gate_tests)
 add_test(NAME stage259_23_adversarial_lifecycle_and_maturity_gate_tests COMMAND stage259_23_adversarial_lifecycle_and_maturity_gate_tests)
+
+# =============================================================================
+# Campaign 260 Test Suites
+# =============================================================================
+
+add_executable(stage260_4_authoritative_xnu_abi_tests
+    tests/unit/stage260_4_authoritative_xnu_abi_tests.cpp
+)
+target_include_directories(stage260_4_authoritative_xnu_abi_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage260_4_authoritative_xnu_abi_tests PRIVATE winios_core)
+winios_set_warnings(stage260_4_authoritative_xnu_abi_tests)
+add_test(NAME stage260_4_authoritative_xnu_abi_tests COMMAND stage260_4_authoritative_xnu_abi_tests)
+
+add_executable(stage260_8_exception_frame_and_provenance_tests
+    tests/unit/stage260_8_exception_frame_and_provenance_tests.cpp
+)
+target_include_directories(stage260_8_exception_frame_and_provenance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage260_8_exception_frame_and_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage260_8_exception_frame_and_provenance_tests)
+add_test(NAME stage260_8_exception_frame_and_provenance_tests COMMAND stage260_8_exception_frame_and_provenance_tests)
+
+add_executable(stage260_12_zone_allocator_foundation_tests
+    tests/unit/stage260_12_zone_allocator_foundation_tests.cpp
+)
+target_include_directories(stage260_12_zone_allocator_foundation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage260_12_zone_allocator_foundation_tests PRIVATE winios_core)
+winios_set_warnings(stage260_12_zone_allocator_foundation_tests)
+add_test(NAME stage260_12_zone_allocator_foundation_tests COMMAND stage260_12_zone_allocator_foundation_tests)
+
+add_executable(stage260_16_timer_architecture_and_delivery_tests
+    tests/unit/stage260_16_timer_architecture_and_delivery_tests.cpp
+)
+target_include_directories(stage260_16_timer_architecture_and_delivery_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage260_16_timer_architecture_and_delivery_tests PRIVATE winios_core)
+winios_set_warnings(stage260_16_timer_architecture_and_delivery_tests)
+add_test(NAME stage260_16_timer_architecture_and_delivery_tests COMMAND stage260_16_timer_architecture_and_delivery_tests)
+
+add_executable(stage260_20_periodic_tick_and_smp_integration_tests
+    tests/unit/stage260_20_periodic_tick_and_smp_integration_tests.cpp
+)
+target_include_directories(stage260_20_periodic_tick_and_smp_integration_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage260_20_periodic_tick_and_smp_integration_tests PRIVATE winios_core)
+winios_set_warnings(stage260_20_periodic_tick_and_smp_integration_tests)
+add_test(NAME stage260_20_periodic_tick_and_smp_integration_tests COMMAND stage260_20_periodic_tick_and_smp_integration_tests)
+
+add_executable(stage260_23_adversarial_maturity_and_regression_tests
+    tests/unit/stage260_23_adversarial_maturity_and_regression_tests.cpp
+)
+target_include_directories(stage260_23_adversarial_maturity_and_regression_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage260_23_adversarial_maturity_and_regression_tests PRIVATE winios_core)
+winios_set_warnings(stage260_23_adversarial_maturity_and_regression_tests)
+add_test(NAME stage260_23_adversarial_maturity_and_regression_tests COMMAND stage260_23_adversarial_maturity_and_regression_tests)
+
+
+
 
 
 

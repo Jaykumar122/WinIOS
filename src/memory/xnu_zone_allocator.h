@@ -59,6 +59,11 @@ public:
     [[nodiscard]] std::vector<ZoneStats> get_all_zone_stats() const;
     [[nodiscard]] std::size_t zone_count() const;
 
+    // Pool capacity and bounds queries
+    [[nodiscard]] std::uint64_t pool_base() const noexcept { return zone_pool_base_; }
+    [[nodiscard]] std::uint64_t pool_size() const noexcept { return zone_pool_size_; }
+    [[nodiscard]] std::uint64_t next_zone_base() const noexcept { return next_zone_base_; }
+
     // Snapshot serialization & deserialization
     [[nodiscard]] std::vector<std::uint8_t> serialize() const;
     bool deserialize(const std::uint8_t* data, std::size_t size, std::string* out_error = nullptr);

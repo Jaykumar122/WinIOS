@@ -82,14 +82,17 @@ static void test_stage259_1_upstream_source_investigation() {
 
     // Public Apple XNU xnu-10002.1.13: osfmk/mach/arm/thread_status.h
     // #define THREAD_STATE_LAST 8
-    // #define ARM_SAVED_STATE32 (THREAD_STATE_LAST + 1) /* 9 */
-    // #define ARM_SAVED_STATE64 (THREAD_STATE_LAST + 2) /* 10 */
+    // Kernel-private:
+    // #define ARM_SAVED_STATE32 20
+    // #define ARM_SAVED_STATE64 21
     // #define ARM_SAVED_STATE64_COUNT ((mach_msg_type_number_t) \
     //     (sizeof (arm_saved_state64_t)/sizeof(unsigned int))) /* 72 */
 
     TEST_ASSERT(THREAD_STATE_LAST == 8, "THREAD_STATE_LAST is 8 in upstream XNU");
-    TEST_ASSERT(ARM_SAVED_STATE32_UPSTREAM == 9, "ARM_SAVED_STATE32 is (8 + 1) = 9");
-    TEST_ASSERT(ARM_SAVED_STATE64_UPSTREAM == 10, "ARM_SAVED_STATE64 is (8 + 2) = 10");
+    TEST_ASSERT(ARM_SAVED_STATE32_UPSTREAM == 20, "ARM_SAVED_STATE32 is 20 in upstream XNU");
+    TEST_ASSERT(ARM_SAVED_STATE64_UPSTREAM == 21, "ARM_SAVED_STATE64 is 21 in upstream XNU");
+    TEST_ASSERT(ARM_SAVED_STATE32_CAMPAIGN259 == 9, "ARM_SAVED_STATE32 Campaign 259 was 9");
+    TEST_ASSERT(ARM_SAVED_STATE64_CAMPAIGN259 == 10, "ARM_SAVED_STATE64 Campaign 259 was 10");
     TEST_ASSERT(ARM_SAVED_STATE64_COUNT == 72, "ARM_SAVED_STATE64_COUNT is 72 natural_t words");
 
     // Mathematical identity: 72 * 4 = 288 bytes
@@ -100,14 +103,14 @@ static void test_stage259_1_upstream_source_investigation() {
 }
 
 // ----------------------------------------------------------------------------
-// Test 3: Stage 259.2: Flavor Constant Distinction (10 vs 1)
+// Test 3: Stage 259.2: Flavor Constant Distinction (21 vs 1)
 // ----------------------------------------------------------------------------
 static void test_stage259_2_flavor_constant_distinction() {
-    std::cout << "[Stage 259.2] Testing Flavor Constant Distinction (Upstream 10 vs WinIOS 1)...\n";
+    std::cout << "[Stage 259.2] Testing Flavor Constant Distinction (Upstream 21 vs WinIOS 1)...\n";
 
     // Upstream kernel-private constant:
     const std::uint32_t upstream_flavor = ARM_SAVED_STATE64_UPSTREAM;
-    TEST_ASSERT(upstream_flavor == 10, "Upstream flavor must be 10");
+    TEST_ASSERT(upstream_flavor == 21, "Upstream flavor must be 21");
 
     // WinIOS historical internal constant (retained for backward compatibility):
     const std::uint32_t winios_flavor = ARM_SAVED_STATE64_WINIOS;
@@ -118,11 +121,11 @@ static void test_stage259_2_flavor_constant_distinction() {
 
     // Documented distinction:
     // In upstream XNU userland ABI, flavor 1 is ARM_THREAD_STATE (32-bit user thread state).
-    // The kernel-private saved state flavors begin after THREAD_STATE_LAST (8):
-    // 9 = ARM_SAVED_STATE32, 10 = ARM_SAVED_STATE64.
-    // In WinIOS, historical tests expected flavor == 1. Both definitions are now formally documented
+    // The kernel-private saved state flavors are defined under XNU_KERNEL_PRIVATE:
+    // 20 = ARM_SAVED_STATE32, 21 = ARM_SAVED_STATE64.
+    // In WinIOS, historical tests expected flavor == 1. All definitions are now formally documented
     // and available to runtime callers.
-    TEST_ASSERT(upstream_flavor != winios_flavor, "Upstream flavor (10) distinct from WinIOS flavor (1)");
+    TEST_ASSERT(upstream_flavor != winios_flavor, "Upstream flavor (21) distinct from WinIOS flavor (1)");
 
     std::cout << "[Stage 259.2] Flavor constant distinction documented and verified.\n";
 }
@@ -139,23 +142,24 @@ static void test_stage259_3_upstream_saved_state_container() {
     TEST_ASSERT(offsetof(arm_state_hdr_t, count)  == 4, "ash.count is offset 4");
 
     // Validate struct ArmSavedState (arm_saved_state_t)
-    TEST_ASSERT(sizeof(ArmSavedState) == 296, "ArmSavedState is 296 bytes (0x128)");
-    TEST_ASSERT(alignof(ArmSavedState) == 8, "ArmSavedState alignment is 8 bytes");
+    TEST_ASSERT(sizeof(ArmSavedState) == 304, "ArmSavedState is 304 bytes (0x130) with 16-byte alignment");
+    TEST_ASSERT(alignof(ArmSavedState) == 16, "ArmSavedState alignment is 16 bytes");
     TEST_ASSERT(offsetof(ArmSavedState, ash) == 0, "ash is offset 0");
     TEST_ASSERT(offsetof(ArmSavedState, uss.ss_64) == 8, "uss.ss_64 is offset 8");
 
     // Validate type alias arm_saved_state_t
     static_assert(std::is_same_v<arm_saved_state_t, ArmSavedState>, "arm_saved_state_t is ArmSavedState");
 
-    // Validate equivalence with ArmSavedStateTagged
-    TEST_ASSERT(sizeof(ArmSavedStateTagged) == sizeof(ArmSavedState), "Tagged container size matches");
+    // Validate ArmSavedState64Tagged and ArmSavedStateTagged
+    TEST_ASSERT(sizeof(ArmSavedState64Tagged) == 296, "ArmSavedState64Tagged size matches 296 bytes");
+    TEST_ASSERT(sizeof(ArmSavedStateTagged) == 296, "Tagged container size matches 296 bytes");
     TEST_ASSERT(offsetof(ArmSavedStateTagged, ss) == offsetof(ArmSavedState, uss.ss_64), "Frame offset matches (0x08)");
 
     // Test instantiation of upstream container
     ArmSavedState state{};
     state.ash.flavor = ARM_SAVED_STATE64_UPSTREAM;
     state.ash.count  = ARM_SAVED_STATE64_COUNT;
-    TEST_ASSERT(state.ash.flavor == 10, "state.ash.flavor initialized to 10");
+    TEST_ASSERT(state.ash.flavor == 21, "state.ash.flavor initialized to 21");
     TEST_ASSERT(state.ash.count == 72, "state.ash.count initialized to 72");
 
     std::cout << "[Stage 259.3] Upstream saved-state container layout verified.\n";
@@ -208,7 +212,7 @@ static void test_stage259_4_abi_static_and_runtime_verification() {
     uint64_t read_sp     = *reinterpret_cast<const uint64_t*>(raw + 8 + 0x0F8);
     uint64_t read_pc     = *reinterpret_cast<const uint64_t*>(raw + 8 + 0x100);
 
-    TEST_ASSERT(read_flavor == 10, "Raw readback of flavor matches 10");
+    TEST_ASSERT(read_flavor == 21, "Raw readback of flavor matches 21");
     TEST_ASSERT(read_count  == 72, "Raw readback of count matches 72");
     TEST_ASSERT(read_sp     == 0x00044000ULL, "Raw readback of SP matches 0x44000");
     TEST_ASSERT(read_pc     == 0x0000100CULL, "Raw readback of PC matches 0x100C");

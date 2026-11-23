@@ -45,6 +45,10 @@ bool XnuZoneAllocator::create_zone(const std::string& name,
 
     // Align element size to 16 bytes
     const std::size_t aligned_elem_size = static_cast<std::size_t>(align_up(elem_size, 16));
+    if (aligned_elem_size > 0 && max_elements > (UINT64_MAX / static_cast<std::uint64_t>(aligned_elem_size))) {
+        if (out_error) *out_error = "create_zone: element size * max_elements integer overflow";
+        return false;
+    }
     const std::uint64_t total_bytes = static_cast<std::uint64_t>(aligned_elem_size) * max_elements;
 
     if (next_zone_base_ + total_bytes > zone_pool_base_ + zone_pool_size_) {
