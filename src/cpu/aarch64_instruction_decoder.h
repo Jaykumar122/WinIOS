@@ -81,6 +81,25 @@ public:
             return d;
         }
 
+        // 1e. MSR (immediate, PSTATE field): 0xD500401F .. 0xD507FFFF
+        if ((word & 0xFFF80000u) == 0xD5000000u && (word & 0x1Fu) == 0x1Fu) {
+            d.mnemonic = "msr";
+            d.is_valid = true;
+            d.disassembly = "msr daifset, #" + std::to_string((word >> 8) & 0xFu);
+            return d;
+        }
+
+        // 1f. AND (immediate, 64-bit): 0x92000000 .. 0x927FFFFF
+        if ((word & 0xFF800000u) == 0x92000000u) {
+            d.mnemonic = "and";
+            d.register_width = 64;
+            d.rt = word & 0x1Fu;
+            d.rn = (word >> 5) & 0x1Fu;
+            d.is_valid = true;
+            d.disassembly = "and x" + std::to_string(d.rt) + ", x" + std::to_string(d.rn) + ", #imm";
+            return d;
+        }
+
         // 2. SUB (immediate, 64-bit): 0xD1000000 .. 0xD13FFFFF
         // sf=1, op=0, S=0, 100010, sh, imm12, Rn, Rd
         if ((word & 0xFF800000u) == 0xD1000000u) {
