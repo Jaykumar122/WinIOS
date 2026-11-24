@@ -2048,6 +2048,8 @@ inline std::uint16_t sysreg_key(std::uint32_t instruction) noexcept {
 constexpr std::uint16_t kSysregNZCV     = (1u<<14)|(3u<<11)|(4u<<7)|(2u<<3)|0u; // 0x5A10
 // op0=3, op1=3, CRn=4, CRm=2, op2=1  -> DAIF       key = (1<<14)|(3<<11)|(4<<7)|(2<<3)|1
 constexpr std::uint16_t kSysregDAIF     = (1u<<14)|(3u<<11)|(4u<<7)|(2u<<3)|1u; // 0x5A11
+// op0=3, op1=3, CRn=4, CRm=2, op2=6  -> SSBS       key = (1<<14)|(3<<11)|(4<<7)|(2<<3)|6
+constexpr std::uint16_t kSysregSSBS     = (1u<<14)|(3u<<11)|(4u<<7)|(2u<<3)|6u; // 0x5A16
 // op0=3, op1=0, CRn=4, CRm=2, op2=2  -> CurrentEL  key = (1<<14)|(0<<11)|(4<<7)|(2<<3)|2
 constexpr std::uint16_t kSysregCurrentEL= (1u<<14)|(0u<<11)|(4u<<7)|(2u<<3)|2u; // 0x4212
 // op0=3, op1=0, CRn=4, CRm=0, op2=0  -> SPSR_EL1   key = (1<<14)|(0<<11)|(4<<7)|(0<<3)|0
@@ -2286,6 +2288,7 @@ const char* sysreg_name(std::uint16_t key) noexcept {
     switch (key) {
     case kSysregNZCV:     return "NZCV";
     case kSysregDAIF:     return "DAIF";
+    case kSysregSSBS:     return "SSBS";
     case kSysregCurrentEL:return "CurrentEL";
     case kSysregSPSR_EL1: return "SPSR_EL1";
     case kSysregELR_EL1:  return "ELR_EL1";
@@ -2436,13 +2439,15 @@ inline bool is_sysreg_instr(std::uint32_t instr) noexcept {
 //   [4:0]   = M (Mode): bit4=0 (AArch64), bits[3:2]=EL, bit0=SPSel
 inline std::uint32_t encode_spsr(std::uint8_t nzcv, std::uint8_t daif,
                                   std::uint64_t el, bool sp_sel,
-                                  bool il = false, bool ss = false) noexcept {
+                                  bool il = false, bool ss = false,
+                                  bool ssbs = false) noexcept {
     const std::uint32_t m = (el == 0)
         ? 0u
         : static_cast<std::uint32_t>(((el & 0x3u) << 2u) | (sp_sel ? 0x1u : 0x0u));
     return (static_cast<std::uint32_t>(nzcv & 0xFu) << 28u)
          | (ss ? (1u << 21u) : 0u)
          | (il ? (1u << 20u) : 0u)
+         | (ssbs ? (1u << 12u) : 0u)
          | (static_cast<std::uint32_t>(daif & 0xFu) << 6u)
          | m;
 }
@@ -2713,6 +2718,10 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
         }
         if (op1 == 3u && op2 == 7u) {
             text = "MSR DAIFClr, #" + std::to_string(crm);
+            return true;
+        }
+        if (op1 == 3u && op2 == 1u && crm <= 1u) {
+            text = "MSR SSBS, #" + std::to_string(crm);
             return true;
         }
     }
@@ -4453,6 +4462,7 @@ void CPU::reset() {
     daif_       = 0xFu; // all interrupts masked at reset
     il_         = false;
     pstate_ss_  = false;
+    pstate_ssbs_ = false;
     exception_taken_in_step_ = false;
     // Phase 40: EL2 reset
     spsr_el2_   = 0;
@@ -4590,7 +4600,7 @@ void CPU::deliver_architectural_exception(const ArchitecturalException& exc) {
     const std::uint64_t source_pc = exc.faulting_pc ? exc.faulting_pc : program_counter_;
 
     pmu_.on_event(winios::ARMV8_EVENT_EXC_TAKEN, static_cast<unsigned>(current_el_));
-    const std::uint32_t spsr = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_);
+    const std::uint32_t spsr = encode_spsr(nzcv_, daif_, current_el_, sp_sel_, il_, pstate_ss_, pstate_ssbs_);
     const std::uint32_t vector_offset = compute_vector_offset(prev_el, exc.target_el, prev_spsel, exc.type);
 
     if (exc.target_el == 3) {
@@ -4631,6 +4641,7 @@ void CPU::deliver_architectural_exception(const ArchitecturalException& exc) {
     daif_ = 0xFu;
     il_ = false;
     pstate_ss_ = false;
+    pstate_ssbs_ = (exc.target_el == 1) && (((mmu_.get_sctlr_el1() >> 44u) & 0x1u) != 0u);
 
     if (exc.is_asynchronous()) {
         winios::sndl::hook_interrupt_delivery(
@@ -8146,6 +8157,7 @@ void CPU::step(Memory& guest_memory) {
                 daif_       = static_cast<std::uint8_t>((spsr >>  6u) & 0xFu);
                 il_         = true;
                 pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
+                pstate_ssbs_ = ((spsr >> 12u) & 0x1u) != 0u;
                 program_counter_ = new_pc;
                 emit_trace(false, false, 0, true, new_pc, spsr, static_cast<unsigned>(current_el_));
                 if (!is_halted_.load(std::memory_order_acquire)) {
@@ -8162,6 +8174,7 @@ void CPU::step(Memory& guest_memory) {
         daif_       = static_cast<std::uint8_t>((spsr >>  6u) & 0xFu);
         il_         = ((spsr >> 20u) & 0x1u) != 0u;
         pstate_ss_  = ((spsr >> 21u) & 0x1u) != 0u;
+        pstate_ssbs_ = ((spsr >> 12u) & 0x1u) != 0u;
         pmu_.on_event(winios::ARMV8_EVENT_EXC_RETURN, static_cast<unsigned>(current_el_));
         clear_exclusive_monitor();
         if (smp_cluster_) {
@@ -8273,7 +8286,8 @@ void CPU::step(Memory& guest_memory) {
         const std::uint32_t op1 = (instruction >> 16u) & 0x7u;
         const std::uint32_t crm = (instruction >>  8u) & 0xFu;
         const std::uint32_t op2 = (instruction >>  5u) & 0x7u;
-        if (current_el_ == 0) {
+        const bool is_ssbs_imm = (op1 == 3u && op2 == 1u && crm <= 1u);
+        if (current_el_ == 0 && !is_ssbs_imm) {
             if (architectural_exceptions_) {
                 raise_synchronous_exception(
                     make_undefined_instruction(instruction_address));
@@ -8284,7 +8298,10 @@ void CPU::step(Memory& guest_memory) {
         bool handled = false;
         bool spsel_changed = false;
         const bool prev_spsel = sp_sel_;
-        if (op1 == 0u && op2 == 5u) {
+        if (is_ssbs_imm) {
+            pstate_ssbs_ = (crm != 0u);
+            handled = true;
+        } else if (op1 == 0u && op2 == 5u) {
             // MSR SPSel, #imm1: set or clear SPSel bit.
             // Only architectural in EL1+ (trap at EL0 is optional; we allow it).
             const bool new_spsel = (crm & 0x1u) != 0u;
@@ -8727,7 +8744,7 @@ void CPU::step(Memory& guest_memory) {
         bool spsel_changed = false;
         const bool prev_spsel = sp_sel_;
         auto can_access_el0 = [&](std::uint16_t reg_key, bool is_mrs) noexcept -> bool {
-            if (reg_key == kSysregNZCV || reg_key == kSysregFPCR || reg_key == kSysregFPSR) {
+            if (reg_key == kSysregNZCV || reg_key == kSysregFPCR || reg_key == kSysregFPSR || reg_key == kSysregSSBS) {
                 return true;
             }
             if (reg_key == kSysregDCZID_EL0) {
@@ -8889,6 +8906,9 @@ void CPU::step(Memory& guest_memory) {
                 break;
             case kSysregDAIF:
                 value = static_cast<std::uint64_t>(daif_) << 6u;
+                break;
+            case kSysregSSBS:
+                value = pstate_ssbs_ ? (1ULL << 12u) : 0ULL;
                 break;
             case kSysregCurrentEL:
                 // CurrentEL[3:2] = EL, rest = 0.
@@ -9357,6 +9377,9 @@ void CPU::step(Memory& guest_memory) {
             case kSysregDAIF:
                 // DAIF [9:6] bits.
                 daif_ = static_cast<std::uint8_t>((val >> 6u) & 0xFu);
+                break;
+            case kSysregSSBS:
+                pstate_ssbs_ = ((val >> 12u) & 0x1u) != 0u;
                 break;
             case kSysregSPSR_EL1:
                 spsr_el1_ = static_cast<std::uint32_t>(val & 0xFFFFFFFFu);

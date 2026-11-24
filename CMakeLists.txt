@@ -100,6 +100,7 @@ add_library(winios_core STATIC
     src/loader/xnu_instruction_provenance_tracker.cpp
     src/memory/xnu_page_allocator.cpp
     src/loader/macho_dependency_graph.cpp
+    src/loader/macho_object_integrator.cpp
     src/loader/shared_library_mapper.cpp
     src/memory/memory.cpp
     src/memory/unified_memory.cpp
@@ -8637,6 +8638,39 @@ target_include_directories(stage280_adversarial_provenance_tests PRIVATE . inclu
 target_link_libraries(stage280_adversarial_provenance_tests PRIVATE winios_core)
 winios_set_warnings(stage280_adversarial_provenance_tests)
 add_test(NAME stage280_adversarial_provenance_tests COMMAND stage280_adversarial_provenance_tests)
+
+# Campaign 281 Verification Suites
+add_executable(stage281_timer_and_ssbs_tests
+    tests/unit/stage281_timer_and_ssbs_tests.cpp
+)
+target_include_directories(stage281_timer_and_ssbs_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage281_timer_and_ssbs_tests PRIVATE winios_core)
+winios_set_warnings(stage281_timer_and_ssbs_tests)
+add_test(NAME stage281_timer_and_ssbs_tests COMMAND stage281_timer_and_ssbs_tests)
+
+add_executable(stage281_macho_object_reloc_and_linker_tests
+    tests/unit/stage281_macho_object_reloc_and_linker_tests.cpp
+)
+target_include_directories(stage281_macho_object_reloc_and_linker_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage281_macho_object_reloc_and_linker_tests PRIVATE winios_core)
+winios_set_warnings(stage281_macho_object_reloc_and_linker_tests)
+add_test(NAME stage281_macho_object_reloc_and_linker_tests COMMAND stage281_macho_object_reloc_and_linker_tests)
+
+add_executable(stage281_xnu_cswitch_execution_tests
+    tests/unit/stage281_xnu_cswitch_execution_tests.cpp
+)
+target_include_directories(stage281_xnu_cswitch_execution_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage281_xnu_cswitch_execution_tests PRIVATE winios_core)
+winios_set_warnings(stage281_xnu_cswitch_execution_tests)
+add_test(NAME stage281_xnu_cswitch_execution_tests COMMAND stage281_xnu_cswitch_execution_tests)
+
+add_executable(stage281_adversarial_verification_tests
+    tests/unit/stage281_adversarial_verification_tests.cpp
+)
+target_include_directories(stage281_adversarial_verification_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage281_adversarial_verification_tests PRIVATE winios_core)
+winios_set_warnings(stage281_adversarial_verification_tests)
+add_test(NAME stage281_adversarial_verification_tests COMMAND stage281_adversarial_verification_tests)
 
 
 

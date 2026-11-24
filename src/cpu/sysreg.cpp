@@ -16,6 +16,7 @@ constexpr SysRegDescriptor kDescriptors[] = {
     { SysRegId::DAIF,      "DAIF",      make_sysreg_key(3, 3, 4, 2, 1), 3, 3, 4, 2, 1, 0, true, true,  64, 0x3C0, 0xFFFFFFFFFFFFFC3FULL, 0 },
     { SysRegId::NZCV,      "NZCV",      make_sysreg_key(3, 3, 4, 2, 0), 3, 3, 4, 2, 0, 0, true, true,  64, 0, 0x0FFFFFFFFFFFFFFFULL, 0 },
     { SysRegId::SPSel,     "SPSel",     make_sysreg_key(3, 0, 4, 2, 0), 3, 0, 4, 2, 0, 1, true, true,  64, 1, 0xFFFFFFFFFFFFFFFEULL, 0 },
+    { SysRegId::SSBS,      "SSBS",      make_sysreg_key(3, 3, 4, 2, 6), 3, 3, 4, 2, 6, 0, true, true,  64, 0, 0xFFFFFFFFFFFFEFFFULL, 0 },
     { SysRegId::FPCR,      "FPCR",      make_sysreg_key(3, 3, 4, 4, 0), 3, 3, 4, 4, 0, 0, true, true,  64, 0, 0, 0 },
     { SysRegId::FPSR,      "FPSR",      make_sysreg_key(3, 3, 4, 4, 1), 3, 3, 4, 4, 1, 0, true, true,  64, 0, 0, 0 },
 

@@ -132,6 +132,7 @@ struct SmpCoreState {
     bool sp_sel{true};       // true = SP_ELx (EL1h), false = SP_EL0 (EL1t)
     bool il{false};          // PSTATE.IL (Illegal execution state)
     bool pstate_ss{false};   // PSTATE.SS (Software step)
+    bool pstate_ssbs{false}; // PSTATE.SSBS (Speculative Store Bypass Safe, bit 12)
 
     // --- A2: Advanced SIMD & Floating-Point State ---
     CPU::VectorRegister v[CPU::kVectorRegisterCount]{}; // V0–V31 (128-bit)

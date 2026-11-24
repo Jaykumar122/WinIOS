@@ -18,6 +18,7 @@ enum class SysRegId : std::uint16_t {
     DAIF,
     NZCV,
     SPSel,
+    SSBS,
     FPCR,
     FPSR,
 

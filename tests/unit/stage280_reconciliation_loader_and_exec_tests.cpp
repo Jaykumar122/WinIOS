@@ -387,7 +387,9 @@ void test_profile_d_honest_blocking_boundaries() {
     }
     TEST_ASSERT(hit_unlinked_reloc, "Profile D1 honestly reaches unlinked _ml_set_interrupts_enabled relocation");
 
-    // D2: _machine_load_context stops honestly when attempting unimplemented MSR SSBS, X2 (0x07C)
+    // D2: After Campaign 281 implements FEAT_SSBS, _machine_load_context crosses 0x07C (MSR SSBS, X2)
+    // and halts cleanly on 0x080 (LDR d8, [x1, #0x70]) when CPACR_EL1.FPEN == 0, or runs through RETAA (0x0B4)
+    // when CPACR_EL1.FPEN == 3 and LR is APIA-signed.
     CPU cpu2;
     cpu2.reset();
     cpu2.set_current_el(1);
@@ -397,18 +399,20 @@ void test_profile_d_honest_blocking_boundaries() {
                   cpu2.get_pac().sign_pointer(kctx_addr, (thread_addr + 0x158u) | (0x6D42ULL << 48u), PacKeyType::DataA));
     mem.write_u64(thread_addr + 0x1B8u, 0x60000ULL);
     mem.write_u64(kctx_addr + 0x60u, 0x74000ULL); // SS64_KERNEL_SP
+    mem.write_u8(kctx_addr + 0x69u, 1u);         // SSBS = 1
     cpu2.write_register(0, thread_addr);
     cpu2.set_program_counter(code_base + 0x000u);
 
-    bool stopped_on_ssbs = false;
+    bool crossed_ssbs_then_hit_fpen = false;
     try {
         for (int i = 0; i < 40; ++i) {
             cpu2.step(mem);
         }
     } catch (const std::exception&) {
-        stopped_on_ssbs = (cpu2.get_program_counter() == code_base + 0x07Cu);
+        crossed_ssbs_then_hit_fpen = (cpu2.get_program_counter() == code_base + 0x080u) && cpu2.get_pstate_ssbs();
     }
-    TEST_ASSERT(stopped_on_ssbs, "Profile D2 honestly reports unimplemented MSR SSBS boundary at +0x07C");
+    TEST_ASSERT(crossed_ssbs_then_hit_fpen,
+                "Profile D2 crosses MSR SSBS (+0x07C) and honestly stops at CPACR_EL1.FPEN (+0x080)");
     std::cout << "  [PASS] Profile D honest missing-subsystem & unlinked-relocation boundaries verified.\n";
 }
 

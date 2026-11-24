@@ -103,11 +103,16 @@ static void test_stage260_16_deterministic_timer_implementation() {
         TEST_ASSERT(!timer.is_interrupt_asserted(c), "Core c timer has not fired yet");
     }
 
-    // Acknowledge and rearm Core 0 with interval 2000 ticks (new deadline = 1500 + 2000 = 3500)
+    // Acknowledge and rearm Core 0 with fixed-rate periodic interval 2000 ticks:
+    // Initial deadline D=1000, current counter C=1500, elapsed_periods = ((1500-1000)/2000)+1 = 1
+    // Fixed-rate anti-drift comparator D' = 1000 + 1 * 2000 = 3000.
     timer.acknowledge(0);
-    timer.rearm_periodic(0, 2000ULL);
+    const TimerRearmResult rearm = timer.rearm_periodic(0, 2000ULL);
+    TEST_ASSERT(rearm.status == TimerRearmStatus::Success, "Core 0 rearm succeeded");
+    TEST_ASSERT(rearm.elapsed_periods == 1ULL, "Core 0 elapsed_periods == 1");
+    TEST_ASSERT(rearm.missed_ticks == 0ULL, "Core 0 missed_ticks == 0");
     TEST_ASSERT(!timer.is_interrupt_asserted(0), "Core 0 interrupt cleared after ACK and rearm");
-    TEST_ASSERT(timer.get_comparator(0) == 3500ULL, "Core 0 new comparator is 3500");
+    TEST_ASSERT(timer.get_comparator(0) == 3000ULL, "Core 0 new fixed-rate comparator is 3000");
 
     // Advance by another 1000 ticks (counter = 2500)
     timer.advance_counter(1000ULL);

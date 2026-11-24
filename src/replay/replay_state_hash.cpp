@@ -42,7 +42,8 @@ void ReplayStateHash::hash_cpu(const CPU& cpu,
                                  ((static_cast<std::uint64_t>(cpu.get_current_el()) & 0x3u) << 8u) |
                                  ((static_cast<std::uint64_t>(cpu.get_sp_sel() ? 1 : 0)) << 10u) |
                                  ((static_cast<std::uint64_t>(cpu.get_il() ? 1 : 0)) << 11u) |
-                                 ((static_cast<std::uint64_t>(cpu.get_pstate_ss() ? 1 : 0)) << 12u);
+                                 ((static_cast<std::uint64_t>(cpu.get_pstate_ss() ? 1 : 0)) << 12u) |
+                                 ((static_cast<std::uint64_t>(cpu.get_pstate_ssbs() ? 1 : 0)) << 13u);
 
     std::uint8_t tmp[8];
     trace::encode_u64_le(tmp, pc); int_buf.insert(int_buf.end(), tmp, tmp + 8);

@@ -133,7 +133,7 @@ std::vector<std::uint8_t> serialize_cpu_state(const CPU& cpu) {
     dst[offset + 3] = cpu.get_event_register() ? 1u : 0u;
     dst[offset + 4] = cpu.is_started() ? 1u : 0u;
     dst[offset + 5] = cpu.is_stopped() ? 1u : 0u;
-    dst[offset + 6] = 0u; // padding
+    dst[offset + 6] = cpu.get_pstate_ssbs() ? 1u : 0u;
     dst[offset + 7] = 0u; // padding
     offset += 8;
 
@@ -251,6 +251,7 @@ SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, 
     cpu.set_event_register(src[offset + 3] != 0u);
     cpu.set_started(src[offset + 4] != 0u);
     cpu.set_stopped(src[offset + 5] != 0u);
+    cpu.set_pstate_ssbs(src[offset + 6] != 0u);
     offset += 8;
 
     // 11. Trace Sequence

@@ -404,6 +404,10 @@ public:
     bool get_pstate_ss() const noexcept { return pstate_ss_; }
     void set_pstate_ss(bool ss) noexcept { pstate_ss_ = ss; }
 
+    // Campaign 281: PSTATE.SSBS (bit 12). Speculative Store Bypass Safe process state bit.
+    bool get_pstate_ssbs() const noexcept { return pstate_ssbs_; }
+    void set_pstate_ssbs(bool ssbs) noexcept { pstate_ssbs_ = ssbs; }
+
     // Evaluates whether Software Step is active in the current execution state.
     bool is_software_step_active() const noexcept;
     void on_instruction_retired_step(bool is_exclusive, std::uint64_t stepped_pc = 0);
@@ -652,6 +656,8 @@ private:
     bool il_{false};
     // pstate_ss_: PSTATE.SS (Software Step process state bit, bit 21).
     bool pstate_ss_{false};
+    // pstate_ssbs_: PSTATE.SSBS (Speculative Store Bypass Safe bit, bit 12).
+    bool pstate_ssbs_{false};
     // Phase 36: see architectural_exceptions().
     bool architectural_exceptions_{false};
     // Phase 37: MMU translation subsystem

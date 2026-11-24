@@ -54,6 +54,7 @@ void SmpCoreState::reset(std::size_t id, CoreLifecycleState initial_state) noexc
     sp_sel = true;
     il = false;
     pstate_ss = false;
+    pstate_ssbs = false;
 
     for (std::size_t i = 0; i < CPU::kVectorRegisterCount; ++i) {
         v[i] = CPU::VectorRegister{};
@@ -133,6 +134,7 @@ void SmpCoreState::capture_from_cpu(const CPU& cpu) {
     daif = cpu.get_daif();
     il = cpu.get_il();
     pstate_ss = cpu.get_pstate_ss();
+    pstate_ssbs = cpu.get_pstate_ssbs();
 
     for (std::size_t i = 0; i < CPU::kVectorRegisterCount; ++i) {
         v[i] = cpu.read_vector_register(i);
@@ -252,6 +254,7 @@ void SmpCoreState::apply_to_cpu(CPU& cpu) const {
     cpu.set_daif(daif);
     cpu.set_il(il);
     cpu.set_pstate_ss(pstate_ss);
+    cpu.set_pstate_ssbs(pstate_ssbs);
 
     for (std::size_t i = 0; i < CPU::kVectorRegisterCount; ++i) {
         cpu.write_vector_register(i, v[i]);
@@ -356,7 +359,8 @@ std::uint64_t SmpCoreState::compute_canonical_hash() const noexcept {
                                  ((static_cast<std::uint64_t>(current_el) & 0x3u) << 8u) |
                                  ((static_cast<std::uint64_t>(sp_sel ? 1 : 0)) << 10u) |
                                  ((static_cast<std::uint64_t>(il ? 1 : 0)) << 11u) |
-                                 ((static_cast<std::uint64_t>(pstate_ss ? 1 : 0)) << 12u);
+                                 ((static_cast<std::uint64_t>(pstate_ss ? 1 : 0)) << 12u) |
+                                 ((static_cast<std::uint64_t>(pstate_ssbs ? 1 : 0)) << 13u);
     h = fnv1a_u64(h, pstate);
 
     // SIMD / FP registers
@@ -445,7 +449,7 @@ bool SmpCoreState::operator==(const SmpCoreState& o) const noexcept {
     if (pc != o.pc || sp_el0 != o.sp_el0 || sp_el1 != o.sp_el1 ||
         sp_el2 != o.sp_el2 || sp_el3 != o.sp_el3 ||
         nzcv != o.nzcv || daif != o.daif || current_el != o.current_el ||
-        sp_sel != o.sp_sel || il != o.il || pstate_ss != o.pstate_ss) {
+        sp_sel != o.sp_sel || il != o.il || pstate_ss != o.pstate_ss || pstate_ssbs != o.pstate_ssbs) {
         return false;
     }
     for (std::size_t i = 0; i < CPU::kVectorRegisterCount; ++i) {
