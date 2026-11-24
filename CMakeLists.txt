@@ -8228,6 +8228,50 @@ target_link_libraries(stage270_provenance_oracle_adversarial_and_maturity_tests 
 winios_set_warnings(stage270_provenance_oracle_adversarial_and_maturity_tests)
 add_test(NAME stage270_provenance_oracle_adversarial_and_maturity_tests COMMAND stage270_provenance_oracle_adversarial_and_maturity_tests)
 
+# ==============================================================================
+# Campaign 271 Targets (Stages 271.0 - 271.24)
+# ==============================================================================
+add_executable(stage271_baseline_inventory_and_sources_tests
+    tests/unit/stage271_baseline_inventory_and_sources_tests.cpp
+)
+target_include_directories(stage271_baseline_inventory_and_sources_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage271_baseline_inventory_and_sources_tests PRIVATE winios_core)
+winios_set_warnings(stage271_baseline_inventory_and_sources_tests)
+add_test(NAME stage271_baseline_inventory_and_sources_tests COMMAND stage271_baseline_inventory_and_sources_tests)
+
+add_executable(stage271_dependencies_and_control_flow_tests
+    tests/unit/stage271_dependencies_and_control_flow_tests.cpp
+)
+target_include_directories(stage271_dependencies_and_control_flow_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage271_dependencies_and_control_flow_tests PRIVATE winios_core)
+winios_set_warnings(stage271_dependencies_and_control_flow_tests)
+add_test(NAME stage271_dependencies_and_control_flow_tests COMMAND stage271_dependencies_and_control_flow_tests)
+
+add_executable(stage271_prerequisites_and_instruction_tests
+    tests/unit/stage271_prerequisites_and_instruction_tests.cpp
+)
+target_include_directories(stage271_prerequisites_and_instruction_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage271_prerequisites_and_instruction_tests PRIVATE winios_core)
+winios_set_warnings(stage271_prerequisites_and_instruction_tests)
+add_test(NAME stage271_prerequisites_and_instruction_tests COMMAND stage271_prerequisites_and_instruction_tests)
+
+add_executable(stage271_execution_trace_and_continuation_tests
+    tests/unit/stage271_execution_trace_and_continuation_tests.cpp
+)
+target_include_directories(stage271_execution_trace_and_continuation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage271_execution_trace_and_continuation_tests PRIVATE winios_core)
+winios_set_warnings(stage271_execution_trace_and_continuation_tests)
+add_test(NAME stage271_execution_trace_and_continuation_tests COMMAND stage271_execution_trace_and_continuation_tests)
+
+add_executable(stage271_profiles_oracle_adversarial_maturity_tests
+    tests/unit/stage271_profiles_oracle_adversarial_maturity_tests.cpp
+)
+target_include_directories(stage271_profiles_oracle_adversarial_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage271_profiles_oracle_adversarial_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage271_profiles_oracle_adversarial_maturity_tests)
+add_test(NAME stage271_profiles_oracle_adversarial_maturity_tests COMMAND stage271_profiles_oracle_adversarial_maturity_tests)
+
+
 
 
 
