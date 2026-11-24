@@ -8271,6 +8271,50 @@ target_link_libraries(stage271_profiles_oracle_adversarial_maturity_tests PRIVAT
 winios_set_warnings(stage271_profiles_oracle_adversarial_maturity_tests)
 add_test(NAME stage271_profiles_oracle_adversarial_maturity_tests COMMAND stage271_profiles_oracle_adversarial_maturity_tests)
 
+# ==============================================================================
+# Campaign 272 Targets (Stages 272.0 - 272.24)
+# ==============================================================================
+add_executable(stage272_baseline_sources_and_assym_tests
+    tests/unit/stage272_baseline_sources_and_assym_tests.cpp
+)
+target_include_directories(stage272_baseline_sources_and_assym_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage272_baseline_sources_and_assym_tests PRIVATE winios_core)
+winios_set_warnings(stage272_baseline_sources_and_assym_tests)
+add_test(NAME stage272_baseline_sources_and_assym_tests COMMAND stage272_baseline_sources_and_assym_tests)
+
+add_executable(stage272_tpidr_state_contract_and_callers_tests
+    tests/unit/stage272_tpidr_state_contract_and_callers_tests.cpp
+)
+target_include_directories(stage272_tpidr_state_contract_and_callers_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage272_tpidr_state_contract_and_callers_tests PRIVATE winios_core)
+winios_set_warnings(stage272_tpidr_state_contract_and_callers_tests)
+add_test(NAME stage272_tpidr_state_contract_and_callers_tests COMMAND stage272_tpidr_state_contract_and_callers_tests)
+
+add_executable(stage272_instruction_encoding_and_processor_tests
+    tests/unit/stage272_instruction_encoding_and_processor_tests.cpp
+)
+target_include_directories(stage272_instruction_encoding_and_processor_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage272_instruction_encoding_and_processor_tests PRIVATE winios_core)
+winios_set_warnings(stage272_instruction_encoding_and_processor_tests)
+add_test(NAME stage272_instruction_encoding_and_processor_tests COMMAND stage272_instruction_encoding_and_processor_tests)
+
+add_executable(stage272_continuation_execution_and_stacks_tests
+    tests/unit/stage272_continuation_execution_and_stacks_tests.cpp
+)
+target_include_directories(stage272_continuation_execution_and_stacks_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage272_continuation_execution_and_stacks_tests PRIVATE winios_core)
+winios_set_warnings(stage272_continuation_execution_and_stacks_tests)
+add_test(NAME stage272_continuation_execution_and_stacks_tests COMMAND stage272_continuation_execution_and_stacks_tests)
+
+add_executable(stage272_scheduler_mutations_and_maturity_tests
+    tests/unit/stage272_scheduler_mutations_and_maturity_tests.cpp
+)
+target_include_directories(stage272_scheduler_mutations_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage272_scheduler_mutations_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage272_scheduler_mutations_and_maturity_tests)
+add_test(NAME stage272_scheduler_mutations_and_maturity_tests COMMAND stage272_scheduler_mutations_and_maturity_tests)
+
+
 
 
 
