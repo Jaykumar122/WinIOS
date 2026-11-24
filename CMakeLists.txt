@@ -8099,6 +8099,50 @@ target_link_libraries(stage267_auditor_adversarial_and_certification_tests PRIVA
 winios_set_warnings(stage267_auditor_adversarial_and_certification_tests)
 add_test(NAME stage267_auditor_adversarial_and_certification_tests COMMAND stage267_auditor_adversarial_and_certification_tests)
 
+# ==============================================================================
+# Campaign 268 Targets (Stages 268.0 - 268.24)
+# ==============================================================================
+add_executable(stage268_ancestry_inventory_and_memory_tests
+    tests/unit/stage268_ancestry_inventory_and_memory_tests.cpp
+)
+target_include_directories(stage268_ancestry_inventory_and_memory_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage268_ancestry_inventory_and_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage268_ancestry_inventory_and_memory_tests)
+add_test(NAME stage268_ancestry_inventory_and_memory_tests COMMAND stage268_ancestry_inventory_and_memory_tests)
+
+add_executable(stage268_mmu_geometry_decoder_and_tlb_tests
+    tests/unit/stage268_mmu_geometry_decoder_and_tlb_tests.cpp
+)
+target_include_directories(stage268_mmu_geometry_decoder_and_tlb_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage268_mmu_geometry_decoder_and_tlb_tests PRIVATE winios_core)
+winios_set_warnings(stage268_mmu_geometry_decoder_and_tlb_tests)
+add_test(NAME stage268_mmu_geometry_decoder_and_tlb_tests COMMAND stage268_mmu_geometry_decoder_and_tlb_tests)
+
+add_executable(stage268_macho_provenance_entry_and_trace_tests
+    tests/unit/stage268_macho_provenance_entry_and_trace_tests.cpp
+)
+target_include_directories(stage268_macho_provenance_entry_and_trace_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage268_macho_provenance_entry_and_trace_tests PRIVATE winios_core)
+winios_set_warnings(stage268_macho_provenance_entry_and_trace_tests)
+add_test(NAME stage268_macho_provenance_entry_and_trace_tests COMMAND stage268_macho_provenance_entry_and_trace_tests)
+
+add_executable(stage268_milestones_wfi_aic2_and_continuation_tests
+    tests/unit/stage268_milestones_wfi_aic2_and_continuation_tests.cpp
+)
+target_include_directories(stage268_milestones_wfi_aic2_and_continuation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage268_milestones_wfi_aic2_and_continuation_tests PRIVATE winios_core)
+winios_set_warnings(stage268_milestones_wfi_aic2_and_continuation_tests)
+add_test(NAME stage268_milestones_wfi_aic2_and_continuation_tests COMMAND stage268_milestones_wfi_aic2_and_continuation_tests)
+
+add_executable(stage268_continuation_scheduler_auditor_and_adversarial_tests
+    tests/unit/stage268_continuation_scheduler_auditor_and_adversarial_tests.cpp
+)
+target_include_directories(stage268_continuation_scheduler_auditor_and_adversarial_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage268_continuation_scheduler_auditor_and_adversarial_tests PRIVATE winios_core)
+winios_set_warnings(stage268_continuation_scheduler_auditor_and_adversarial_tests)
+add_test(NAME stage268_continuation_scheduler_auditor_and_adversarial_tests COMMAND stage268_continuation_scheduler_auditor_and_adversarial_tests)
+
+
 
 
 
