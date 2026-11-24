@@ -35,6 +35,7 @@ struct KernelBootConfig {
     std::uint64_t             custom_initial_sp{0ULL};          // If 0, auto-computed
     bool                      enable_apple_devicetree{true};
     bool                      enable_apple_aic{false};          // Campaign 206: Apple AIC2 responder
+    bool                      use_canonical_memory_layout{false}; // Campaign 267: Canonical 512-frame memory layout (SP=0x40000, BA=0x34000)
     std::uint64_t             aic_base{0x23B100000ULL};
     std::uint64_t             aic_size{0x00100000ULL};
     std::uint64_t             vbar_el1{0xFFFFFE0007002000ULL}; // 2KB aligned default

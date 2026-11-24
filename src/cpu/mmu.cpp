@@ -120,8 +120,8 @@ bool MMU::validate_descriptor_for_granule(
         switch (level) {
         case 1:
             if (type_bits == 0x1ULL) {
-                // Level 1 Block (32GB): bits [34:14] must be 0
-                if ((desc & 0x00000007FFFC000ULL) != 0) {
+                // Level 1 Block (64GB): bits [35:14] must be 0
+                if ((desc & 0x0000000FFFFFC000ULL) != 0) {
                     if (out_kind) *out_kind = DescriptorKind::Invalid;
                     if (out_fault) *out_fault = MmuFaultType::AddressSize;
                     return false;

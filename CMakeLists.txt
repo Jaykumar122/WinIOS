@@ -8056,6 +8056,49 @@ target_link_libraries(stage266_boot_independent_auditor_adversarial_and_maturity
 winios_set_warnings(stage266_boot_independent_auditor_adversarial_and_maturity_tests)
 add_test(NAME stage266_boot_independent_auditor_adversarial_and_maturity_tests COMMAND stage266_boot_independent_auditor_adversarial_and_maturity_tests)
 
+# ==============================================================================
+# Campaign 267 Targets (Stages 267.0 - 267.24)
+# ==============================================================================
+add_executable(stage267_boot_handoff_and_canonical_memory_tests
+    tests/unit/stage267_boot_handoff_and_canonical_memory_tests.cpp
+)
+target_include_directories(stage267_boot_handoff_and_canonical_memory_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage267_boot_handoff_and_canonical_memory_tests PRIVATE winios_core)
+winios_set_warnings(stage267_boot_handoff_and_canonical_memory_tests)
+add_test(NAME stage267_boot_handoff_and_canonical_memory_tests COMMAND stage267_boot_handoff_and_canonical_memory_tests)
+
+add_executable(stage267_mmu_geometry_and_page_walk_tests
+    tests/unit/stage267_mmu_geometry_and_page_walk_tests.cpp
+)
+target_include_directories(stage267_mmu_geometry_and_page_walk_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage267_mmu_geometry_and_page_walk_tests PRIVATE winios_core)
+winios_set_warnings(stage267_mmu_geometry_and_page_walk_tests)
+add_test(NAME stage267_mmu_geometry_and_page_walk_tests COMMAND stage267_mmu_geometry_and_page_walk_tests)
+
+add_executable(stage267_macho_provenance_and_execution_trace_tests
+    tests/unit/stage267_macho_provenance_and_execution_trace_tests.cpp
+)
+target_include_directories(stage267_macho_provenance_and_execution_trace_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage267_macho_provenance_and_execution_trace_tests PRIVATE winios_core)
+winios_set_warnings(stage267_macho_provenance_and_execution_trace_tests)
+add_test(NAME stage267_macho_provenance_and_execution_trace_tests COMMAND stage267_macho_provenance_and_execution_trace_tests)
+
+add_executable(stage267_exception_aic2_wfi_and_reproduction_tests
+    tests/unit/stage267_exception_aic2_wfi_and_reproduction_tests.cpp
+)
+target_include_directories(stage267_exception_aic2_wfi_and_reproduction_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage267_exception_aic2_wfi_and_reproduction_tests PRIVATE winios_core)
+winios_set_warnings(stage267_exception_aic2_wfi_and_reproduction_tests)
+add_test(NAME stage267_exception_aic2_wfi_and_reproduction_tests COMMAND stage267_exception_aic2_wfi_and_reproduction_tests)
+
+add_executable(stage267_auditor_adversarial_and_certification_tests
+    tests/unit/stage267_auditor_adversarial_and_certification_tests.cpp
+)
+target_include_directories(stage267_auditor_adversarial_and_certification_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage267_auditor_adversarial_and_certification_tests PRIVATE winios_core)
+winios_set_warnings(stage267_auditor_adversarial_and_certification_tests)
+add_test(NAME stage267_auditor_adversarial_and_certification_tests COMMAND stage267_auditor_adversarial_and_certification_tests)
+
 
 
 

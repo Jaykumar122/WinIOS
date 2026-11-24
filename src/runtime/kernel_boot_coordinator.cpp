@@ -73,7 +73,9 @@ KernelBootResult KernelBootCoordinator::prepare_and_boot(
     const std::uint64_t kernel_footprint = highest_va - lowest_va;
 
     // Physical placement addresses
-    const std::uint64_t dt_phys = align_up(config.dram_base + kernel_footprint, kGranule16K);
+    const std::uint64_t dt_phys = config.use_canonical_memory_layout
+                                      ? (config.dram_base + 0x00030000ULL)
+                                      : align_up(config.dram_base + kernel_footprint, kGranule16K);
 
     // 5. Build and Map DeviceTree Blob
     device::KernelBootDeviceTreeConfig dt_cfg;
@@ -103,13 +105,19 @@ KernelBootResult KernelBootCoordinator::prepare_and_boot(
     }
 
     // 6. Build and Map AppleBootArgsRev2
-    const std::uint64_t ba_phys = align_up(dt_phys + dt_blob.size(), kGranule16K);
+    const std::uint64_t ba_phys = config.use_canonical_memory_layout
+                                      ? (config.dram_base + 0x00034000ULL)
+                                      : align_up(dt_phys + dt_blob.size(), kGranule16K);
     const std::uint64_t ba_mem_off = (ba_phys >= config.dram_base && ba_phys < config.dram_base + memory.size())
                                          ? (ba_phys - config.dram_base)
                                          : ba_phys;
 
-    const std::uint64_t stack_base = align_up(ba_phys + 736ULL, kGranule16K);
-    const std::uint64_t stack_top = stack_base + kStackSize;
+    const std::uint64_t stack_base = config.use_canonical_memory_layout
+                                         ? (config.dram_base + 0x00038000ULL)
+                                         : align_up(ba_phys + 736ULL, kGranule16K);
+    const std::uint64_t stack_top = config.use_canonical_memory_layout
+                                        ? (config.dram_base + 0x00040000ULL)
+                                        : (stack_base + kStackSize);
     const std::uint64_t top_of_kernel_data = stack_top;
 
     firmware::KernelBootArgsBuilder ba_builder;
@@ -179,19 +187,24 @@ KernelBootResult KernelBootCoordinator::prepare_and_boot(
     virt_map.add_interval(ba_viv);
 
     // Add BootstrapStack interval
-    loader::MemoryInterval stack_piv{"BootstrapStack", loader::IntervalType::BootstrapStack, stack_base, kStackSize, 0x3, 0x3, true, "Stack"};
+    const std::uint64_t effective_stack_size = stack_top - stack_base;
+    loader::MemoryInterval stack_piv{"BootstrapStack", loader::IntervalType::BootstrapStack, stack_base, effective_stack_size, 0x3, 0x3, true, "Stack"};
     phys_map.add_interval(stack_piv);
-    loader::MemoryInterval stack_viv{"BootstrapStack", loader::IntervalType::BootstrapStack, lowest_va + (stack_base - config.dram_base), kStackSize, 0x3, 0x3, true, "Stack"};
+    loader::MemoryInterval stack_viv{"BootstrapStack", loader::IntervalType::BootstrapStack, lowest_va + (stack_base - config.dram_base), effective_stack_size, 0x3, 0x3, true, "Stack"};
     virt_map.add_interval(stack_viv);
 
     // Add PageTables interval
-    const std::uint64_t pt_base = stack_top;
+    const std::uint64_t pt_base = config.use_canonical_memory_layout
+                                      ? (config.dram_base + 0x00040000ULL)
+                                      : stack_top;
     const std::uint64_t pt_size = 0x8000ULL; // 32 KB for L1+L2 bootstrap tables
     loader::MemoryInterval pt_piv{"PageTables", loader::IntervalType::PageTables, pt_base, pt_size, 0x3, 0x3, true, "MMU"};
     phys_map.add_interval(pt_piv);
 
-    // Add DynamicPool interval (aligned at Frame 16: 0x40000 to reconcile with 496 managed pages)
-    std::uint64_t pool_start = pt_base + pt_size;
+    // Add DynamicPool interval
+    std::uint64_t pool_start = config.use_canonical_memory_layout
+                                   ? (config.dram_base + 0x000D8000ULL)
+                                   : (pt_base + pt_size);
     if (pool_start < 0x40000ULL) {
         pool_start = 0x40000ULL;
     }
