@@ -1,0 +1,25 @@
+# WINIOS CAMPAIGN 279: CRYPTOGRAPHIC SHA-256 MANIFEST
+# Generated: 2026-11-24 16:34:00 UTC
+# Repository: D:\WinISO26\WinIOS\
+# Branch: campaign-191r
+# Required Baseline HEAD (Campaign 278 closeout): a5ffb712b0b6423f7d297e9178b8b53499ac5a4c
+# Expected Immediate Parent (C277): 2dcf630e3a7a5e8f38f8b8789c4668e271d7b550
+# Expected Grandparent (C276): 5b80b47af1a7246816746a0ad2031d0b2e8d87dd
+# Expected Ancestor 3 (C275): cf4b9ef74b5b219086821bebe2d5d253eb332d92
+# Expected Ancestor 4 (C274): b2b41f6f000037f3612caf395f013378f5079cd2
+# Expected Ancestor 5 (C273): cb75a40b527e390f8837814e71fbfe665248b365
+# Expected Ancestor 6 (C272): 3cecb2030db5fc8c0923d12ebf3db797d9ad3877
+
+# -----------------------------------------------------------------------------
+# SHA-256 Checksum                                                    Size (B)  File Path
+# -----------------------------------------------------------------------------
+4910385696522AF14581701C00C676D2D93D2154CFC17D89764350747B2442CD       24517  WINIOS_CAMPAIGN_279_FINAL_REPORT.md
+C558F8DF0CD3D176374C7E980797A42D48657A0D96F950E44D1E8BB404A2C00A      510341  CMakeLists.txt
+931965EA6094F4EE3E921EA1655DBAC4B8B5B46D1F16B6CDB5ED25377E406092        9870  tests/unit/stage279_baseline_and_artifact_audit_tests.cpp
+15A1242704CB2C150920FE3C736350A6ADC71AD8FD47CD337859B60BE87D3384       15753  tests/unit/stage279_toolchain_and_darwin_feasibility_tests.cpp
+0501DC6B95E9FE62FC15BB590FE92502E8F9F65E52A2A0FF897D10021EDFC3C9       13423  tests/unit/stage279_macho_object_and_relocation_tests.cpp
+DCC464731A18294B27AF32632B9818589669C96E8A628058F38FDA79F56B2A57       15100  tests/unit/stage279_adaptation_and_continuation_tests.cpp
+89AD178216DAD1FAA0EC75397DA4B13F3E702D082EDC6A58AA09B22069529F54       15403  tests/unit/stage279_adversarial_and_integrity_tests.cpp
+63AAAAE9BD3417BD070ACB231593F6004C7751FA2FDBF78EE04A08576724ECFF        1088  build/load_context_darwin.o
+66E86105F3EB0035DE36A62391523D60E5654A020E35EC3490F7CA70CCA49ACC         217  build/load_context_darwin.s
+D9F6EC06384E957B8AE7CE7F73D88987F20E4130101CC456680A21765F6BCC1B      434094  src/loader/embedded_xnu_image_210.inl
