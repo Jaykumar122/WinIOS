@@ -8185,6 +8185,49 @@ target_link_libraries(stage269_replay_adversarial_auditor_and_maturity_tests PRI
 winios_set_warnings(stage269_replay_adversarial_auditor_and_maturity_tests)
 add_test(NAME stage269_replay_adversarial_auditor_and_maturity_tests COMMAND stage269_replay_adversarial_auditor_and_maturity_tests)
 
+# ==============================================================================
+# Campaign 270 Targets (Stages 270.0 - 270.24)
+# ==============================================================================
+add_executable(stage270_baseline_inventory_and_sources_tests
+    tests/unit/stage270_baseline_inventory_and_sources_tests.cpp
+)
+target_include_directories(stage270_baseline_inventory_and_sources_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage270_baseline_inventory_and_sources_tests PRIVATE winios_core)
+winios_set_warnings(stage270_baseline_inventory_and_sources_tests)
+add_test(NAME stage270_baseline_inventory_and_sources_tests COMMAND stage270_baseline_inventory_and_sources_tests)
+
+add_executable(stage270_thread_structures_and_profiles_tests
+    tests/unit/stage270_thread_structures_and_profiles_tests.cpp
+)
+target_include_directories(stage270_thread_structures_and_profiles_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage270_thread_structures_and_profiles_tests PRIVATE winios_core)
+winios_set_warnings(stage270_thread_structures_and_profiles_tests)
+add_test(NAME stage270_thread_structures_and_profiles_tests COMMAND stage270_thread_structures_and_profiles_tests)
+
+add_executable(stage270_context_switch_and_continuation_tests
+    tests/unit/stage270_context_switch_and_continuation_tests.cpp
+)
+target_include_directories(stage270_context_switch_and_continuation_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage270_context_switch_and_continuation_tests PRIVATE winios_core)
+winios_set_warnings(stage270_context_switch_and_continuation_tests)
+add_test(NAME stage270_context_switch_and_continuation_tests COMMAND stage270_context_switch_and_continuation_tests)
+
+add_executable(stage270_scheduler_timer_mmu_and_arm64e_tests
+    tests/unit/stage270_scheduler_timer_mmu_and_arm64e_tests.cpp
+)
+target_include_directories(stage270_scheduler_timer_mmu_and_arm64e_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage270_scheduler_timer_mmu_and_arm64e_tests PRIVATE winios_core)
+winios_set_warnings(stage270_scheduler_timer_mmu_and_arm64e_tests)
+add_test(NAME stage270_scheduler_timer_mmu_and_arm64e_tests COMMAND stage270_scheduler_timer_mmu_and_arm64e_tests)
+
+add_executable(stage270_provenance_oracle_adversarial_and_maturity_tests
+    tests/unit/stage270_provenance_oracle_adversarial_and_maturity_tests.cpp
+)
+target_include_directories(stage270_provenance_oracle_adversarial_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage270_provenance_oracle_adversarial_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage270_provenance_oracle_adversarial_and_maturity_tests)
+add_test(NAME stage270_provenance_oracle_adversarial_and_maturity_tests COMMAND stage270_provenance_oracle_adversarial_and_maturity_tests)
+
 
 
 
