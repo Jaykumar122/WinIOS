@@ -1,0 +1,22 @@
+# WINIOS CAMPAIGN 273: CRYPTOGRAPHIC SHA-256 MANIFEST
+# Generated: 2026-11-24 10:55:00 UTC
+# Repository: D:\WinISO26\WinIOS\
+# Branch: campaign-191r
+# Campaign 272 Baseline HEAD: 3cecb2030db5fc8c0923d12ebf3db797d9ad3877
+# Expected Parent (C271): 363f8731a4df145bbca041c27ee56232f7245ae8
+# Expected Grandparent (C270): 54fb9bdab98402893e6df63c9d715db4aa8ca7ec
+
+# -----------------------------------------------------------------------------
+# File Path                                                        Size (B)     SHA-256 Checksum
+# -----------------------------------------------------------------------------
+563D445A9F62E61561C3EC135C6E034DDA26191FEC4B89781622BB9CF9C3D318       14921  WINIOS_CAMPAIGN_273_FINAL_REPORT.md
+8CB5A0A4D7B9DE269EC34710C0864BF0C627AD931C5B0CC6D4C45F93384DB047      494771  CMakeLists.txt
+D2F964868C2D43D75EB4312CBB79BB06F0FC2012E58BDA05B6B86AC483A9E80D       17094  tests/unit/stage273_baseline_sources_and_assym_tests.cpp
+2707445D9BC73B27123731B7422DAEBF3E511F21B6D834761C94D4C73ACFADF3       14555  tests/unit/stage273_tpidr_lifecycle_contract_and_callers_tests.cpp
+47FF9DF017AE35C153EBD60D2E824681EF92759324217D13A3996B2693E2BC2F       12520  tests/unit/stage273_assembly_disassembly_and_architecture_tests.cpp
+16164AA80104FAF50CA0F5B6830F6187F4A31F44AD1029207C7CD1704AA09382       13036  tests/unit/stage273_execution_trace_continuation_and_stacks_tests.cpp
+5541E887CDD58995BBB4C4A70BF67CDFC386AA2AD527F8EFC5167B9AC458E96F       11930  tests/unit/stage273_adversarial_provenance_and_maturity_tests.cpp
+D9F6EC06384E957B8AE7CE7F73D88987F20E4130101CC456680A21765F6BCC1B      434094  src/loader/embedded_xnu_image_210.inl
+BC0891CCAAF9F555B73FA3F48EFB2DEBDCDD5FB261A669B7221F5473470FC337        1001  src/kernel/xnu_start.s
+021010777435C67A46A7877FDE3ADBB6504BE003D770B4D900A9B6DF0519B07A       12441  src/kernel/xnu_arm_init.c
+61660FA528AF78EC4D7663D6A4F76EF51CF6440AB739E02B5F498B2A9963C072        9051  src/loader/xnu_genuine_init_builder.cpp

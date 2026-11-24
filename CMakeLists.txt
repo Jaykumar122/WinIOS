@@ -8314,6 +8314,50 @@ target_link_libraries(stage272_scheduler_mutations_and_maturity_tests PRIVATE wi
 winios_set_warnings(stage272_scheduler_mutations_and_maturity_tests)
 add_test(NAME stage272_scheduler_mutations_and_maturity_tests COMMAND stage272_scheduler_mutations_and_maturity_tests)
 
+# ==============================================================================
+# Campaign 273 Targets (Stages 273.0 - 273.24)
+# ==============================================================================
+add_executable(stage273_baseline_sources_and_assym_tests
+    tests/unit/stage273_baseline_sources_and_assym_tests.cpp
+)
+target_include_directories(stage273_baseline_sources_and_assym_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage273_baseline_sources_and_assym_tests PRIVATE winios_core)
+winios_set_warnings(stage273_baseline_sources_and_assym_tests)
+add_test(NAME stage273_baseline_sources_and_assym_tests COMMAND stage273_baseline_sources_and_assym_tests)
+
+add_executable(stage273_tpidr_lifecycle_contract_and_callers_tests
+    tests/unit/stage273_tpidr_lifecycle_contract_and_callers_tests.cpp
+)
+target_include_directories(stage273_tpidr_lifecycle_contract_and_callers_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage273_tpidr_lifecycle_contract_and_callers_tests PRIVATE winios_core)
+winios_set_warnings(stage273_tpidr_lifecycle_contract_and_callers_tests)
+add_test(NAME stage273_tpidr_lifecycle_contract_and_callers_tests COMMAND stage273_tpidr_lifecycle_contract_and_callers_tests)
+
+add_executable(stage273_assembly_disassembly_and_architecture_tests
+    tests/unit/stage273_assembly_disassembly_and_architecture_tests.cpp
+)
+target_include_directories(stage273_assembly_disassembly_and_architecture_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage273_assembly_disassembly_and_architecture_tests PRIVATE winios_core)
+winios_set_warnings(stage273_assembly_disassembly_and_architecture_tests)
+add_test(NAME stage273_assembly_disassembly_and_architecture_tests COMMAND stage273_assembly_disassembly_and_architecture_tests)
+
+add_executable(stage273_execution_trace_continuation_and_stacks_tests
+    tests/unit/stage273_execution_trace_continuation_and_stacks_tests.cpp
+)
+target_include_directories(stage273_execution_trace_continuation_and_stacks_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage273_execution_trace_continuation_and_stacks_tests PRIVATE winios_core)
+winios_set_warnings(stage273_execution_trace_continuation_and_stacks_tests)
+add_test(NAME stage273_execution_trace_continuation_and_stacks_tests COMMAND stage273_execution_trace_continuation_and_stacks_tests)
+
+add_executable(stage273_adversarial_provenance_and_maturity_tests
+    tests/unit/stage273_adversarial_provenance_and_maturity_tests.cpp
+)
+target_include_directories(stage273_adversarial_provenance_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage273_adversarial_provenance_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage273_adversarial_provenance_and_maturity_tests)
+add_test(NAME stage273_adversarial_provenance_and_maturity_tests COMMAND stage273_adversarial_provenance_and_maturity_tests)
+
+
 
 
 
