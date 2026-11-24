@@ -1,0 +1,25 @@
+# WINIOS CAMPAIGN 278: CRYPTOGRAPHIC SHA-256 MANIFEST
+# Generated: 2026-11-24 16:03:00 UTC
+# Repository: D:\WinISO26\WinIOS\
+# Branch: campaign-191r
+# Required Baseline HEAD (Campaign 277 closeout): 2dcf630e3a7a5e8f38f8b8789c4668e271d7b550
+# Expected Immediate Parent (C276): 5b80b47af1a7246816746a0ad2031d0b2e8d87dd
+# Expected Grandparent (C275): cf4b9ef74b5b219086821bebe2d5d253eb332d92
+# Expected Ancestor 3 (C274): b2b41f6f000037f3612caf395f013378f5079cd2
+# Expected Ancestor 4 (C273): cb75a40b527e390f8837814e71fbfe665248b365
+# Expected Ancestor 5 (C272): 3cecb2030db5fc8c0923d12ebf3db797d9ad3877
+
+# -----------------------------------------------------------------------------
+# SHA-256 Checksum                                                    Size (B)  File Path
+# -----------------------------------------------------------------------------
+2FCFE0C360DA2D38929B27533DFD5ACF1D3AB34AAC975661D2C66C509B498EBB       18188  WINIOS_CAMPAIGN_278_FINAL_REPORT.md
+F52BD105A8DA24445CB2E947BBEA55C45E9F18FEA8087525B3221244970B1273      507825  CMakeLists.txt
+3B21ACE18F8E19CE3BDCD4CDAA0F35C611BD6D7BD46CC5A7EC859A4F1ABF19E1        9596  tests/unit/stage278_baseline_and_protected_hash_tests.cpp
+03361F7618EF579438BE229920537065E083FFA21F6527E7CB524941F929E745       12392  tests/unit/stage278_artifact_identity_and_taxonomy_tests.cpp
+2ED6373129EC0E828B20A8A5B9006C3F40F031DB701E33FF2C7525C83FD6A041       11302  tests/unit/stage278_toolchain_and_abi_reconciliation_tests.cpp
+3F8EC64250A2EBB33784BC4E6BBDCBB5A35DC77460D984C4DCBE47610520B1EA       13983  tests/unit/stage278_adaptation_and_continuation_tests.cpp
+29A9AAF87A88055F1B1F600C8BB45DD1F2CF1C4367F29F316356F53FAD416934       14866  tests/unit/stage278_adversarial_and_integrity_tests.cpp
+D9F6EC06384E957B8AE7CE7F73D88987F20E4130101CC456680A21765F6BCC1B      434094  src/loader/embedded_xnu_image_210.inl
+BC0891CCAAF9F555B73FA3F48EFB2DEBDCDD5FB261A669B7221F5473470FC337        1001  src/kernel/xnu_start.s
+021010777435C67A46A7877FDE3ADBB6504BE003D770B4D900A9B6DF0519B07A       12441  src/kernel/xnu_arm_init.c
+61660FA528AF78EC4D7663D6A4F76EF51CF6440AB739E02B5F498B2A9963C072        9051  src/loader/xnu_genuine_init_builder.cpp
