@@ -8142,6 +8142,50 @@ target_link_libraries(stage268_continuation_scheduler_auditor_and_adversarial_te
 winios_set_warnings(stage268_continuation_scheduler_auditor_and_adversarial_tests)
 add_test(NAME stage268_continuation_scheduler_auditor_and_adversarial_tests COMMAND stage268_continuation_scheduler_auditor_and_adversarial_tests)
 
+# ==============================================================================
+# Campaign 269 Targets (Stages 269.0 - 269.24)
+# ==============================================================================
+add_executable(stage269_ancestry_inventory_wfi_and_trace_tests
+    tests/unit/stage269_ancestry_inventory_wfi_and_trace_tests.cpp
+)
+target_include_directories(stage269_ancestry_inventory_wfi_and_trace_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage269_ancestry_inventory_wfi_and_trace_tests PRIVATE winios_core)
+winios_set_warnings(stage269_ancestry_inventory_wfi_and_trace_tests)
+add_test(NAME stage269_ancestry_inventory_wfi_and_trace_tests COMMAND stage269_ancestry_inventory_wfi_and_trace_tests)
+
+add_executable(stage269_interrupt_vector_and_lifecycle_tests
+    tests/unit/stage269_interrupt_vector_and_lifecycle_tests.cpp
+)
+target_include_directories(stage269_interrupt_vector_and_lifecycle_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage269_interrupt_vector_and_lifecycle_tests PRIVATE winios_core)
+winios_set_warnings(stage269_interrupt_vector_and_lifecycle_tests)
+add_test(NAME stage269_interrupt_vector_and_lifecycle_tests COMMAND stage269_interrupt_vector_and_lifecycle_tests)
+
+add_executable(stage269_xnu_continuation_linkage_and_provenance_tests
+    tests/unit/stage269_xnu_continuation_linkage_and_provenance_tests.cpp
+)
+target_include_directories(stage269_xnu_continuation_linkage_and_provenance_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage269_xnu_continuation_linkage_and_provenance_tests PRIVATE winios_core)
+winios_set_warnings(stage269_xnu_continuation_linkage_and_provenance_tests)
+add_test(NAME stage269_xnu_continuation_linkage_and_provenance_tests COMMAND stage269_xnu_continuation_linkage_and_provenance_tests)
+
+add_executable(stage269_memory_map_wx_mmu_and_abi_tests
+    tests/unit/stage269_memory_map_wx_mmu_and_abi_tests.cpp
+)
+target_include_directories(stage269_memory_map_wx_mmu_and_abi_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage269_memory_map_wx_mmu_and_abi_tests PRIVATE winios_core)
+winios_set_warnings(stage269_memory_map_wx_mmu_and_abi_tests)
+add_test(NAME stage269_memory_map_wx_mmu_and_abi_tests COMMAND stage269_memory_map_wx_mmu_and_abi_tests)
+
+add_executable(stage269_replay_adversarial_auditor_and_maturity_tests
+    tests/unit/stage269_replay_adversarial_auditor_and_maturity_tests.cpp
+)
+target_include_directories(stage269_replay_adversarial_auditor_and_maturity_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage269_replay_adversarial_auditor_and_maturity_tests PRIVATE winios_core)
+winios_set_warnings(stage269_replay_adversarial_auditor_and_maturity_tests)
+add_test(NAME stage269_replay_adversarial_auditor_and_maturity_tests COMMAND stage269_replay_adversarial_auditor_and_maturity_tests)
+
+
 
 
 
