@@ -59,6 +59,8 @@ struct MachORelocEntry {
     std::uint32_t original_insn{0};
     std::uint32_t patched_insn{0};
     bool          patched{false};
+    std::int64_t  addend{0};
+    std::string   owner_object;
 };
 
 struct MachOObjectSectionInfo {
@@ -198,6 +200,90 @@ struct MachOBoundedContainerResult {
     }
 };
 
+struct MachOObjectInput {
+    std::string source_label;
+    MachOObjectParseResult parsed;
+};
+
+struct MachOStagedSection {
+    std::string object_label;
+    std::string segname;
+    std::string sectname;
+    std::uint64_t va{0};
+    std::uint64_t size{0};
+    std::uint32_t vm_prot{0}; // bit0=R, bit1=W, bit2=X; must satisfy !(W && X)
+    bool is_zerofill{false};
+    std::vector<std::uint8_t> bytes;
+};
+
+struct MachOGotSlot {
+    std::string symbol_name;
+    std::uint64_t slot_va{0};
+    std::uint64_t target_va{0};
+    SymbolProvenanceClassification target_classification{SymbolProvenanceClassification::UnresolvedExternal};
+};
+
+struct MachOMultiObjectOptions {
+    // Base VA for genuine upstream RX __TEXT,__text sections (16 KiB aligned).
+    std::uint64_t text_base_va{0x10000000ULL};
+    // Base VA for RO sections (__TEXT,__cstring/__const, __DATA_CONST, synthetic __got) (16 KiB aligned).
+    std::uint64_t rodata_base_va{0x10020000ULL};
+    // Base VA for RW sections (__DATA,*, __BOOTDATA,*) (16 KiB aligned).
+    std::uint64_t data_base_va{0x10040000ULL};
+    // Base VA for explicit external stubs (16 KiB aligned RX).
+    std::uint64_t stub_base_va{0x10080000ULL};
+    // Guest physical translation bias: phys = va - virtual_base_bias.
+    std::uint64_t virtual_base_bias{0x10000000ULL};
+    bool require_all_relocations_resolved{false};
+    bool reject_duplicate_strong_symbols{true};
+    std::vector<BoundedExternalBinding> external_bindings;
+};
+
+struct MachOMultiObjectLinkResult {
+    ObjectIntegrationStatus status{ObjectIntegrationStatus::TruncatedHeader};
+    std::string error_message;
+
+    std::uint64_t text_va{0};
+    std::uint64_t text_size{0};
+    std::uint64_t rodata_va{0};
+    std::uint64_t rodata_size{0};
+    std::uint64_t data_va{0};
+    std::uint64_t data_size{0};
+    std::uint64_t stub_va{0};
+    std::uint64_t stub_size{0};
+
+    std::vector<MachOStagedSection> staged_sections;
+    std::vector<MachOGotSlot> got_slots;
+    std::vector<MachOSymbolEntry> resolved_symbols;
+    std::vector<MachORelocEntry> relocations;
+    std::vector<MachOProvenanceRegion> provenance_regions;
+
+    std::vector<std::string> unresolved_symbols;
+    std::vector<std::string> stub_symbols;
+    bool has_test_harness_stubs{false};
+    bool has_winios_architectural_bindings{false};
+
+    [[nodiscard]] bool is_success() const noexcept {
+        return status == ObjectIntegrationStatus::Success;
+    }
+
+    [[nodiscard]] bool find_symbol_va(const std::string& name, std::uint64_t& out_va) const noexcept;
+    [[nodiscard]] bool find_symbol(const std::string& name, MachOSymbolEntry& out_sym) const noexcept;
+    [[nodiscard]] SymbolProvenanceClassification classify_va(std::uint64_t va) const noexcept;
+};
+
+struct MachOMultiObjectContainerResult {
+    ObjectIntegrationStatus status{ObjectIntegrationStatus::TruncatedHeader};
+    std::string error_message;
+    std::vector<std::uint8_t> macho_execute_bytes;
+    std::string container_sha256_hex;
+    MachOMultiObjectLinkResult link_audit;
+
+    [[nodiscard]] bool is_success() const noexcept {
+        return status == ObjectIntegrationStatus::Success;
+    }
+};
+
 // Bounded ARM64 Mach-O MH_OBJECT parser, relocator, provenance auditor, and W^X stager.
 // Deliberately separate from KernelImageParser and MachoUserLoader, which must continue
 // rejecting MH_OBJECT at boot/userspace boundaries.
@@ -222,16 +308,47 @@ public:
         const MachOObjectParseResult& parsed,
         const MachOIntegrationOptions& opts);
 
+    // Multi-object bounded linker supporting BRANCH26, PAGE21, PAGEOFF12, GOT_LOAD_PAGE21,
+    // GOT_LOAD_PAGEOFF12, and ADDEND relocations with strict W^X & provenance enforcement.
+    [[nodiscard]] static MachOMultiObjectLinkResult link_objects(
+        const std::vector<MachOObjectInput>& inputs,
+        const MachOMultiObjectOptions& opts);
+
+    [[nodiscard]] static MachOMultiObjectLinkResult stage_objects_in_memory(
+        const std::vector<MachOObjectInput>& inputs,
+        const MachOMultiObjectOptions& opts,
+        Memory& guest_mem,
+        GuestMemoryMap* memory_map = nullptr);
+
     // Build a bounded standalone MH_EXECUTE Mach-O binary from the linked object + optional stub page.
     [[nodiscard]] static MachOBoundedContainerResult build_bounded_macho_execute(
         const MachOObjectParseResult& parsed,
         const MachOIntegrationOptions& opts,
         const std::string& entry_symbol = "_machine_load_context");
 
-    // Helper: decode/encode ARM64 B / BL imm26 instruction.
+    // Build a bounded standalone MH_EXECUTE Mach-O binary from multiple linked upstream objects.
+    [[nodiscard]] static MachOMultiObjectContainerResult build_bounded_multi_object_execute(
+        const std::vector<MachOObjectInput>& inputs,
+        const MachOMultiObjectOptions& opts,
+        const std::string& entry_symbol = "_machine_load_context");
+
+    // Helpers: decode/encode ARM64 relocation instruction forms.
     [[nodiscard]] static bool encode_branch26(
         std::uint32_t original_insn,
         std::uint64_t pc_va,
+        std::uint64_t target_va,
+        std::uint32_t& out_patched_insn,
+        std::string& out_error);
+
+    [[nodiscard]] static bool encode_page21(
+        std::uint32_t original_insn,
+        std::uint64_t pc_va,
+        std::uint64_t target_va,
+        std::uint32_t& out_patched_insn,
+        std::string& out_error);
+
+    [[nodiscard]] static bool encode_pageoff12(
+        std::uint32_t original_insn,
         std::uint64_t target_va,
         std::uint32_t& out_patched_insn,
         std::string& out_error);

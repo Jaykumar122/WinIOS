@@ -120,7 +120,7 @@ std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState&
     p[3] = state.il ? 1u : 0u;
     p[4] = state.pstate_ss ? 1u : 0u;
     p[5] = static_cast<std::uint8_t>(state.current_el);
-    p[6] = 0;
+    p[6] = state.pstate_ssbs ? 1u : 0u;
     p[7] = 0;
     p += 8;
 
@@ -218,6 +218,20 @@ std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState&
         p += 8;
     }
 
+    trace::encode_u32_le(p + 0, kCoreArchPacBlockMagic);
+    trace::encode_u32_le(p + 4, static_cast<std::uint32_t>(state.pac_fault_mode));
+    p += 8;
+    const auto encode_key = [&](const winios::cpu::PacKey128& k) {
+        trace::encode_u64_le(p + 0, k.lo);
+        trace::encode_u64_le(p + 8, k.hi);
+        p += 16;
+    };
+    encode_key(state.pac_keyring.apia);
+    encode_key(state.pac_keyring.apib);
+    encode_key(state.pac_keyring.apda);
+    encode_key(state.pac_keyring.apdb);
+    encode_key(state.pac_keyring.apga);
+
     return buf;
 }
 
@@ -255,6 +269,7 @@ SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std
     out_state.il = (p[3] != 0);
     out_state.pstate_ss = (p[4] != 0);
     out_state.current_el = p[5];
+    out_state.pstate_ssbs = (p[6] != 0);
     p += 8;
 
     for (std::size_t i = 0; i < 32; ++i) {
@@ -314,9 +329,9 @@ SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std
         out_state.tpidrro_el0 = 0;
     }
 
-    // Stage 39: trailing debug block.  A legacy 1080-byte payload leaves the
-    // debug state at architectural reset values.
-    if (size >= kCoreArchPayloadSize) {
+    // Stage 39+: trailing debug/PMU/PAC blocks. Legacy prefixes leave newer
+    // blocks at architectural reset values.
+    if (size >= kCoreArchDebugPmuPayloadSize) {
         p += 24;
         out_state.debug.mdscr_el1 = trace::decode_u64_le(p + 0);
         out_state.debug.mdccint_el1 = trace::decode_u64_le(p + 8);
@@ -347,9 +362,40 @@ SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std
             out_state.pmu.event_type[i] = trace::decode_u32_le(p + 4);
             p += 8;
         }
+        if (size >= kCoreArchPayloadSize) {
+            const std::uint32_t pac_magic = trace::decode_u32_le(p + 0);
+            if (pac_magic != kCoreArchPacBlockMagic) {
+                return SnapshotResult::fail(SnapshotErrorCode::InvalidMagic,
+                                            "Invalid PAC block magic in CoreArchitecturalState");
+            }
+            const std::uint32_t mode_raw = trace::decode_u32_le(p + 4);
+            if (mode_raw > 1u) {
+                return SnapshotResult::fail(SnapshotErrorCode::InvalidStateData,
+                                            "Invalid PAC fault mode in CoreArchitecturalState");
+            }
+            out_state.pac_fault_mode = static_cast<winios::cpu::PacFaultMode>(mode_raw);
+            p += 8;
+            auto decode_key = [&](winios::cpu::PacKey128& k) {
+                k.lo = trace::decode_u64_le(p + 0);
+                k.hi = trace::decode_u64_le(p + 8);
+                p += 16;
+            };
+            decode_key(out_state.pac_keyring.apia);
+            decode_key(out_state.pac_keyring.apib);
+            decode_key(out_state.pac_keyring.apda);
+            decode_key(out_state.pac_keyring.apdb);
+            decode_key(out_state.pac_keyring.apga);
+        } else {
+            const winios::cpu::Arm64ePointerAuth default_pac{};
+            out_state.pac_keyring = default_pac.get_keyring();
+            out_state.pac_fault_mode = default_pac.get_fault_mode();
+        }
     } else {
         out_state.debug = SmpDebugState{};
         out_state.pmu = SmpPmuState{};
+        const winios::cpu::Arm64ePointerAuth default_pac{};
+        out_state.pac_keyring = default_pac.get_keyring();
+        out_state.pac_fault_mode = default_pac.get_fault_mode();
     }
 
     return SnapshotResult::ok();

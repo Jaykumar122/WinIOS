@@ -2756,6 +2756,18 @@ bool disassemble_fp_simd(std::uint32_t instruction, std::string& text) {
             case 3: text = "WFI"; return true;
             case 4: text = "SEV"; return true;
             case 5: text = "SEVL"; return true;
+            case 8: text = "PACIA1716"; return true;
+            case 10: text = "PACIB1716"; return true;
+            case 12: text = "AUTIA1716"; return true;
+            case 14: text = "AUTIB1716"; return true;
+            case 24: text = "PACIAZ"; return true;
+            case 25: text = "PACIASP"; return true;
+            case 26: text = "PACIBZ"; return true;
+            case 27: text = "PACIBSP"; return true;
+            case 28: text = "AUTIAZ"; return true;
+            case 29: text = "AUTIASP"; return true;
+            case 30: text = "AUTIBZ"; return true;
+            case 31: text = "AUTIBSP"; return true;
             default: text = "HINT #" + std::to_string(imm7); return true;
             }
         }
@@ -3978,7 +3990,7 @@ std::string decode_disassembly(std::uint32_t instruction) {
             "AUTIZA", "AUTIZB", "AUTDZA", "AUTDZB",
             "XPACI", "XPACD"
         };
-        if (subop < 18) {
+        if (subop < 18 && (subop < 8u || rn == 31u)) {
             std::ostringstream stream;
             stream << kPacNames[subop] << " X" << rd;
             if (subop < 8) {
@@ -4463,6 +4475,7 @@ void CPU::reset() {
     il_         = false;
     pstate_ss_  = false;
     pstate_ssbs_ = false;
+    pac_        = winios::cpu::Arm64ePointerAuth{};
     exception_taken_in_step_ = false;
     // Phase 40: EL2 reset
     spsr_el2_   = 0;
@@ -5504,6 +5517,15 @@ void CPU::emit_timer_event_trace(winios::trace::TimerOp op,
     if (op == winios::trace::TimerOp::Expired) {
         winios::sndl::hook_timer_expiration(static_cast<std::uint16_t>(core_id_), ev.pc, instruction_retirement_count_, static_cast<std::uint8_t>(type), cval, counter);
     }
+}
+
+bool CPU::raise_pac_auth_trap_or_throw(std::uint64_t instruction_address, const char* context_label) {
+    if (architectural_exceptions_) {
+        const auto& syn = pac_.last_syndrome();
+        raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
+        return true;
+    }
+    throw std::runtime_error(std::string(context_label) + pac_.last_syndrome().description);
 }
 
 void CPU::step(Memory& guest_memory) {
@@ -7563,13 +7585,8 @@ void CPU::step(Memory& guest_memory) {
         std::uint64_t target = 0;
         const bool ok = is_key_b ? pac_.execute_retab(lr, sp, target, instruction_address)
                                  : pac_.execute_retaa(lr, sp, target, instruction_address);
-        if (!ok) {
-            if (architectural_exceptions_) {
-                const auto& syn = pac_.last_syndrome();
-                raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
-                return;
-            }
-            throw std::runtime_error("PAC failure on RET: " + pac_.last_syndrome().description);
+        if (!ok && raise_pac_auth_trap_or_throw(instruction_address, "PAC failure on RET: ")) {
+            return;
         }
         if (!architectural_exceptions_ && (target & 0x3u) != 0) {
             throw std::runtime_error("Misaligned branch target address: " + hex_word64(target));
@@ -7599,13 +7616,8 @@ void CPU::step(Memory& guest_memory) {
             ok = is_key_b ? pac_.execute_brab(ptr, mod, target, instruction_address)
                           : pac_.execute_braa(ptr, mod, target, instruction_address);
         }
-        if (!ok) {
-            if (architectural_exceptions_) {
-                const auto& syn = pac_.last_syndrome();
-                raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
-                return;
-            }
-            throw std::runtime_error("PAC failure on BR/BLR: " + pac_.last_syndrome().description);
+        if (!ok && raise_pac_auth_trap_or_throw(instruction_address, "PAC failure on BR/BLR: ")) {
+            return;
         }
         if (!architectural_exceptions_ && (target & 0x3u) != 0) {
             throw std::runtime_error("Misaligned branch target address: " + hex_word64(target));
@@ -7621,6 +7633,13 @@ void CPU::step(Memory& guest_memory) {
         const std::uint32_t rd = instruction & 0x1Fu;
         const std::uint32_t rn = (instruction >> 5u) & 0x1Fu;
         const std::uint32_t subop = (instruction >> 10u) & 0x3Fu;
+        if (subop >= 8u && subop <= 17u && rn != 31u) {
+            if (architectural_exceptions_) {
+                raise_synchronous_exception(make_undefined_instruction(instruction_address));
+                return;
+            }
+            throw std::runtime_error("Unallocated PAC zero-modifier/strip instruction with non-31 Rn");
+        }
         std::uint64_t ptr = (rd == 31u) ? 0ULL : read_register(rd);
         const std::uint64_t mod = (rn == 31u) ? get_stack_pointer() : read_register(rn);
         bool ok = true;
@@ -7650,14 +7669,9 @@ void CPU::step(Memory& guest_memory) {
                 }
                 throw std::runtime_error("Unallocated PAC data processing sub-opcode: " + std::to_string(subop));
         }
-        if (!ok) {
-            if (pac_.get_fault_mode() == winios::cpu::PacFaultMode::TrapException) {
-                if (architectural_exceptions_) {
-                    const auto& syn = pac_.last_syndrome();
-                    raise_synchronous_exception(make_pac_trap(instruction_address, syn.iss, syn.bad_pointer));
-                    return;
-                }
-                throw std::runtime_error("PAC authentication failure: " + pac_.last_syndrome().description);
+        if (!ok && pac_.get_fault_mode() == winios::cpu::PacFaultMode::TrapException) {
+            if (raise_pac_auth_trap_or_throw(instruction_address, "PAC authentication failure: ")) {
+                return;
             }
         }
         if (rd != 31u) {
@@ -8423,6 +8437,52 @@ void CPU::step(Memory& guest_memory) {
                 }
             } else if (imm7 == 5u) { // SEVL
                 event_register_ = true;
+            } else {
+                struct HintPacOp {
+                    bool valid{false};
+                    bool key_b{false};
+                    bool is_auth{false};
+                    std::size_t reg{30};
+                    std::uint64_t mod{0};
+                };
+                HintPacOp hop{};
+                switch (imm7) {
+                    case 8u:  hop = {true, false, false, 17u, read_register(16u)}; break; // PACIA1716
+                    case 10u: hop = {true, true,  false, 17u, read_register(16u)}; break; // PACIB1716
+                    case 12u: hop = {true, false, true,  17u, read_register(16u)}; break; // AUTIA1716
+                    case 14u: hop = {true, true,  true,  17u, read_register(16u)}; break; // AUTIB1716
+                    case 24u: hop = {true, false, false, 30u, 0ULL}; break;               // PACIAZ
+                    case 25u: hop = {true, false, false, 30u, get_stack_pointer()}; break;// PACIASP
+                    case 26u: hop = {true, true,  false, 30u, 0ULL}; break;               // PACIBZ
+                    case 27u: hop = {true, true,  false, 30u, get_stack_pointer()}; break;// PACIBSP
+                    case 28u: hop = {true, false, true,  30u, 0ULL}; break;               // AUTIAZ
+                    case 29u: hop = {true, false, true,  30u, get_stack_pointer()}; break;// AUTIASP
+                    case 30u: hop = {true, true,  true,  30u, 0ULL}; break;               // AUTIBZ
+                    case 31u: hop = {true, true,  true,  30u, get_stack_pointer()}; break;// AUTIBSP
+                    default: break;
+                }
+                if (hop.valid) {
+                    const std::uint64_t sctlr = mmu_.get_sctlr_el1();
+                    const bool key_enabled = hop.key_b ? ((sctlr & (1ULL << 30u)) != 0ULL)
+                                                       : ((sctlr & (1ULL << 31u)) != 0ULL);
+                    if (key_enabled) {
+                        std::uint64_t ptr = read_register(hop.reg);
+                        bool ok = true;
+                        if (hop.is_auth) {
+                            ok = hop.key_b ? pac_.execute_autib(ptr, hop.mod, instruction_address)
+                                           : pac_.execute_autia(ptr, hop.mod, instruction_address);
+                            if (!ok && pac_.get_fault_mode() == winios::cpu::PacFaultMode::TrapException) {
+                                if (raise_pac_auth_trap_or_throw(instruction_address, "PAC hint authentication failure: ")) {
+                                    return;
+                                }
+                            }
+                        } else {
+                            ok = hop.key_b ? pac_.execute_pacib(ptr, hop.mod)
+                                           : pac_.execute_pacia(ptr, hop.mod);
+                        }
+                        write_register(hop.reg, ptr);
+                    }
+                }
             }
             program_counter_ = checked_add_address(
                 instruction_address, 4u, "Instruction PC increment");

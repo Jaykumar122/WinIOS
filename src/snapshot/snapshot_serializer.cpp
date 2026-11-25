@@ -151,10 +151,33 @@ std::vector<std::uint8_t> serialize_cpu_state_with_retirement(const CPU& cpu) {
     return buffer;
 }
 
+std::vector<std::uint8_t> serialize_cpu_state_v2(const CPU& cpu) {
+    constexpr std::uint32_t kCpuStatePacMagic = 0x50414332u; // "PAC2"
+    auto buffer = serialize_cpu_state_with_retirement(cpu);
+    const auto pac_bytes = cpu.get_pac().serialize();
+    buffer.resize(1136u + 4u + pac_bytes.size(), 0u);
+    trace::encode_u32_le(buffer.data() + 1136u, kCpuStatePacMagic);
+    std::memcpy(buffer.data() + 1140u, pac_bytes.data(), pac_bytes.size());
+    return buffer;
+}
+
 SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, CPU& cpu) {
     constexpr std::size_t kCpuStatePayloadSize = 1128;
-    if (!src || size < kCpuStatePayloadSize || (size > 1128 && size < 1136)) {
+    constexpr std::size_t kCpuStateV2PayloadSize = 1224;
+    constexpr std::uint32_t kCpuStatePacMagic = 0x50414332u;
+    if (!src || size < kCpuStatePayloadSize || (size > 1128 && size < 1136) ||
+        (size > 1136 && size < kCpuStateV2PayloadSize)) {
         return SnapshotResult::fail(SnapshotErrorCode::TruncatedFile, "CPU state buffer truncated");
+    }
+
+    winios::cpu::Arm64ePointerAuth decoded_pac{};
+    if (size >= kCpuStateV2PayloadSize) {
+        if (trace::decode_u32_le(src + 1136u) != kCpuStatePacMagic) {
+            return SnapshotResult::fail(SnapshotErrorCode::InvalidMagic, "Invalid CPU v2 PAC trailer magic");
+        }
+        if (!decoded_pac.deserialize(src + 1140u, 84u)) {
+            return SnapshotResult::fail(SnapshotErrorCode::InvalidStateData, "Invalid CPU v2 PAC state payload");
+        }
     }
 
     // 1. Core ID & PC
@@ -262,6 +285,11 @@ SnapshotResult deserialize_cpu_state(const std::uint8_t* src, std::size_t size, 
     cpu.clear_exclusive_monitor();
     // Architectural policy: flush TLB on restore
     cpu.get_mmu().invalidate_tlb_all();
+    if (size >= kCpuStateV2PayloadSize) {
+        cpu.get_pac() = decoded_pac;
+    } else {
+        cpu.get_pac().clear_fault();
+    }
 
     return SnapshotResult::ok();
 }

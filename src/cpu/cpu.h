@@ -698,6 +698,7 @@ private:
 
     // ARM64e Pointer Authentication state
     winios::cpu::Arm64ePointerAuth pac_{};
+    bool raise_pac_auth_trap_or_throw(std::uint64_t instruction_address, const char* context_label);
 
     // Phase 50: Authoritative Virtual-Time Architecture
     winios::VirtualTime local_virtual_time_{};

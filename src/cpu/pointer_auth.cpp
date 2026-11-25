@@ -276,6 +276,7 @@ bool Arm64ePointerAuth::deserialize(const void* data, std::size_t size) {
     if (!data || size < 84) return false;
     std::uint32_t mode_val = 0;
     std::memcpy(&mode_val, static_cast<const std::uint8_t*>(data) + 0, 4);
+    if (mode_val > 1u) return false;
     mode_ = static_cast<PacFaultMode>(mode_val);
     std::memcpy(&keyring_, static_cast<const std::uint8_t*>(data) + 4, sizeof(PacKeyRing));
     return true;

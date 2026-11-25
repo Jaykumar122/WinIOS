@@ -41,8 +41,8 @@ constexpr std::uint32_t encode_pacdb(std::uint32_t rd, std::uint32_t rn) { retur
 constexpr std::uint32_t encode_autia(std::uint32_t rd, std::uint32_t rn) { return 0xDAC11000u | ((rn & 0x1Fu) << 5u) | (rd & 0x1Fu); }
 constexpr std::uint32_t encode_autda(std::uint32_t rd, std::uint32_t rn) { return 0xDAC11800u | ((rn & 0x1Fu) << 5u) | (rd & 0x1Fu); }
 
-constexpr std::uint32_t encode_xpaci(std::uint32_t rd) { return 0xDAC14000u | (rd & 0x1Fu); }
-constexpr std::uint32_t encode_xpacd(std::uint32_t rd) { return 0xDAC14400u | (rd & 0x1Fu); }
+constexpr std::uint32_t encode_xpaci(std::uint32_t rd) { return 0xDAC143E0u | (rd & 0x1Fu); }
+constexpr std::uint32_t encode_xpacd(std::uint32_t rd) { return 0xDAC147E0u | (rd & 0x1Fu); }
 
 constexpr std::uint32_t encode_retaa() { return 0xD65F0BFFu; }
 

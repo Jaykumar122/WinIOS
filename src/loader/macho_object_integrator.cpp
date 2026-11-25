@@ -36,7 +36,16 @@ constexpr std::uint8_t kNlistUndf          = 0x00u;
 constexpr std::uint8_t kNlistAbs           = 0x02u;
 constexpr std::uint8_t kNlistSect          = 0x0Eu;
 
-constexpr std::uint8_t kArm64RelocBranch26 = 2u;
+constexpr std::uint8_t kNlistPrivateExt     = 0x10u;
+constexpr std::uint16_t kNDescWeakDef     = 0x0080u;
+
+constexpr std::uint8_t kArm64RelocUnsigned       = 0u;
+constexpr std::uint8_t kArm64RelocBranch26       = 2u;
+constexpr std::uint8_t kArm64RelocPage21         = 3u;
+constexpr std::uint8_t kArm64RelocPageoff12      = 4u;
+constexpr std::uint8_t kArm64RelocGotLoadPage21   = 5u;
+constexpr std::uint8_t kArm64RelocGotLoadPageoff12= 6u;
+constexpr std::uint8_t kArm64RelocAddend         = 10u;
 
 #pragma pack(push, 1)
 struct RawSymtabCommand {
@@ -107,6 +116,111 @@ void write_u32_le(std::uint8_t* p, std::uint32_t v) noexcept {
     p[1] = static_cast<std::uint8_t>((v >> 8u) & 0xFFu);
     p[2] = static_cast<std::uint8_t>((v >> 16u) & 0xFFu);
     p[3] = static_cast<std::uint8_t>((v >> 24u) & 0xFFu);
+}
+
+void write_u64_le(std::uint8_t* p, std::uint64_t v) noexcept {
+    for (unsigned i = 0; i < 8u; ++i) {
+        p[i] = static_cast<std::uint8_t>((v >> (i * 8u)) & 0xFFu);
+    }
+}
+
+bool checked_apply_signed_addend(std::uint64_t base, std::int64_t addend, std::uint64_t& out) noexcept {
+    if (addend >= 0) {
+        return checked_add_u64(base, static_cast<std::uint64_t>(addend), out);
+    }
+    const std::uint64_t neg = static_cast<std::uint64_t>(-(addend + 1)) + 1ULL;
+    if (base < neg) {
+        return false;
+    }
+    out = base - neg;
+    return true;
+}
+
+bool regions_overlap(std::uint64_t a_start, std::uint64_t a_span,
+                     std::uint64_t b_start, std::uint64_t b_span) noexcept {
+    if (a_span == 0u || b_span == 0u) {
+        return false;
+    }
+    std::uint64_t a_end = 0;
+    std::uint64_t b_end = 0;
+    if (!checked_add_u64(a_start, a_span, a_end) || !checked_add_u64(b_start, b_span, b_end)) {
+        return true;
+    }
+    return a_start < b_end && b_start < a_end;
+}
+
+bool validate_binding_list(const std::vector<BoundedExternalBinding>& bindings,
+                           std::map<std::string, BoundedExternalBinding>& out_map,
+                           ObjectIntegrationStatus& out_status,
+                           std::string& out_error) {
+    out_map.clear();
+    for (const auto& b : bindings) {
+        if (b.symbol_name.empty()) {
+            out_status = ObjectIntegrationStatus::MalformedSymbolTable;
+            out_error = "External binding has empty symbol_name";
+            return false;
+        }
+        if (b.classification == SymbolProvenanceClassification::UnresolvedExternal ||
+            b.classification == SymbolProvenanceClassification::UnsupportedSymbol) {
+            out_status = ObjectIntegrationStatus::UnresolvedExternal;
+            out_error = "External binding cannot specify UnresolvedExternal/UnsupportedSymbol: " + b.symbol_name;
+            return false;
+        }
+        if (b.classification == SymbolProvenanceClassification::GenuineUpstream &&
+            !b.stub_instructions.empty()) {
+            out_status = ObjectIntegrationStatus::MalformedSymbolTable;
+            out_error = "Synthetic stub instructions cannot be classified GenuineUpstream: " + b.symbol_name;
+            return false;
+        }
+        out_map[b.symbol_name] = b;
+    }
+    return true;
+}
+
+bool write_staged_bytes(Memory& guest_mem,
+                        GuestMemoryMap* memory_map,
+                        std::uint64_t virtual_base_bias,
+                        std::uint64_t va,
+                        const std::vector<std::uint8_t>& data,
+                        std::uint32_t vm_prot,
+                        const std::string& region_name,
+                        std::uint64_t align_granule,
+                        ObjectIntegrationStatus& out_status,
+                        std::string& out_error) {
+    if ((vm_prot & 0x2u) != 0u && (vm_prot & 0x4u) != 0u) {
+        out_status = ObjectIntegrationStatus::WxPermissionViolation;
+        out_error = "W^X violation on staged region: " + region_name;
+        return false;
+    }
+    if (va < virtual_base_bias) {
+        out_status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+        out_error = "Staged VA precedes virtual_base_bias: " + region_name;
+        return false;
+    }
+    const std::uint64_t phys_off = va - virtual_base_bias;
+    std::uint64_t phys_end = 0;
+    if (!checked_add_u64(phys_off, data.size(), phys_end) || phys_end > guest_mem.size()) {
+        out_status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+        out_error = "Staged region exceeds Memory capacity: " + region_name;
+        return false;
+    }
+    for (std::size_t i = 0; i < data.size(); ++i) {
+        guest_mem.write_u8(static_cast<std::size_t>(phys_off) + i, data[i]);
+    }
+    if (memory_map != nullptr && !data.empty()) {
+        GuestMemoryRegion reg;
+        reg.name = region_name;
+        reg.type = GuestMemoryRegionType::KernelImage;
+        reg.base_address = va;
+        reg.size = align_up_u64(data.size(), align_granule);
+        reg.is_reserved = true;
+        if (!memory_map->add_region(reg)) {
+            out_status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+            out_error = "GuestMemoryMap rejected overlapping region: " + region_name;
+            return false;
+        }
+    }
+    return true;
 }
 
 void append_bytes(std::vector<std::uint8_t>& out, const void* ptr, std::size_t len) {
@@ -234,6 +348,114 @@ bool MachOObjectIntegrator::encode_branch26(
     const std::uint32_t imm26 = static_cast<std::uint32_t>(imm26_signed) & 0x03FFFFFFu;
     out_patched_insn = top6 | imm26;
     return true;
+}
+
+bool MachOObjectIntegrator::encode_page21(
+    std::uint32_t original_insn,
+    std::uint64_t pc_va,
+    std::uint64_t target_va,
+    std::uint32_t& out_patched_insn,
+    std::string& out_error) {
+    if ((original_insn & 0x9F000000u) != 0x90000000u) {
+        out_error = "Instruction is not ARM64 ADRP for PAGE21 relocation";
+        return false;
+    }
+    if ((pc_va & 0x3u) != 0u) {
+        out_error = "PAGE21 PC VA is not 4-byte aligned";
+        return false;
+    }
+
+    const std::uint64_t target_page = target_va & ~0xFFFULL;
+    const std::uint64_t pc_page     = pc_va & ~0xFFFULL;
+    std::int64_t delta_pages = 0;
+    if (target_page >= pc_page) {
+        const std::uint64_t diff_pages = (target_page - pc_page) >> 12u;
+        if (diff_pages > 0xFFFFFULL) {
+            out_error = "PAGE21 forward displacement exceeds +4 GiB ADRP range";
+            return false;
+        }
+        delta_pages = static_cast<std::int64_t>(diff_pages);
+    } else {
+        const std::uint64_t diff_pages = (pc_page - target_page) >> 12u;
+        if (diff_pages > 0x100000ULL) {
+            out_error = "PAGE21 backward displacement exceeds -4 GiB ADRP range";
+            return false;
+        }
+        delta_pages = -static_cast<std::int64_t>(diff_pages);
+    }
+
+    const std::uint32_t imm21 = static_cast<std::uint32_t>(delta_pages) & 0x1FFFFFu;
+    const std::uint32_t immlo = imm21 & 0x3u;
+    const std::uint32_t immhi = (imm21 >> 2u) & 0x7FFFFu;
+    out_patched_insn = (original_insn & 0x9F00001Fu) | (immlo << 29u) | (immhi << 5u);
+    return true;
+}
+
+bool MachOObjectIntegrator::encode_pageoff12(
+    std::uint32_t original_insn,
+    std::uint64_t target_va,
+    std::uint32_t& out_patched_insn,
+    std::string& out_error) {
+    const std::uint64_t page_off = target_va & 0xFFFULL;
+    std::uint32_t scale = 0;
+
+    if ((original_insn & 0x7FC00000u) == 0x11000000u) {
+        // ADD (immediate) 32-bit or 64-bit, unshifted (sh == 0)
+        scale = 0u;
+    } else if ((original_insn & 0x3B000000u) == 0x39000000u) {
+        // Load/Store register (unsigned immediate)
+        const std::uint32_t size_bits = (original_insn >> 30u) & 0x3u;
+        const bool is_simd = ((original_insn >> 26u) & 0x1u) != 0u;
+        const std::uint32_t opc = (original_insn >> 22u) & 0x3u;
+        scale = (is_simd && size_bits == 0u && (opc & 0x2u) != 0u) ? 4u : size_bits;
+    } else {
+        out_error = "Instruction is neither ADD(imm) nor Load/Store(uimm) for PAGEOFF12 relocation";
+        return false;
+    }
+
+    if ((page_off & ((1ULL << scale) - 1ULL)) != 0ULL) {
+        out_error = "PAGEOFF12 offset is unaligned for instruction access width";
+        return false;
+    }
+
+    const std::uint32_t imm12 = static_cast<std::uint32_t>((page_off >> scale) & 0xFFFu);
+    out_patched_insn = (original_insn & 0xFFC003FFu) | (imm12 << 10u);
+    return true;
+}
+
+bool MachOMultiObjectLinkResult::find_symbol_va(const std::string& name, std::uint64_t& out_va) const noexcept {
+    MachOSymbolEntry sym;
+    if (find_symbol(name, sym)) {
+        out_va = sym.resolved_va;
+        return true;
+    }
+    return false;
+}
+
+bool MachOMultiObjectLinkResult::find_symbol(const std::string& name, MachOSymbolEntry& out_sym) const noexcept {
+    for (const auto& sym : resolved_symbols) {
+        if (sym.name == name &&
+            sym.classification != SymbolProvenanceClassification::UnresolvedExternal &&
+            sym.classification != SymbolProvenanceClassification::UnsupportedSymbol &&
+            sym.resolved_va != 0u) {
+            out_sym = sym;
+            return true;
+        }
+    }
+    return false;
+}
+
+SymbolProvenanceClassification MachOMultiObjectLinkResult::classify_va(std::uint64_t va) const noexcept {
+    for (const auto& r : provenance_regions) {
+        std::uint64_t end_va = 0;
+        if (!checked_add_u64(r.va_start, r.size, end_va)) {
+            continue;
+        }
+        if (va >= r.va_start && va < end_va) {
+            return r.classification;
+        }
+    }
+    return SymbolProvenanceClassification::UnresolvedExternal;
 }
 
 MachOObjectParseResult MachOObjectIntegrator::parse_object_file(const std::string& path) {
@@ -545,25 +767,8 @@ MachOIntegrationResult MachOObjectIntegrator::link_object(
 
     // Validate caller external bindings upfront (no provenance spoofing allowed).
     std::map<std::string, BoundedExternalBinding> binding_map;
-    for (const auto& b : opts.external_bindings) {
-        if (b.symbol_name.empty()) {
-            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
-            out.error_message = "External binding has empty symbol_name";
-            return out;
-        }
-        if (b.classification == SymbolProvenanceClassification::UnresolvedExternal ||
-            b.classification == SymbolProvenanceClassification::UnsupportedSymbol) {
-            out.status = ObjectIntegrationStatus::UnresolvedExternal;
-            out.error_message = "External binding cannot specify UnresolvedExternal/UnsupportedSymbol: " + b.symbol_name;
-            return out;
-        }
-        if (b.classification == SymbolProvenanceClassification::GenuineUpstream &&
-            !b.stub_instructions.empty()) {
-            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
-            out.error_message = "Synthetic stub instructions cannot be classified GenuineUpstream: " + b.symbol_name;
-            return out;
-        }
-        binding_map[b.symbol_name] = b;
+    if (!validate_binding_list(opts.external_bindings, binding_map, out.status, out.error_message)) {
+        return out;
     }
 
     // Assign VAs to defined object symbols and bind requested external symbols.
@@ -782,50 +987,15 @@ MachOIntegrationResult MachOObjectIntegrator::stage_in_memory(
         return out;
     }
 
-    auto write_region = [&](std::uint64_t va, const std::vector<std::uint8_t>& data,
-                            std::uint32_t vm_prot, const std::string& region_name) -> bool {
-        if ((vm_prot & 0x2u) != 0u && (vm_prot & 0x4u) != 0u) {
-            out.status = ObjectIntegrationStatus::WxPermissionViolation;
-            out.error_message = "W^X violation on staged region: " + region_name;
-            return false;
-        }
-        if (va < opts.virtual_base_bias) {
-            out.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
-            out.error_message = "Staged VA precedes virtual_base_bias: " + region_name;
-            return false;
-        }
-        const std::uint64_t phys_off = va - opts.virtual_base_bias;
-        std::uint64_t phys_end = 0;
-        if (!checked_add_u64(phys_off, data.size(), phys_end) ||
-            phys_end > guest_mem.size()) {
-            out.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
-            out.error_message = "Staged region exceeds Memory capacity: " + region_name;
-            return false;
-        }
-        for (std::size_t i = 0; i < data.size(); ++i) {
-            guest_mem.write_u8(static_cast<std::size_t>(phys_off) + i, data[i]);
-        }
-        if (memory_map != nullptr) {
-            GuestMemoryRegion reg;
-            reg.name = region_name;
-            reg.type = GuestMemoryRegionType::KernelImage;
-            reg.base_address = va;
-            reg.size = align_up_u64(data.size(), kPageGranuleBytes);
-            reg.is_reserved = true;
-            if (!memory_map->add_region(reg)) {
-                out.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
-                out.error_message = "GuestMemoryMap rejected overlapping region: " + region_name;
-                return false;
-            }
-        }
-        return true;
-    };
-
-    if (!write_region(out.text_va, out.relocated_text_bytes, 0x5u, "__TEXT,__text")) {
+    if (!write_staged_bytes(guest_mem, memory_map, opts.virtual_base_bias, out.text_va,
+                            out.relocated_text_bytes, 0x5u, "__TEXT,__text",
+                            kPageGranuleBytes, out.status, out.error_message)) {
         return out;
     }
     if (!out.stub_bytes.empty()) {
-        if (!write_region(out.stub_va, out.stub_bytes, 0x5u, "__STUB_TEXT")) {
+        if (!write_staged_bytes(guest_mem, memory_map, opts.virtual_base_bias, out.stub_va,
+                                out.stub_bytes, 0x5u, "__STUB_TEXT",
+                                kPageGranuleBytes, out.status, out.error_message)) {
             return out;
         }
     }
@@ -977,6 +1147,779 @@ MachOBoundedContainerResult MachOObjectIntegrator::build_bounded_macho_execute(
     if (has_stubs) {
         std::memcpy(bin.data() + stub_fileoff, link.stub_bytes.data(), link.stub_bytes.size());
     }
+
+    container.container_sha256_hex = LinuxImageLoader::compute_sha256(bin.data(), bin.size());
+    container.macho_execute_bytes  = std::move(bin);
+    container.status               = ObjectIntegrationStatus::Success;
+    return container;
+}
+
+MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
+    const std::vector<MachOObjectInput>& inputs,
+    const MachOMultiObjectOptions& opts) {
+    MachOMultiObjectLinkResult out;
+
+    if (inputs.empty()) {
+        out.status = ObjectIntegrationStatus::InvalidSectionBounds;
+        out.error_message = "Multi-object linker requires at least one MH_OBJECT input";
+        return out;
+    }
+    for (const auto& inp : inputs) {
+        if (!inp.parsed.is_success()) {
+            out.status = inp.parsed.status;
+            out.error_message = "Input object invalid (" + inp.source_label + "): " + inp.parsed.error_message;
+            return out;
+        }
+    }
+
+    if ((opts.text_base_va & 0x3u) != 0u ||
+        (opts.rodata_base_va & (kPageGranuleBytes - 1u)) != 0u ||
+        (opts.data_base_va & (kPageGranuleBytes - 1u)) != 0u ||
+        (opts.stub_base_va & (kPageGranuleBytes - 1u)) != 0u) {
+        out.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+        out.error_message = "text_base_va must be 4-byte aligned and rodata/data/stub_base_va must be 16 KiB aligned";
+        return out;
+    }
+
+    std::map<std::string, BoundedExternalBinding> binding_map;
+    if (!validate_binding_list(opts.external_bindings, binding_map, out.status, out.error_message)) {
+        return out;
+    }
+
+    // Track placement: each non-debug section maps into RX (__TEXT,__text / insn), RO (__TEXT ro / __DATA_CONST),
+    // or RW (__DATA / __BOOTDATA).
+    struct SecPlacement {
+        bool placed{false};
+        std::size_t staged_idx{0};
+        std::uint64_t va{0};
+    };
+    std::vector<std::vector<SecPlacement>> sec_map(inputs.size());
+
+    std::uint64_t text_cursor   = opts.text_base_va;
+    std::uint64_t rodata_cursor = opts.rodata_base_va;
+    std::uint64_t data_cursor   = opts.data_base_va;
+
+    auto classify_vm_prot = [](const MachOObjectSectionInfo& sec) noexcept -> std::uint32_t {
+        if (sec.segname == "__TEXT" &&
+            (sec.sectname == "__text" || (sec.flags & (kSecAttrPureInsn | kSecAttrSomeInsn)) != 0u)) {
+            return 0x5u; // R | X (strict W^X)
+        }
+        if (sec.segname == "__TEXT" || sec.segname == "__DATA_CONST") {
+            return 0x1u; // R
+        }
+        return 0x3u; // R | W (__DATA, __BOOTDATA, zerofill)
+    };
+
+    for (std::size_t oi = 0; oi < inputs.size(); ++oi) {
+        const auto& parsed = inputs[oi].parsed;
+        sec_map[oi].resize(parsed.sections.size());
+        for (std::size_t si = 0; si < parsed.sections.size(); ++si) {
+            const auto& sec = parsed.sections[si];
+            if (sec.is_debug || (sec.segname == "__TEXT" && sec.sectname == "__eh_frame") || sec.size == 0u) {
+                continue;
+            }
+            const std::uint32_t prot = classify_vm_prot(sec);
+            const std::uint64_t align_shift = (sec.align_log2 > 14u) ? 14u : sec.align_log2;
+            const std::uint64_t sec_align = (std::uint64_t{1} << align_shift) < 4u ? 4u : (std::uint64_t{1} << align_shift);
+
+            std::uint64_t& cursor = (prot == 0x5u) ? text_cursor
+                                  : (prot == 0x1u) ? rodata_cursor
+                                                   : data_cursor;
+            const std::uint64_t aligned_va = align_up_u64(cursor, sec_align);
+            std::uint64_t next_end = 0;
+            if (!checked_add_u64(aligned_va, sec.size, next_end)) {
+                out.status = ObjectIntegrationStatus::IntegerOverflow;
+                out.error_message = "Section size overflow placing " + sec.segname + "," + sec.sectname;
+                return out;
+            }
+            cursor = next_end;
+
+            MachOStagedSection staged;
+            staged.object_label = inputs[oi].source_label;
+            staged.segname      = sec.segname;
+            staged.sectname     = sec.sectname;
+            staged.va           = aligned_va;
+            staged.size         = sec.size;
+            staged.vm_prot      = prot;
+            staged.is_zerofill  = sec.is_zerofill;
+            if (sec.is_zerofill) {
+                staged.bytes.assign(static_cast<std::size_t>(sec.size), 0u);
+            } else {
+                staged.bytes = sec.bytes;
+            }
+
+            sec_map[oi][si].placed     = true;
+            sec_map[oi][si].staged_idx = out.staged_sections.size();
+            sec_map[oi][si].va         = aligned_va;
+            out.staged_sections.push_back(std::move(staged));
+        }
+    }
+
+    if (text_cursor == opts.text_base_va) {
+        out.status = ObjectIntegrationStatus::InvalidSectionBounds;
+        out.error_message = "Multi-object inputs contain no executable code sections";
+        return out;
+    }
+
+    out.text_va   = opts.text_base_va;
+    out.text_size = text_cursor - opts.text_base_va;
+
+    // Build per-object resolved symbols and global external symbol table.
+    struct GlobalDef {
+        std::size_t owner_obj{0};
+        std::uint64_t va{0};
+        bool is_weak{false};
+        SymbolProvenanceClassification classification{SymbolProvenanceClassification::GenuineUpstream};
+    };
+    std::map<std::string, GlobalDef> global_defs;
+    std::vector<std::vector<MachOSymbolEntry>> obj_symbols(inputs.size());
+
+    for (std::size_t oi = 0; oi < inputs.size(); ++oi) {
+        const auto& parsed = inputs[oi].parsed;
+        obj_symbols[oi] = parsed.symbols;
+        for (auto& sym : obj_symbols[oi]) {
+            if (sym.is_stab) {
+                continue;
+            }
+            const std::uint8_t n_type_field = sym.n_type & kNlistTypeMask;
+            if (sym.is_defined && n_type_field == kNlistSect) {
+                const std::size_t sec_idx = static_cast<std::size_t>(sym.n_sect - 1u);
+                if (sec_idx >= sec_map[oi].size() || !sec_map[oi][sec_idx].placed) {
+                    continue;
+                }
+                const auto& sec = parsed.sections[sec_idx];
+                if (sym.n_value < sec.addr || (sym.n_value - sec.addr) > sec.size) {
+                    out.status = ObjectIntegrationStatus::InvalidSectionBounds;
+                    out.error_message = "Symbol n_value out of section bounds: " + sym.name;
+                    return out;
+                }
+                if (!checked_add_u64(sec_map[oi][sec_idx].va, sym.n_value - sec.addr, sym.resolved_va)) {
+                    out.status = ObjectIntegrationStatus::IntegerOverflow;
+                    out.error_message = "Overflow computing symbol VA: " + sym.name;
+                    return out;
+                }
+                sym.classification = SymbolProvenanceClassification::GenuineUpstream;
+
+                if (sym.is_external) {
+                    const bool is_weak = (sym.n_desc & kNDescWeakDef) != 0u;
+                    auto it = global_defs.find(sym.name);
+                    if (it == global_defs.end()) {
+                        global_defs[sym.name] = {oi, sym.resolved_va, is_weak, SymbolProvenanceClassification::GenuineUpstream};
+                    } else if (it->second.is_weak && !is_weak) {
+                        it->second = {oi, sym.resolved_va, false, SymbolProvenanceClassification::GenuineUpstream};
+                    } else if (!it->second.is_weak && !is_weak && opts.reject_duplicate_strong_symbols) {
+                        out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+                        out.error_message = "Duplicate strong global symbol across objects: " + sym.name;
+                        return out;
+                    }
+                }
+            } else if (sym.is_defined && n_type_field == kNlistAbs) {
+                sym.resolved_va = sym.n_value;
+                sym.classification = SymbolProvenanceClassification::GenuineUpstream;
+            }
+        }
+    }
+
+    // Bind external symbols cleanly; never allow spoofing strong GenuineUpstream symbols.
+    std::map<std::string, MachOSymbolEntry> resolved_external_bindings;
+    std::vector<std::uint8_t> stub_bytes;
+    std::uint64_t next_stub_offset = 0;
+
+    for (const auto& [bname, binding] : binding_map) {
+        if (global_defs.find(bname) != global_defs.end()) {
+            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+            out.error_message = "External binding cannot override GenuineUpstream symbol: " + bname;
+            return out;
+        }
+        MachOSymbolEntry bsym;
+        bsym.name = bname;
+        bsym.classification = binding.classification;
+        if (binding.prebound_va != 0u) {
+            bsym.resolved_va = binding.prebound_va;
+        } else {
+            std::vector<std::uint32_t> insns = binding.stub_instructions;
+            if (insns.empty()) {
+                insns.push_back(0xD65F03C0u); // RET
+            }
+            if (!checked_add_u64(opts.stub_base_va, next_stub_offset, bsym.resolved_va)) {
+                out.status = ObjectIntegrationStatus::IntegerOverflow;
+                out.error_message = "Overflow placing stub for " + bname;
+                return out;
+            }
+            for (std::uint32_t insn : insns) {
+                std::uint8_t buf[4];
+                write_u32_le(buf, insn);
+                append_bytes(stub_bytes, buf, sizeof(buf));
+            }
+            next_stub_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+        }
+        if (binding.classification == SymbolProvenanceClassification::TestHarnessStub) {
+            out.has_test_harness_stubs = true;
+            out.stub_symbols.push_back(bname);
+        } else if (binding.classification == SymbolProvenanceClassification::WinIOSArchitectural) {
+            out.has_winios_architectural_bindings = true;
+        }
+        resolved_external_bindings[bname] = bsym;
+    }
+
+    // Allocate synthetic GOT base immediately after RO sections in __DATA_CONST,__got (8-byte aligned, R only).
+    const std::uint64_t got_base_va = align_up_u64(rodata_cursor, 8u);
+    std::map<std::string, std::size_t> got_index_by_key;
+    std::vector<std::uint8_t> got_bytes;
+
+    auto get_or_create_got_slot = [&](const std::string& sym_name,
+                                      std::uint64_t target_va,
+                                      SymbolProvenanceClassification cls,
+                                      std::uint64_t& out_slot_va) -> bool {
+        const std::string key = sym_name + "@" + std::to_string(target_va);
+        auto it = got_index_by_key.find(key);
+        if (it != got_index_by_key.end()) {
+            out_slot_va = out.got_slots[it->second].slot_va;
+            return true;
+        }
+        const std::size_t slot_idx = out.got_slots.size();
+        if (!checked_add_u64(got_base_va, static_cast<std::uint64_t>(slot_idx) * 8u, out_slot_va)) {
+            return false;
+        }
+        std::uint8_t slot_buf[8];
+        write_u64_le(slot_buf, target_va);
+        append_bytes(got_bytes, slot_buf, sizeof(slot_buf));
+        out.got_slots.push_back({sym_name, out_slot_va, target_va, cls});
+        got_index_by_key[key] = slot_idx;
+        return true;
+    };
+
+    // Resolve undefined symbols per object and patch relocations.
+    for (std::size_t oi = 0; oi < inputs.size(); ++oi) {
+        const auto& parsed = inputs[oi].parsed;
+        for (auto& sym : obj_symbols[oi]) {
+            if (sym.is_stab || sym.is_defined) {
+                continue;
+            }
+            if (sym.is_undefined) {
+                auto git = global_defs.find(sym.name);
+                if (git != global_defs.end()) {
+                    sym.resolved_va = git->second.va;
+                    sym.classification = git->second.classification;
+                    continue;
+                }
+                auto bit = resolved_external_bindings.find(sym.name);
+                if (bit != resolved_external_bindings.end()) {
+                    sym.resolved_va = bit->second.resolved_va;
+                    sym.classification = bit->second.classification;
+                } else {
+                    sym.resolved_va = 0u;
+                    sym.classification = SymbolProvenanceClassification::UnresolvedExternal;
+                }
+            }
+        }
+
+        for (std::size_t si = 0; si < parsed.sections.size(); ++si) {
+            const auto& sec = parsed.sections[si];
+            if (sec.is_debug || !sec_map[oi][si].placed) {
+                continue;
+            }
+            const bool is_code_sec = (out.staged_sections[sec_map[oi][si].staged_idx].vm_prot == 0x5u);
+            auto& staged_bytes = out.staged_sections[sec_map[oi][si].staged_idx].bytes;
+            const std::uint64_t sec_va = sec_map[oi][si].va;
+
+            bool has_pending_addend = false;
+            std::int64_t pending_addend = 0;
+            std::int32_t pending_addend_raddr = 0;
+
+            for (const auto& r : sec.relocations) {
+                MachORelocEntry entry = r;
+                entry.owner_object = inputs[oi].source_label;
+
+                if (entry.type == kArm64RelocAddend) {
+                    if (entry.is_extern || entry.pcrel || entry.length != 2u || has_pending_addend) {
+                        out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                        out.error_message = "Malformed ARM64_RELOC_ADDEND entry in " + inputs[oi].source_label;
+                        return out;
+                    }
+                    std::int32_t signed24 = static_cast<std::int32_t>(entry.symbol_index & 0x00FFFFFFu);
+                    if ((signed24 & 0x00800000) != 0) {
+                        signed24 |= static_cast<std::int32_t>(0xFF000000u);
+                    }
+                    has_pending_addend = true;
+                    pending_addend = static_cast<std::int64_t>(signed24);
+                    pending_addend_raddr = entry.r_address;
+                    entry.addend = pending_addend;
+                    entry.target_classification = SymbolProvenanceClassification::GenuineUpstream;
+                    out.relocations.push_back(entry);
+                    continue;
+                }
+
+                const std::int64_t cur_addend = has_pending_addend ? pending_addend : 0;
+                if (has_pending_addend) {
+                    if (pending_addend_raddr != entry.r_address ||
+                        (entry.type != kArm64RelocPage21 && entry.type != kArm64RelocPageoff12)) {
+                        out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                        out.error_message = "ARM64_RELOC_ADDEND must immediately precede paired PAGE21/PAGEOFF12";
+                        return out;
+                    }
+                    has_pending_addend = false;
+                    pending_addend = 0;
+                }
+                entry.addend = cur_addend;
+
+                const bool supported_text_reloc =
+                    entry.type == kArm64RelocBranch26 ||
+                    entry.type == kArm64RelocPage21 ||
+                    entry.type == kArm64RelocPageoff12 ||
+                    entry.type == kArm64RelocGotLoadPage21 ||
+                    entry.type == kArm64RelocGotLoadPageoff12;
+
+                if (!is_code_sec) {
+                    // Non-code data/init sections may contain UNSIGNED/AUTHENTICATED_POINTER relocs.
+                    if (entry.type == kArm64RelocUnsigned && entry.is_extern && !entry.pcrel && entry.length == 3u &&
+                        entry.r_address >= 0 && static_cast<std::uint64_t>(entry.r_address) + 8u <= staged_bytes.size() &&
+                        entry.symbol_index < obj_symbols[oi].size()) {
+                        const auto& target_sym = obj_symbols[oi][entry.symbol_index];
+                        entry.target_symbol = target_sym.name;
+                        entry.target_classification = target_sym.classification;
+                        (void)checked_add_u64(sec_va, static_cast<std::uint64_t>(entry.r_address), entry.site_va);
+                        if (target_sym.classification != SymbolProvenanceClassification::UnresolvedExternal &&
+                            target_sym.classification != SymbolProvenanceClassification::UnsupportedSymbol &&
+                            target_sym.resolved_va != 0u) {
+                            entry.target_va = target_sym.resolved_va;
+                            write_u64_le(staged_bytes.data() + entry.r_address, target_sym.resolved_va);
+                            entry.patched = true;
+                        } else if (std::find(out.unresolved_symbols.begin(), out.unresolved_symbols.end(), target_sym.name) ==
+                                   out.unresolved_symbols.end()) {
+                            out.unresolved_symbols.push_back(target_sym.name);
+                        }
+                        out.relocations.push_back(entry);
+                        continue;
+                    }
+                    if (!opts.require_all_relocations_resolved) {
+                        out.relocations.push_back(entry);
+                        continue;
+                    }
+                    out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                    out.error_message = "Unsupported non-code relocation in " + sec.segname + "," + sec.sectname;
+                    return out;
+                }
+
+                if (!supported_text_reloc) {
+                    out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                    out.error_message = "Unsupported ARM64 code relocation type " + std::to_string(entry.type);
+                    return out;
+                }
+                if (!entry.is_extern || entry.length != 2u) {
+                    out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                    out.error_message = "ARM64 code relocation must be extern and 4-byte length";
+                    return out;
+                }
+                const bool expects_pcrel =
+                    (entry.type == kArm64RelocBranch26 ||
+                     entry.type == kArm64RelocPage21 ||
+                     entry.type == kArm64RelocGotLoadPage21);
+                if (entry.pcrel != expects_pcrel) {
+                    out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                    out.error_message = "ARM64 relocation pcrel bit mismatch";
+                    return out;
+                }
+                if (entry.r_address < 0 || (entry.r_address & 0x3) != 0) {
+                    out.status = ObjectIntegrationStatus::RelocationOutOfBounds;
+                    out.error_message = "Code relocation r_address negative or unaligned";
+                    return out;
+                }
+                const std::uint64_t off = static_cast<std::uint64_t>(entry.r_address);
+                if (off + 4u > staged_bytes.size()) {
+                    out.status = ObjectIntegrationStatus::RelocationOutOfBounds;
+                    out.error_message = "Code relocation site exceeds section size";
+                    return out;
+                }
+                if (entry.symbol_index >= obj_symbols[oi].size()) {
+                    out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+                    out.error_message = "Relocation symbol_index out of range";
+                    return out;
+                }
+
+                const auto& target_sym = obj_symbols[oi][entry.symbol_index];
+                entry.target_symbol = target_sym.name;
+                entry.target_classification = target_sym.classification;
+                if (!checked_add_u64(sec_va, off, entry.site_va)) {
+                    out.status = ObjectIntegrationStatus::IntegerOverflow;
+                    out.error_message = "Overflow computing relocation site VA";
+                    return out;
+                }
+
+                if (target_sym.classification == SymbolProvenanceClassification::UnresolvedExternal ||
+                    target_sym.classification == SymbolProvenanceClassification::UnsupportedSymbol ||
+                    target_sym.resolved_va == 0u) {
+                    if (std::find(out.unresolved_symbols.begin(), out.unresolved_symbols.end(), target_sym.name) ==
+                        out.unresolved_symbols.end()) {
+                        out.unresolved_symbols.push_back(target_sym.name);
+                    }
+                    out.relocations.push_back(entry);
+                    continue;
+                }
+
+                std::uint64_t eff_target_va = 0;
+                if (!checked_apply_signed_addend(target_sym.resolved_va, cur_addend, eff_target_va)) {
+                    out.status = ObjectIntegrationStatus::IntegerOverflow;
+                    out.error_message = "Overflow applying relocation addend for " + target_sym.name;
+                    return out;
+                }
+
+                entry.target_va = eff_target_va;
+                entry.original_insn = read_u32_le(staged_bytes.data() + off);
+
+                std::string enc_err;
+                bool enc_ok = false;
+                if (entry.type == kArm64RelocBranch26) {
+                    enc_ok = encode_branch26(entry.original_insn, entry.site_va, eff_target_va,
+                                             entry.patched_insn, enc_err);
+                } else if (entry.type == kArm64RelocPage21) {
+                    enc_ok = encode_page21(entry.original_insn, entry.site_va, eff_target_va,
+                                           entry.patched_insn, enc_err);
+                } else if (entry.type == kArm64RelocPageoff12) {
+                    enc_ok = encode_pageoff12(entry.original_insn, eff_target_va,
+                                              entry.patched_insn, enc_err);
+                } else {
+                    std::uint64_t slot_va = 0;
+                    if (!get_or_create_got_slot(target_sym.name, eff_target_va, target_sym.classification, slot_va)) {
+                        out.status = ObjectIntegrationStatus::IntegerOverflow;
+                        out.error_message = "Overflow allocating GOT slot for " + target_sym.name;
+                        return out;
+                    }
+                    entry.target_va = slot_va;
+                    if (entry.type == kArm64RelocGotLoadPage21) {
+                        enc_ok = encode_page21(entry.original_insn, entry.site_va, slot_va,
+                                               entry.patched_insn, enc_err);
+                    } else {
+                        enc_ok = encode_pageoff12(entry.original_insn, slot_va,
+                                                  entry.patched_insn, enc_err);
+                    }
+                }
+
+                if (!enc_ok) {
+                    out.status = (enc_err.find("range") != std::string::npos)
+                        ? ObjectIntegrationStatus::RelocationRangeOverflow
+                        : ObjectIntegrationStatus::RelocationOpcodeMismatch;
+                    out.error_message = enc_err + " for symbol " + target_sym.name;
+                    return out;
+                }
+
+                write_u32_le(staged_bytes.data() + off, entry.patched_insn);
+                entry.patched = true;
+                out.relocations.push_back(entry);
+            }
+
+            if (has_pending_addend) {
+                out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                out.error_message = "Dangling ARM64_RELOC_ADDEND without paired relocation";
+                return out;
+            }
+        }
+    }
+
+    if (opts.require_all_relocations_resolved && !out.unresolved_symbols.empty()) {
+        out.status = ObjectIntegrationStatus::UnresolvedExternal;
+        out.error_message = "Unresolved external symbol(s): " + out.unresolved_symbols.front();
+        return out;
+    }
+
+    if (!got_bytes.empty()) {
+        MachOStagedSection got_sec;
+        got_sec.object_label = "winios-synthetic-got";
+        got_sec.segname      = "__DATA_CONST";
+        got_sec.sectname     = "__got";
+        got_sec.va           = got_base_va;
+        got_sec.size         = got_bytes.size();
+        got_sec.vm_prot      = 0x1u; // R (strict W^X)
+        got_sec.bytes        = std::move(got_bytes);
+        std::uint64_t new_ro_end = 0;
+        if (!checked_add_u64(got_sec.va, got_sec.size, new_ro_end)) {
+            out.status = ObjectIntegrationStatus::IntegerOverflow;
+            out.error_message = "GOT section size overflow";
+            return out;
+        }
+        rodata_cursor = new_ro_end;
+        out.staged_sections.push_back(std::move(got_sec));
+    }
+
+    out.rodata_va   = (rodata_cursor > opts.rodata_base_va) ? opts.rodata_base_va : 0u;
+    out.rodata_size = (rodata_cursor > opts.rodata_base_va) ? (rodata_cursor - opts.rodata_base_va) : 0u;
+    out.data_va     = (data_cursor > opts.data_base_va) ? opts.data_base_va : 0u;
+    out.data_size   = (data_cursor > opts.data_base_va) ? (data_cursor - opts.data_base_va) : 0u;
+    out.stub_va     = stub_bytes.empty() ? 0u : opts.stub_base_va;
+    out.stub_size   = stub_bytes.size();
+
+    if (!stub_bytes.empty()) {
+        MachOStagedSection stub_sec;
+        stub_sec.object_label = out.has_test_harness_stubs ? "test-harness-stubs" : "winios-architectural-stubs";
+        stub_sec.segname      = "__STUB_TEXT";
+        stub_sec.sectname     = "__stubs";
+        stub_sec.va           = out.stub_va;
+        stub_sec.size         = out.stub_size;
+        stub_sec.vm_prot      = 0x5u; // R | X
+        stub_sec.bytes        = std::move(stub_bytes);
+        out.staged_sections.push_back(std::move(stub_sec));
+    }
+
+    // Verify pairwise non-overlap of page-granular regions (RX text, RO rodata, RW data, RX stub).
+    struct SpanCheck {
+        std::uint64_t va;
+        std::uint64_t span;
+        const char* name;
+    };
+    const SpanCheck spans[4] = {
+        {out.text_va,   align_up_u64(out.text_size, kPageGranuleBytes),   "__TEXT"},
+        {out.rodata_va, align_up_u64(out.rodata_size, kPageGranuleBytes), "__RODATA"},
+        {out.data_va,   align_up_u64(out.data_size, kPageGranuleBytes),   "__DATA"},
+        {out.stub_va,   align_up_u64(out.stub_size, kPageGranuleBytes),   "__STUB_TEXT"},
+    };
+    for (int i = 0; i < 4; ++i) {
+        if (spans[i].span == 0u) continue;
+        for (int j = i + 1; j < 4; ++j) {
+            if (spans[j].span == 0u) continue;
+            if (regions_overlap(spans[i].va, spans[i].span, spans[j].va, spans[j].span)) {
+                out.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+                out.error_message = std::string("16 KiB segment overlap between ") + spans[i].name + " and " + spans[j].name;
+                return out;
+            }
+        }
+    }
+
+    // Emit unified resolved_symbols list (preferring global_defs + external bindings + per-object locals).
+    for (std::size_t oi = 0; oi < obj_symbols.size(); ++oi) {
+        for (const auto& sym : obj_symbols[oi]) {
+            if (!sym.is_stab && sym.is_defined && sym.resolved_va != 0u) {
+                out.resolved_symbols.push_back(sym);
+            }
+        }
+    }
+    for (const auto& [_, bsym] : resolved_external_bindings) {
+        out.resolved_symbols.push_back(bsym);
+    }
+
+    // Populate W^X provenance regions per staged section.
+    for (const auto& s : out.staged_sections) {
+        if (s.size == 0u) continue;
+        MachOProvenanceRegion reg;
+        reg.va_start = s.va;
+        reg.size     = s.size;
+        reg.vm_prot  = s.vm_prot;
+        if (s.segname == "__STUB_TEXT") {
+            reg.classification = out.has_test_harness_stubs
+                ? SymbolProvenanceClassification::TestHarnessStub
+                : SymbolProvenanceClassification::WinIOSArchitectural;
+        } else {
+            reg.classification = SymbolProvenanceClassification::GenuineUpstream;
+        }
+        reg.label = s.object_label + ":" + s.segname + "," + s.sectname;
+        out.provenance_regions.push_back(std::move(reg));
+    }
+
+    out.status = ObjectIntegrationStatus::Success;
+    return out;
+}
+
+MachOMultiObjectLinkResult MachOObjectIntegrator::stage_objects_in_memory(
+    const std::vector<MachOObjectInput>& inputs,
+    const MachOMultiObjectOptions& opts,
+    Memory& guest_mem,
+    GuestMemoryMap* memory_map) {
+    if ((opts.text_base_va & (kPageGranuleBytes - 1u)) != 0u) {
+        MachOMultiObjectLinkResult err;
+        err.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+        err.error_message = "stage_objects_in_memory requires 16 KiB aligned text_base_va";
+        return err;
+    }
+
+    MachOMultiObjectLinkResult out = link_objects(inputs, opts);
+    if (!out.is_success()) {
+        return out;
+    }
+
+    // Aggregate per-segment spans to register coarse W^X regions cleanly in GuestMemoryMap if provided.
+    for (const auto& s : out.staged_sections) {
+        if (s.bytes.empty()) continue;
+        if (!write_staged_bytes(guest_mem, nullptr, opts.virtual_base_bias, s.va, s.bytes,
+                                s.vm_prot, s.object_label + ":" + s.sectname, kPageGranuleBytes,
+                                out.status, out.error_message)) {
+            return out;
+        }
+    }
+
+    if (memory_map != nullptr) {
+        auto add_seg = [&](const std::string& name, GuestMemoryRegionType type, std::uint64_t va, std::uint64_t sz) -> bool {
+            if (sz == 0u) return true;
+            GuestMemoryRegion reg;
+            reg.name = name;
+            reg.type = type;
+            reg.base_address = va;
+            reg.size = align_up_u64(sz, kPageGranuleBytes);
+            reg.is_reserved = true;
+            if (!memory_map->add_region(reg)) {
+                out.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+                out.error_message = "GuestMemoryMap rejected overlapping region: " + name;
+                return false;
+            }
+            return true;
+        };
+        if (!add_seg("__TEXT", GuestMemoryRegionType::KernelImage, out.text_va, out.text_size) ||
+            !add_seg("__RODATA", GuestMemoryRegionType::KernelImage, out.rodata_va, out.rodata_size) ||
+            !add_seg("__DATA", GuestMemoryRegionType::KernelImage, out.data_va, out.data_size) ||
+            !add_seg("__STUB_TEXT", GuestMemoryRegionType::KernelImage, out.stub_va, out.stub_size)) {
+            return out;
+        }
+    }
+
+    return out;
+}
+
+MachOMultiObjectContainerResult MachOObjectIntegrator::build_bounded_multi_object_execute(
+    const std::vector<MachOObjectInput>& inputs,
+    const MachOMultiObjectOptions& opts,
+    const std::string& entry_symbol) {
+    MachOMultiObjectContainerResult container;
+    if ((opts.text_base_va & (kPageGranuleBytes - 1u)) != 0u) {
+        container.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+        container.error_message = "build_bounded_multi_object_execute requires 16 KiB aligned text_base_va";
+        return container;
+    }
+
+    constexpr std::uint32_t kTextHeaderPad = 4096u;
+    MachOMultiObjectOptions link_opts = opts;
+    if (!checked_add_u64(opts.text_base_va, kTextHeaderPad, link_opts.text_base_va)) {
+        container.status = ObjectIntegrationStatus::IntegerOverflow;
+        container.error_message = "Overflow offsetting __TEXT sections inside MH_EXECUTE";
+        return container;
+    }
+
+    const auto link = link_objects(inputs, link_opts);
+    container.link_audit = link;
+    if (!link.is_success()) {
+        container.status = link.status;
+        container.error_message = link.error_message;
+        return container;
+    }
+
+    std::uint64_t entry_va = 0;
+    if (!link.find_symbol_va(entry_symbol, entry_va) || entry_va < link_opts.text_base_va ||
+        entry_va >= link_opts.text_base_va + link.text_size) {
+        container.status = ObjectIntegrationStatus::MalformedSymbolTable;
+        container.error_message = "Entry symbol not in linked executable __TEXT: " + entry_symbol;
+        return container;
+    }
+
+    // Build contiguous byte blobs for __TEXT, optional __RODATA, optional __DATA, optional __STUB_TEXT.
+    auto build_region_blob = [&](std::uint32_t prot, bool is_stub_only, std::uint64_t base_va, std::uint64_t total_sz) {
+        std::vector<std::uint8_t> blob(static_cast<std::size_t>(total_sz), 0u);
+        for (const auto& s : link.staged_sections) {
+            const bool is_stub = (s.segname == "__STUB_TEXT");
+            if (s.vm_prot != prot || is_stub != is_stub_only || s.bytes.empty()) {
+                continue;
+            }
+            const std::size_t rel = static_cast<std::size_t>(s.va - base_va);
+            if (rel + s.bytes.size() <= blob.size()) {
+                std::memcpy(blob.data() + rel, s.bytes.data(), s.bytes.size());
+            }
+        }
+        return blob;
+    };
+
+    const auto text_blob   = build_region_blob(0x5u, false, link.text_va, link.text_size);
+    const auto rodata_blob = link.rodata_size > 0u ? build_region_blob(0x1u, false, link.rodata_va, link.rodata_size) : std::vector<std::uint8_t>{};
+    const auto data_blob   = link.data_size > 0u   ? build_region_blob(0x3u, false, link.data_va, link.data_size)     : std::vector<std::uint8_t>{};
+    const auto stub_blob   = link.stub_size > 0u   ? build_region_blob(0x5u, true,  link.stub_va, link.stub_size)     : std::vector<std::uint8_t>{};
+
+    const std::uint32_t seg1_size = static_cast<std::uint32_t>(sizeof(MachOSegmentCommand64) + sizeof(MachOSection64));
+    const std::uint32_t main_size = static_cast<std::uint32_t>(sizeof(MachOEntrypointCommand));
+    std::uint32_t ncmds = 2u; // __TEXT + LC_MAIN
+    if (!rodata_blob.empty()) ++ncmds;
+    if (!data_blob.empty())   ++ncmds;
+    if (!stub_blob.empty())   ++ncmds;
+    const std::uint32_t sizeofcmds = (ncmds - 1u) * seg1_size + main_size;
+
+    if (sizeof(MachOHeader64) + sizeofcmds > kTextHeaderPad) {
+        container.status = ObjectIntegrationStatus::MemoryBoundsExceeded;
+        container.error_message = "Multi-object MH_EXECUTE load commands exceed header pad";
+        return container;
+    }
+
+    std::uint64_t cur_fileoff = align_up_u64(kTextHeaderPad + text_blob.size(), kPageGranuleBytes);
+    const std::uint64_t ro_fileoff = cur_fileoff;
+    if (!rodata_blob.empty()) cur_fileoff = align_up_u64(cur_fileoff + rodata_blob.size(), kPageGranuleBytes);
+    const std::uint64_t da_fileoff = cur_fileoff;
+    if (!data_blob.empty())   cur_fileoff = align_up_u64(cur_fileoff + data_blob.size(), kPageGranuleBytes);
+    const std::uint64_t st_fileoff = cur_fileoff;
+    if (!stub_blob.empty())   cur_fileoff += stub_blob.size();
+
+    MachOHeader64 hdr{};
+    hdr.magic      = kMachHeaderMagic64;
+    hdr.cputype    = kCpuTypeArm64;
+    hdr.cpusubtype = inputs.front().parsed.cpusubtype;
+    hdr.filetype   = kMhExecute;
+    hdr.ncmds      = ncmds;
+    hdr.sizeofcmds = sizeofcmds;
+    hdr.flags      = 0x00000001u;
+
+    std::vector<std::uint8_t> bin(static_cast<std::size_t>(cur_fileoff), 0u);
+    std::size_t woff = 0;
+    std::memcpy(bin.data() + woff, &hdr, sizeof(hdr));
+    woff += sizeof(hdr);
+
+    auto emit_seg = [&](const char* seg_nm, const char* sec_nm, std::uint64_t vmaddr,
+                        std::uint64_t sec_addr, std::uint64_t vmsize, std::uint64_t foff,
+                        std::uint64_t fsz, std::uint64_t payload_sz, std::uint32_t prot,
+                        std::uint32_t sec_flags, const std::vector<std::uint8_t>& payload,
+                        std::uint64_t payload_file_off) {
+        MachOSegmentCommand64 seg{};
+        seg.cmd      = kLcSegment64;
+        seg.cmdsize  = seg1_size;
+        std::memcpy(seg.segname, seg_nm, std::min<std::size_t>(16u, std::strlen(seg_nm)));
+        seg.vmaddr   = vmaddr;
+        seg.vmsize   = align_up_u64(vmsize, kPageGranuleBytes);
+        seg.fileoff  = foff;
+        seg.filesize = fsz;
+        seg.maxprot  = prot;
+        seg.initprot = prot;
+        seg.nsects   = 1u;
+
+        MachOSection64 sec{};
+        std::memcpy(sec.sectname, sec_nm, std::min<std::size_t>(16u, std::strlen(sec_nm)));
+        std::memcpy(sec.segname, seg_nm, std::min<std::size_t>(16u, std::strlen(seg_nm)));
+        sec.addr   = sec_addr;
+        sec.size   = payload_sz;
+        sec.offset = static_cast<std::uint32_t>(payload_file_off);
+        sec.align  = 4u;
+        sec.flags  = sec_flags;
+
+        std::memcpy(bin.data() + woff, &seg, sizeof(seg)); woff += sizeof(seg);
+        std::memcpy(bin.data() + woff, &sec, sizeof(sec)); woff += sizeof(sec);
+        if (!payload.empty()) {
+            std::memcpy(bin.data() + payload_file_off, payload.data(), payload.size());
+        }
+    };
+
+    emit_seg("__TEXT", "__text", opts.text_base_va, link.text_va, kTextHeaderPad + text_blob.size(),
+             0u, kTextHeaderPad + text_blob.size(), text_blob.size(), 0x5u,
+             kSecAttrPureInsn | kSecAttrSomeInsn, text_blob, kTextHeaderPad);
+    if (!rodata_blob.empty()) {
+        emit_seg("__RODATA", "__rodata", link.rodata_va, link.rodata_va, rodata_blob.size(),
+                 ro_fileoff, rodata_blob.size(), rodata_blob.size(), 0x1u, 0u, rodata_blob, ro_fileoff);
+    }
+    if (!data_blob.empty()) {
+        emit_seg("__DATA", "__data", link.data_va, link.data_va, data_blob.size(),
+                 da_fileoff, data_blob.size(), data_blob.size(), 0x3u, 0u, data_blob, da_fileoff);
+    }
+    if (!stub_blob.empty()) {
+        emit_seg("__STUB_TEXT", "__stubs", link.stub_va, link.stub_va, stub_blob.size(),
+                 st_fileoff, stub_blob.size(), stub_blob.size(), 0x5u,
+                 kSecAttrPureInsn | kSecAttrSomeInsn, stub_blob, st_fileoff);
+    }
+
+    MachOEntrypointCommand ep{};
+    ep.cmd       = kLcMain;
+    ep.cmdsize   = main_size;
+    ep.entryoff  = kTextHeaderPad + (entry_va - link.text_va);
+    ep.stacksize = kPageGranuleBytes;
+    std::memcpy(bin.data() + woff, &ep, sizeof(ep));
 
     container.container_sha256_hex = LinuxImageLoader::compute_sha256(bin.data(), bin.size());
     container.macho_execute_bytes  = std::move(bin);

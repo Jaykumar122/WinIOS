@@ -128,6 +128,19 @@ void ReplayStateHash::hash_cpu(const CPU& cpu,
     append_u64(cpu.exclusive_monitor_low_value());
     append_u64(cpu.exclusive_monitor_high_value());
 
+    const auto& kr = cpu.get_pac_keyring();
+    append_u64(kr.apia.lo);
+    append_u64(kr.apia.hi);
+    append_u64(kr.apib.lo);
+    append_u64(kr.apib.hi);
+    append_u64(kr.apda.lo);
+    append_u64(kr.apda.hi);
+    append_u64(kr.apdb.lo);
+    append_u64(kr.apdb.hi);
+    append_u64(kr.apga.lo);
+    append_u64(kr.apga.hi);
+    append_u64(static_cast<std::uint64_t>(cpu.get_pac().get_fault_mode()));
+
     const std::uint32_t yc1 = trace::calculate_crc32c(sys_buf.data(), sys_buf.size());
     const std::uint32_t yc2 = trace::calculate_crc32c(sys_buf.data(), sys_buf.size(), yc1);
     out_sysreg_hash = (static_cast<std::uint64_t>(yc1) << 32u) | yc2;

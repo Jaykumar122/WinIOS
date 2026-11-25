@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cpu/cpu.h"
+#include "cpu/pointer_auth.h"
 #include "cpu/debug_architecture.h"
 
 #include <cstddef>
@@ -175,6 +176,10 @@ struct SmpCoreState {
     // --- A6: Per-Core Architectural Debug State (Stage 39) ---
     SmpDebugState debug{};
     SmpPmuState pmu{};
+
+    // --- ARM64e Pointer Authentication State (Campaign 282) ---
+    winios::cpu::PacKeyRing pac_keyring{};
+    winios::cpu::PacFaultMode pac_fault_mode{winios::cpu::PacFaultMode::TrapException};
 
     // --- Per-Core Timer Control State ---
     std::uint64_t cntp_cval_el0{0};

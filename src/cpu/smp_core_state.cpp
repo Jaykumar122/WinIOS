@@ -102,6 +102,9 @@ void SmpCoreState::reset(std::size_t id, CoreLifecycleState initial_state) noexc
     debug = SmpDebugState{};
     pmu = SmpPmuState{};
     pmu.pmcr = static_cast<std::uint32_t>(kNumEventCounters) << kPMCRNumCountersShift;
+    const winios::cpu::Arm64ePointerAuth default_pac{};
+    pac_keyring = default_pac.get_keyring();
+    pac_fault_mode = default_pac.get_fault_mode();
 }
 
 void SmpCoreState::capture_from_cpu(const CPU& cpu) {
@@ -207,6 +210,9 @@ void SmpCoreState::capture_from_cpu(const CPU& cpu) {
         pmu.event_counter[i] = p.read_pmevcntr(i);
         pmu.event_type[i] = p.read_pmevtyper(i);
     }
+
+    pac_keyring = cpu.get_pac_keyring();
+    pac_fault_mode = cpu.get_pac().get_fault_mode();
 }
 
 void SmpCoreState::apply_to_cpu(CPU& cpu) const {
@@ -335,6 +341,10 @@ void SmpCoreState::apply_to_cpu(CPU& cpu) const {
         p.write_pmevcntr(i, pmu.event_counter[i]);
         p.write_pmevtyper(i, pmu.event_type[i]);
     }
+
+    cpu.set_pac_keyring(pac_keyring);
+    cpu.get_pac().set_fault_mode(pac_fault_mode);
+    cpu.get_pac().clear_fault();
 }
 
 std::uint64_t SmpCoreState::compute_canonical_hash() const noexcept {
@@ -436,6 +446,17 @@ std::uint64_t SmpCoreState::compute_canonical_hash() const noexcept {
         h = fnv1a_u32(h, pmu.event_type[i]);
     }
 
+    const auto hash_key = [&](const winios::cpu::PacKey128& k) {
+        h = fnv1a_u64(h, k.lo);
+        h = fnv1a_u64(h, k.hi);
+    };
+    hash_key(pac_keyring.apia);
+    hash_key(pac_keyring.apib);
+    hash_key(pac_keyring.apda);
+    hash_key(pac_keyring.apdb);
+    hash_key(pac_keyring.apga);
+    h = fnv1a_u32(h, static_cast<std::uint32_t>(pac_fault_mode));
+
     return h;
 }
 
@@ -473,6 +494,14 @@ bool SmpCoreState::operator==(const SmpCoreState& o) const noexcept {
         cntv_cval_el0 != o.cntv_cval_el0 || cntv_ctl_el0 != o.cntv_ctl_el0) return false;
 
     if (debug != o.debug || pmu != o.pmu) return false;
+    if (pac_keyring.apia != o.pac_keyring.apia ||
+        pac_keyring.apib != o.pac_keyring.apib ||
+        pac_keyring.apda != o.pac_keyring.apda ||
+        pac_keyring.apdb != o.pac_keyring.apdb ||
+        pac_keyring.apga != o.pac_keyring.apga ||
+        pac_fault_mode != o.pac_fault_mode) {
+        return false;
+    }
 
     return true;
 }

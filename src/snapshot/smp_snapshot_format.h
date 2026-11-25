@@ -24,8 +24,12 @@ std::vector<std::uint8_t> serialize_core_directory(const std::vector<CoreDirecto
 inline constexpr std::size_t kCoreArchLegacyPayloadSize = 1080;
 inline constexpr std::size_t kCoreArchDebugBlockSize = 144;
 inline constexpr std::size_t kCoreArchPmuBlockSize = 96;
-inline constexpr std::size_t kCoreArchPayloadSize =
+inline constexpr std::size_t kCoreArchPacBlockSize = 88;
+inline constexpr std::size_t kCoreArchDebugPmuPayloadSize =
     kCoreArchLegacyPayloadSize + kCoreArchDebugBlockSize + kCoreArchPmuBlockSize; // 1320
+inline constexpr std::size_t kCoreArchPayloadSize =
+    kCoreArchDebugPmuPayloadSize + kCoreArchPacBlockSize; // 1408
+inline constexpr std::uint32_t kCoreArchPacBlockMagic = 0x50414353u; // "PACS"
 std::vector<std::uint8_t> serialize_core_architectural_state(const SmpCoreState& state);
 [[nodiscard]] SnapshotResult deserialize_core_architectural_state(const std::uint8_t* src, std::size_t size,
                                                                  SmpCoreState& out_state);
