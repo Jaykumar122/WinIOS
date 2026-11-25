@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "cpu/pointer_auth.h"
 #include "loader/guest_memory_map.h"
 #include "memory/memory.h"
 
@@ -58,6 +59,8 @@ struct MachORelocEntry {
     std::uint64_t target_va{0};
     std::uint32_t original_insn{0};
     std::uint32_t patched_insn{0};
+    std::uint64_t original_qword{0};
+    std::uint64_t patched_qword{0};
     bool          patched{false};
     std::int64_t  addend{0};
     std::string   owner_object;
@@ -91,6 +94,8 @@ struct MachOSymbolEntry {
     bool          is_external{false};
     bool          is_defined{false};
     bool          is_undefined{false};
+    bool          is_common{false};
+    bool          is_resolved{false};
     SymbolProvenanceClassification classification{SymbolProvenanceClassification::UnresolvedExternal};
     std::uint64_t resolved_va{0};
 };
@@ -237,6 +242,14 @@ struct MachOMultiObjectOptions {
     bool require_all_relocations_resolved{false};
     bool reject_duplicate_strong_symbols{true};
     std::vector<BoundedExternalBinding> external_bindings;
+    // If true, sign ARM64_RELOC_AUTHENTICATED_POINTER slots with authenticated_pointer_keys.
+    // If false, authenticated-pointer relocations are validated/audited and left unsigned
+    // (rejected when require_all_relocations_resolved is true).
+    bool enable_authenticated_pointer_signing{false};
+    winios::cpu::PacKeyRing authenticated_pointer_keys{};
+    // If true, synthesize section$start$/section$end$/segment$start$/segment$end$ symbols
+    // from placed staged sections when referenced as undefined externals.
+    bool synthesize_section_boundary_symbols{true};
 };
 
 struct MachOMultiObjectLinkResult {
@@ -262,6 +275,8 @@ struct MachOMultiObjectLinkResult {
     std::vector<std::string> stub_symbols;
     bool has_test_harness_stubs{false};
     bool has_winios_architectural_bindings{false};
+    std::size_t unpatched_authenticated_relocations{0};
+    bool has_unpatched_relocations{false};
 
     [[nodiscard]] bool is_success() const noexcept {
         return status == ObjectIntegrationStatus::Success;
@@ -309,7 +324,8 @@ public:
         const MachOIntegrationOptions& opts);
 
     // Multi-object bounded linker supporting BRANCH26, PAGE21, PAGEOFF12, GOT_LOAD_PAGE21,
-    // GOT_LOAD_PAGEOFF12, and ADDEND relocations with strict W^X & provenance enforcement.
+    // GOT_LOAD_PAGEOFF12, UNSIGNED, SUBTRACTOR, ADDEND, and AUTHENTICATED_POINTER relocations
+    // (including r_extern == 0 section-relative targets) with strict W^X & provenance enforcement.
     [[nodiscard]] static MachOMultiObjectLinkResult link_objects(
         const std::vector<MachOObjectInput>& inputs,
         const MachOMultiObjectOptions& opts);

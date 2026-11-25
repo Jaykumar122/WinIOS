@@ -8705,6 +8705,14 @@ target_link_libraries(stage282_adversarial_verification_tests PRIVATE winios_cor
 winios_set_warnings(stage282_adversarial_verification_tests)
 add_test(NAME stage282_adversarial_verification_tests COMMAND stage282_adversarial_verification_tests)
 
+add_executable(stage283_macho_reloc_and_closure_tests
+    tests/unit/stage283_macho_reloc_and_closure_tests.cpp
+)
+target_include_directories(stage283_macho_reloc_and_closure_tests PRIVATE . include guest-sdk/include src tests)
+target_link_libraries(stage283_macho_reloc_and_closure_tests PRIVATE winios_core)
+winios_set_warnings(stage283_macho_reloc_and_closure_tests)
+add_test(NAME stage283_macho_reloc_and_closure_tests COMMAND stage283_macho_reloc_and_closure_tests)
+
 
 
 

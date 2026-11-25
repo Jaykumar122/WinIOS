@@ -39,13 +39,15 @@ constexpr std::uint8_t kNlistSect          = 0x0Eu;
 constexpr std::uint8_t kNlistPrivateExt     = 0x10u;
 constexpr std::uint16_t kNDescWeakDef     = 0x0080u;
 
-constexpr std::uint8_t kArm64RelocUnsigned       = 0u;
-constexpr std::uint8_t kArm64RelocBranch26       = 2u;
-constexpr std::uint8_t kArm64RelocPage21         = 3u;
-constexpr std::uint8_t kArm64RelocPageoff12      = 4u;
-constexpr std::uint8_t kArm64RelocGotLoadPage21   = 5u;
-constexpr std::uint8_t kArm64RelocGotLoadPageoff12= 6u;
-constexpr std::uint8_t kArm64RelocAddend         = 10u;
+constexpr std::uint8_t kArm64RelocUnsigned           = 0u;
+constexpr std::uint8_t kArm64RelocSubtractor         = 1u;
+constexpr std::uint8_t kArm64RelocBranch26           = 2u;
+constexpr std::uint8_t kArm64RelocPage21             = 3u;
+constexpr std::uint8_t kArm64RelocPageoff12          = 4u;
+constexpr std::uint8_t kArm64RelocGotLoadPage21       = 5u;
+constexpr std::uint8_t kArm64RelocGotLoadPageoff12    = 6u;
+constexpr std::uint8_t kArm64RelocAddend             = 10u;
+constexpr std::uint8_t kArm64RelocAuthenticatedPointer = 11u;
 
 #pragma pack(push, 1)
 struct RawSymtabCommand {
@@ -111,6 +113,28 @@ std::uint32_t read_u32_le(const std::uint8_t* p) noexcept {
          | (static_cast<std::uint32_t>(p[3]) << 24u);
 }
 
+std::int32_t read_i32_le(const std::uint8_t* p) noexcept {
+    const std::uint32_t u = read_u32_le(p);
+    std::int32_t s = 0;
+    std::memcpy(&s, &u, sizeof(s));
+    return s;
+}
+
+std::uint64_t read_u64_le(const std::uint8_t* p) noexcept {
+    std::uint64_t v = 0;
+    for (unsigned i = 0; i < 8u; ++i) {
+        v |= static_cast<std::uint64_t>(p[i]) << (i * 8u);
+    }
+    return v;
+}
+
+std::int64_t read_i64_le(const std::uint8_t* p) noexcept {
+    const std::uint64_t u = read_u64_le(p);
+    std::int64_t s = 0;
+    std::memcpy(&s, &u, sizeof(s));
+    return s;
+}
+
 void write_u32_le(std::uint8_t* p, std::uint32_t v) noexcept {
     p[0] = static_cast<std::uint8_t>(v & 0xFFu);
     p[1] = static_cast<std::uint8_t>((v >> 8u) & 0xFFu);
@@ -122,6 +146,40 @@ void write_u64_le(std::uint8_t* p, std::uint64_t v) noexcept {
     for (unsigned i = 0; i < 8u; ++i) {
         p[i] = static_cast<std::uint8_t>((v >> (i * 8u)) & 0xFFu);
     }
+}
+
+bool checked_add_i64(std::int64_t a, std::int64_t b, std::int64_t& out) noexcept {
+    if (b > 0 && a > (std::numeric_limits<std::int64_t>::max)() - b) {
+        return false;
+    }
+    if (b < 0 && a < (std::numeric_limits<std::int64_t>::min)() - b) {
+        return false;
+    }
+    out = a + b;
+    return true;
+}
+
+bool checked_sub_u64_to_i64(std::uint64_t a, std::uint64_t b, std::int64_t& out) noexcept {
+    if (a >= b) {
+        const std::uint64_t diff = a - b;
+        if (diff > static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)())) {
+            return false;
+        }
+        out = static_cast<std::int64_t>(diff);
+        return true;
+    }
+    const std::uint64_t diff = b - a;
+    const std::uint64_t max_neg_mag =
+        static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)()) + 1ULL;
+    if (diff > max_neg_mag) {
+        return false;
+    }
+    if (diff == max_neg_mag) {
+        out = (std::numeric_limits<std::int64_t>::min)();
+        return true;
+    }
+    out = -static_cast<std::int64_t>(diff);
+    return true;
 }
 
 bool checked_apply_signed_addend(std::uint64_t base, std::int64_t addend, std::uint64_t& out) noexcept {
@@ -167,9 +225,14 @@ bool validate_binding_list(const std::vector<BoundedExternalBinding>& bindings,
             return false;
         }
         if (b.classification == SymbolProvenanceClassification::GenuineUpstream &&
-            !b.stub_instructions.empty()) {
+            (!b.stub_instructions.empty() || b.prebound_va == 0u)) {
             out_status = ObjectIntegrationStatus::MalformedSymbolTable;
             out_error = "Synthetic stub instructions cannot be classified GenuineUpstream: " + b.symbol_name;
+            return false;
+        }
+        if (out_map.find(b.symbol_name) != out_map.end()) {
+            out_status = ObjectIntegrationStatus::MalformedSymbolTable;
+            out_error = "Duplicate external binding for symbol: " + b.symbol_name;
             return false;
         }
         out_map[b.symbol_name] = b;
@@ -285,14 +348,24 @@ const MachOSymbolEntry* MachOObjectParseResult::find_symbol(const std::string& n
 }
 
 bool MachOIntegrationResult::find_symbol_va(const std::string& name, std::uint64_t& out_va) const noexcept {
+    const MachOSymbolEntry* fallback = nullptr;
     for (const auto& sym : symbols) {
         if (sym.name == name &&
+            sym.is_resolved &&
             sym.classification != SymbolProvenanceClassification::UnresolvedExternal &&
-            sym.classification != SymbolProvenanceClassification::UnsupportedSymbol &&
-            sym.resolved_va != 0u) {
-            out_va = sym.resolved_va;
-            return true;
+            sym.classification != SymbolProvenanceClassification::UnsupportedSymbol) {
+            if (sym.is_external) {
+                out_va = sym.resolved_va;
+                return true;
+            }
+            if (fallback == nullptr) {
+                fallback = &sym;
+            }
         }
+    }
+    if (fallback != nullptr) {
+        out_va = fallback->resolved_va;
+        return true;
     }
     return false;
 }
@@ -433,14 +506,24 @@ bool MachOMultiObjectLinkResult::find_symbol_va(const std::string& name, std::ui
 }
 
 bool MachOMultiObjectLinkResult::find_symbol(const std::string& name, MachOSymbolEntry& out_sym) const noexcept {
+    const MachOSymbolEntry* fallback = nullptr;
     for (const auto& sym : resolved_symbols) {
         if (sym.name == name &&
+            sym.is_resolved &&
             sym.classification != SymbolProvenanceClassification::UnresolvedExternal &&
-            sym.classification != SymbolProvenanceClassification::UnsupportedSymbol &&
-            sym.resolved_va != 0u) {
-            out_sym = sym;
-            return true;
+            sym.classification != SymbolProvenanceClassification::UnsupportedSymbol) {
+            if (sym.is_external) {
+                out_sym = sym;
+                return true;
+            }
+            if (fallback == nullptr) {
+                fallback = &sym;
+            }
         }
+    }
+    if (fallback != nullptr) {
+        out_sym = *fallback;
+        return true;
     }
     return false;
 }
@@ -588,12 +671,14 @@ MachOObjectParseResult MachOObjectIntegrator::parse_object(const std::vector<std
                 sec.reloff     = raw_sec.reloff;
                 sec.nreloc     = raw_sec.nreloc;
                 sec.flags      = raw_sec.flags;
-                sec.is_debug   = (raw_sec.flags & kSecAttrDebug) != 0u;
+                sec.is_debug   = (raw_sec.flags & kSecAttrDebug) != 0u ||
+                                 sec.segname == "__DWARF" ||
+                                 (sec.segname == "__LD" && sec.sectname == "__compact_unwind");
                 const std::uint32_t sec_type = raw_sec.flags & kSectionTypeMask;
                 sec.is_zerofill = (sec_type == kSectionZerofill || sec_type == kSectionGbZerofill);
                 sec.is_executable = !sec.is_debug &&
                     ((raw_sec.flags & (kSecAttrPureInsn | kSecAttrSomeInsn)) != 0u ||
-                     sec.segname == "__TEXT");
+                     (sec.segname == "__TEXT" && sec.sectname == "__text"));
 
                 if (!sec.is_zerofill && sec.size > 0u) {
                     std::uint64_t sec_end = 0;
@@ -710,8 +795,13 @@ MachOObjectParseResult MachOObjectIntegrator::parse_object(const std::vector<std
                 sym.is_defined = true;
                 sym.classification = SymbolProvenanceClassification::GenuineUpstream;
             } else if (!sym.is_stab && n_type_field == kNlistUndf) {
-                sym.is_undefined = true;
-                sym.classification = SymbolProvenanceClassification::UnresolvedExternal;
+                if (sym.is_external && nl.n_value > 0u) {
+                    sym.is_common = true;
+                    sym.classification = SymbolProvenanceClassification::GenuineUpstream;
+                } else {
+                    sym.is_undefined = true;
+                    sym.classification = SymbolProvenanceClassification::UnresolvedExternal;
+                }
             } else {
                 sym.classification = SymbolProvenanceClassification::UnsupportedSymbol;
             }
@@ -773,15 +863,19 @@ MachOIntegrationResult MachOObjectIntegrator::link_object(
 
     // Assign VAs to defined object symbols and bind requested external symbols.
     out.symbols = parsed.symbols;
-    std::uint64_t next_stub_offset = 0;
+    std::vector<std::uint8_t> arch_stub_bytes;
+    std::vector<std::uint8_t> test_stub_bytes;
+    std::uint64_t next_arch_offset = 0;
+
     for (auto& sym : out.symbols) {
         if (sym.is_stab) {
             continue;
         }
-        if (sym.is_defined && (sym.n_type & kNlistTypeMask) == kNlistSect) {
+        const std::uint8_t n_type_field = sym.n_type & kNlistTypeMask;
+        if (sym.is_defined && n_type_field == kNlistSect) {
             const std::size_t sec_idx = static_cast<std::size_t>(sym.n_sect - 1u);
             if (sec_idx != text_sec_index) {
-                // Only non-debug code/data sections staged in bounded integrator.
+                // Only __TEXT,__text is staged in the single-object bounded integrator.
                 continue;
             }
             if (sym.n_value < text_sec->addr) {
@@ -800,34 +894,42 @@ MachOIntegrationResult MachOObjectIntegrator::link_object(
                 out.error_message = "Overflow computing resolved_va for " + sym.name;
                 return out;
             }
+            sym.is_resolved = true;
+            sym.classification = SymbolProvenanceClassification::GenuineUpstream;
+        } else if (sym.is_defined && n_type_field == kNlistAbs) {
+            sym.resolved_va = sym.n_value;
+            sym.is_resolved = true;
             sym.classification = SymbolProvenanceClassification::GenuineUpstream;
         } else if (sym.is_undefined) {
             auto it = binding_map.find(sym.name);
             if (it == binding_map.end()) {
                 sym.classification = SymbolProvenanceClassification::UnresolvedExternal;
                 sym.resolved_va = 0;
+                sym.is_resolved = false;
                 continue;
             }
             const auto& binding = it->second;
             sym.classification = binding.classification;
             if (binding.prebound_va != 0u) {
                 sym.resolved_va = binding.prebound_va;
-            } else {
+                sym.is_resolved = true;
+            } else if (binding.classification == SymbolProvenanceClassification::WinIOSArchitectural) {
                 std::vector<std::uint32_t> insns = binding.stub_instructions;
                 if (insns.empty()) {
                     insns.push_back(0xD65F03C0u); // ARM64 RET
                 }
-                if (!checked_add_u64(opts.stub_base_va, next_stub_offset, sym.resolved_va)) {
+                if (!checked_add_u64(opts.stub_base_va, next_arch_offset, sym.resolved_va)) {
                     out.status = ObjectIntegrationStatus::IntegerOverflow;
-                    out.error_message = "Overflow placing stub for " + sym.name;
+                    out.error_message = "Overflow placing architectural stub for " + sym.name;
                     return out;
                 }
                 for (std::uint32_t insn : insns) {
                     std::uint8_t buf[4];
                     write_u32_le(buf, insn);
-                    append_bytes(out.stub_bytes, buf, sizeof(buf));
+                    append_bytes(arch_stub_bytes, buf, sizeof(buf));
                 }
-                next_stub_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+                next_arch_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+                sym.is_resolved = true;
             }
             if (sym.classification == SymbolProvenanceClassification::TestHarnessStub) {
                 out.has_test_harness_stubs = true;
@@ -836,6 +938,52 @@ MachOIntegrationResult MachOObjectIntegrator::link_object(
                 out.has_winios_architectural_bindings = true;
             }
         }
+    }
+
+    const std::uint64_t test_stub_base_va = arch_stub_bytes.empty()
+        ? opts.stub_base_va
+        : align_up_u64(opts.stub_base_va + arch_stub_bytes.size(), kPageGranuleBytes);
+    std::uint64_t next_test_offset = 0;
+    for (auto& sym : out.symbols) {
+        if (sym.is_stab || !sym.is_undefined) {
+            continue;
+        }
+        auto it = binding_map.find(sym.name);
+        if (it == binding_map.end()) {
+            continue;
+        }
+        const auto& binding = it->second;
+        if (binding.prebound_va != 0u ||
+            binding.classification == SymbolProvenanceClassification::WinIOSArchitectural) {
+            continue;
+        }
+        std::vector<std::uint32_t> insns = binding.stub_instructions;
+        if (insns.empty()) {
+            insns.push_back(0xD65F03C0u); // ARM64 RET
+        }
+        if (!checked_add_u64(test_stub_base_va, next_test_offset, sym.resolved_va)) {
+            out.status = ObjectIntegrationStatus::IntegerOverflow;
+            out.error_message = "Overflow placing stub for " + sym.name;
+            return out;
+        }
+        for (std::uint32_t insn : insns) {
+            std::uint8_t buf[4];
+            write_u32_le(buf, insn);
+            append_bytes(test_stub_bytes, buf, sizeof(buf));
+        }
+        next_test_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+        sym.is_resolved = true;
+    }
+
+    if (!arch_stub_bytes.empty() && !test_stub_bytes.empty()) {
+        out.stub_bytes = arch_stub_bytes;
+        const std::size_t pad_to = static_cast<std::size_t>(test_stub_base_va - opts.stub_base_va);
+        out.stub_bytes.resize(pad_to, 0u);
+        out.stub_bytes.insert(out.stub_bytes.end(), test_stub_bytes.begin(), test_stub_bytes.end());
+    } else if (!arch_stub_bytes.empty()) {
+        out.stub_bytes = arch_stub_bytes;
+    } else if (!test_stub_bytes.empty()) {
+        out.stub_bytes = test_stub_bytes;
     }
 
     out.stub_va = out.stub_bytes.empty() ? 0u : opts.stub_base_va;
@@ -919,7 +1067,7 @@ MachOIntegrationResult MachOObjectIntegrator::link_object(
 
         if (target_sym.classification == SymbolProvenanceClassification::UnresolvedExternal ||
             target_sym.classification == SymbolProvenanceClassification::UnsupportedSymbol ||
-            target_sym.resolved_va == 0u) {
+            !target_sym.is_resolved) {
             if (std::find(out.unresolved_symbols.begin(), out.unresolved_symbols.end(), target_sym.name) ==
                 out.unresolved_symbols.end()) {
                 out.unresolved_symbols.push_back(target_sym.name);
@@ -961,14 +1109,22 @@ MachOIntegrationResult MachOObjectIntegrator::link_object(
     text_region.label          = opts.upstream_source_label + ":__TEXT,__text";
     out.provenance_regions.push_back(text_region);
 
-    if (!out.stub_bytes.empty()) {
+    if (!arch_stub_bytes.empty()) {
+        MachOProvenanceRegion arch_region;
+        arch_region.va_start       = opts.stub_base_va;
+        arch_region.size           = arch_stub_bytes.size();
+        arch_region.vm_prot        = 0x5u; // R | X
+        arch_region.classification = SymbolProvenanceClassification::WinIOSArchitectural;
+        arch_region.label          = "__ARCH_TEXT";
+        out.provenance_regions.push_back(arch_region);
+    }
+
+    if (!test_stub_bytes.empty()) {
         MachOProvenanceRegion stub_region;
-        stub_region.va_start       = out.stub_va;
-        stub_region.size           = out.stub_size;
+        stub_region.va_start       = test_stub_base_va;
+        stub_region.size           = test_stub_bytes.size();
         stub_region.vm_prot        = 0x5u; // R | X
-        stub_region.classification = out.has_test_harness_stubs
-            ? SymbolProvenanceClassification::TestHarnessStub
-            : SymbolProvenanceClassification::WinIOSArchitectural;
+        stub_region.classification = SymbolProvenanceClassification::TestHarnessStub;
         stub_region.label          = "__STUB_TEXT";
         out.provenance_regions.push_back(stub_region);
     }
@@ -1075,7 +1231,7 @@ MachOBoundedContainerResult MachOObjectIntegrator::build_bounded_macho_execute(
     hdr.filetype   = kMhExecute;
     hdr.ncmds      = ncmds;
     hdr.sizeofcmds = sizeofcmds;
-    hdr.flags      = 0x00000001u; // MH_NOUNDEFS
+    hdr.flags      = link.unresolved_symbols.empty() ? 0x00000001u : 0u; // MH_NOUNDEFS only if fully resolved
     hdr.reserved   = 0u;
 
     MachOSegmentCommand64 seg_text{};
@@ -1264,15 +1420,39 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
     out.text_va   = opts.text_base_va;
     out.text_size = text_cursor - opts.text_base_va;
 
-    // Build per-object resolved symbols and global external symbol table.
+    // Build per-object resolved symbols, N_ABS, COMMON, and global external symbol table.
     struct GlobalDef {
         std::size_t owner_obj{0};
         std::uint64_t va{0};
         bool is_weak{false};
         SymbolProvenanceClassification classification{SymbolProvenanceClassification::GenuineUpstream};
     };
+    struct CommonDef {
+        std::uint64_t size{0};
+        std::uint64_t align{8};
+        std::uint64_t va{0};
+    };
     std::map<std::string, GlobalDef> global_defs;
+    std::map<std::string, CommonDef> common_defs;
     std::vector<std::vector<MachOSymbolEntry>> obj_symbols(inputs.size());
+
+    auto register_global_def = [&](const std::string& name, std::size_t oi, std::uint64_t va, bool is_weak) -> bool {
+        auto it = global_defs.find(name);
+        if (it == global_defs.end()) {
+            global_defs[name] = {oi, va, is_weak, SymbolProvenanceClassification::GenuineUpstream};
+            return true;
+        }
+        if (it->second.is_weak && !is_weak) {
+            it->second = {oi, va, false, SymbolProvenanceClassification::GenuineUpstream};
+            return true;
+        }
+        if (!it->second.is_weak && !is_weak && opts.reject_duplicate_strong_symbols) {
+            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+            out.error_message = "Duplicate strong global symbol across objects: " + name;
+            return false;
+        }
+        return true;
+    };
 
     for (std::size_t oi = 0; oi < inputs.size(); ++oi) {
         const auto& parsed = inputs[oi].parsed;
@@ -1298,32 +1478,115 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                     out.error_message = "Overflow computing symbol VA: " + sym.name;
                     return out;
                 }
+                sym.is_resolved = true;
                 sym.classification = SymbolProvenanceClassification::GenuineUpstream;
 
                 if (sym.is_external) {
                     const bool is_weak = (sym.n_desc & kNDescWeakDef) != 0u;
-                    auto it = global_defs.find(sym.name);
-                    if (it == global_defs.end()) {
-                        global_defs[sym.name] = {oi, sym.resolved_va, is_weak, SymbolProvenanceClassification::GenuineUpstream};
-                    } else if (it->second.is_weak && !is_weak) {
-                        it->second = {oi, sym.resolved_va, false, SymbolProvenanceClassification::GenuineUpstream};
-                    } else if (!it->second.is_weak && !is_weak && opts.reject_duplicate_strong_symbols) {
-                        out.status = ObjectIntegrationStatus::MalformedSymbolTable;
-                        out.error_message = "Duplicate strong global symbol across objects: " + sym.name;
+                    if (!register_global_def(sym.name, oi, sym.resolved_va, is_weak)) {
                         return out;
                     }
                 }
             } else if (sym.is_defined && n_type_field == kNlistAbs) {
                 sym.resolved_va = sym.n_value;
+                sym.is_resolved = true;
                 sym.classification = SymbolProvenanceClassification::GenuineUpstream;
+                if (sym.is_external) {
+                    const bool is_weak = (sym.n_desc & kNDescWeakDef) != 0u;
+                    if (!register_global_def(sym.name, oi, sym.resolved_va, is_weak)) {
+                        return out;
+                    }
+                }
+            } else if (sym.is_common) {
+                const std::uint64_t comm_sz = sym.n_value > 0u ? sym.n_value : 8u;
+                const std::uint64_t align_log2 = static_cast<std::uint64_t>((sym.n_desc >> 8u) & 0x0Fu);
+                const std::uint64_t raw_align = (align_log2 > 0u && align_log2 <= 14u)
+                    ? (std::uint64_t{1} << align_log2)
+                    : 8u;
+                const std::uint64_t comm_align = raw_align < 8u ? 8u : raw_align;
+                auto& cd = common_defs[sym.name];
+                if (comm_sz > cd.size) cd.size = comm_sz;
+                if (comm_align > cd.align) cd.align = comm_align;
             }
         }
     }
 
+    // Allocate __DATA,__common for any COMMON symbol not already defined strongly/weakly.
+    if (!common_defs.empty()) {
+        std::uint64_t common_start_va = 0u;
+        std::uint64_t common_total_size = 0u;
+        for (auto& [cname, cd] : common_defs) {
+            if (global_defs.find(cname) != global_defs.end()) {
+                continue;
+            }
+            const std::uint64_t aligned_va = align_up_u64(data_cursor, cd.align);
+            if (common_start_va == 0u) {
+                common_start_va = aligned_va;
+            }
+            std::uint64_t next_end = 0u;
+            if (!checked_add_u64(aligned_va, cd.size, next_end)) {
+                out.status = ObjectIntegrationStatus::IntegerOverflow;
+                out.error_message = "COMMON allocation overflow for " + cname;
+                return out;
+            }
+            cd.va = aligned_va;
+            data_cursor = next_end;
+            common_total_size = data_cursor - common_start_va;
+            global_defs[cname] = {0u, cd.va, false, SymbolProvenanceClassification::GenuineUpstream};
+        }
+        if (common_total_size > 0u) {
+            MachOStagedSection common_sec;
+            common_sec.object_label = "winios-common-alloc";
+            common_sec.segname      = "__DATA";
+            common_sec.sectname     = "__common";
+            common_sec.va           = common_start_va;
+            common_sec.size         = common_total_size;
+            common_sec.vm_prot      = 0x3u; // R | W
+            common_sec.is_zerofill  = true;
+            common_sec.bytes.assign(static_cast<std::size_t>(common_total_size), 0u);
+            out.staged_sections.push_back(std::move(common_sec));
+        }
+    }
+
+    // Compute section$start$/section$end$ & segment$start$/segment$end$ boundaries from placed sections.
+    std::map<std::string, std::uint64_t> section_boundary_vas;
+    if (opts.synthesize_section_boundary_symbols) {
+        std::map<std::string, std::pair<std::uint64_t, std::uint64_t>> sec_spans;
+        std::map<std::string, std::pair<std::uint64_t, std::uint64_t>> seg_spans;
+        for (const auto& s : out.staged_sections) {
+            const std::uint64_t s_end = s.va + s.size;
+            const std::string skey = s.segname + "$" + s.sectname;
+            auto it_sec = sec_spans.find(skey);
+            if (it_sec == sec_spans.end()) {
+                sec_spans[skey] = {s.va, s_end};
+            } else {
+                it_sec->second.first = (std::min)(it_sec->second.first, s.va);
+                it_sec->second.second = (std::max)(it_sec->second.second, s_end);
+            }
+            auto it_seg = seg_spans.find(s.segname);
+            if (it_seg == seg_spans.end()) {
+                seg_spans[s.segname] = {s.va, s_end};
+            } else {
+                it_seg->second.first = (std::min)(it_seg->second.first, s.va);
+                it_seg->second.second = (std::max)(it_seg->second.second, s_end);
+            }
+        }
+        for (const auto& [skey, sp] : sec_spans) {
+            section_boundary_vas["section$start$" + skey] = sp.first;
+            section_boundary_vas["section$end$" + skey] = sp.second;
+        }
+        for (const auto& [seg_nm, sp] : seg_spans) {
+            section_boundary_vas["segment$start$" + seg_nm] = sp.first;
+            section_boundary_vas["segment$end$" + seg_nm] = sp.second;
+        }
+    }
+
     // Bind external symbols cleanly; never allow spoofing strong GenuineUpstream symbols.
+    // Separate WinIOSArchitectural stubs and TestHarnessStubs onto distinct 16 KiB pages.
     std::map<std::string, MachOSymbolEntry> resolved_external_bindings;
-    std::vector<std::uint8_t> stub_bytes;
-    std::uint64_t next_stub_offset = 0;
+    std::vector<std::uint8_t> arch_stub_bytes;
+    std::vector<std::uint8_t> test_stub_bytes;
+    std::uint64_t next_arch_offset = 0;
 
     for (const auto& [bname, binding] : binding_map) {
         if (global_defs.find(bname) != global_defs.end()) {
@@ -1333,25 +1596,28 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
         }
         MachOSymbolEntry bsym;
         bsym.name = bname;
+        bsym.is_external = true;
         bsym.classification = binding.classification;
         if (binding.prebound_va != 0u) {
             bsym.resolved_va = binding.prebound_va;
-        } else {
+            bsym.is_resolved = true;
+        } else if (binding.classification == SymbolProvenanceClassification::WinIOSArchitectural) {
             std::vector<std::uint32_t> insns = binding.stub_instructions;
             if (insns.empty()) {
                 insns.push_back(0xD65F03C0u); // RET
             }
-            if (!checked_add_u64(opts.stub_base_va, next_stub_offset, bsym.resolved_va)) {
+            if (!checked_add_u64(opts.stub_base_va, next_arch_offset, bsym.resolved_va)) {
                 out.status = ObjectIntegrationStatus::IntegerOverflow;
-                out.error_message = "Overflow placing stub for " + bname;
+                out.error_message = "Overflow placing architectural stub for " + bname;
                 return out;
             }
             for (std::uint32_t insn : insns) {
                 std::uint8_t buf[4];
                 write_u32_le(buf, insn);
-                append_bytes(stub_bytes, buf, sizeof(buf));
+                append_bytes(arch_stub_bytes, buf, sizeof(buf));
             }
-            next_stub_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+            next_arch_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+            bsym.is_resolved = true;
         }
         if (binding.classification == SymbolProvenanceClassification::TestHarnessStub) {
             out.has_test_harness_stubs = true;
@@ -1360,6 +1626,46 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
             out.has_winios_architectural_bindings = true;
         }
         resolved_external_bindings[bname] = bsym;
+    }
+
+    const std::uint64_t test_stub_base_va = arch_stub_bytes.empty()
+        ? opts.stub_base_va
+        : align_up_u64(opts.stub_base_va + arch_stub_bytes.size(), kPageGranuleBytes);
+    std::uint64_t next_test_offset = 0;
+    for (const auto& [bname, binding] : binding_map) {
+        if (binding.prebound_va != 0u ||
+            binding.classification == SymbolProvenanceClassification::WinIOSArchitectural) {
+            continue;
+        }
+        std::vector<std::uint32_t> insns = binding.stub_instructions;
+        if (insns.empty()) {
+            insns.push_back(0xD65F03C0u); // RET
+        }
+        MachOSymbolEntry& bsym = resolved_external_bindings[bname];
+        if (!checked_add_u64(test_stub_base_va, next_test_offset, bsym.resolved_va)) {
+            out.status = ObjectIntegrationStatus::IntegerOverflow;
+            out.error_message = "Overflow placing test stub for " + bname;
+            return out;
+        }
+        for (std::uint32_t insn : insns) {
+            std::uint8_t buf[4];
+            write_u32_le(buf, insn);
+            append_bytes(test_stub_bytes, buf, sizeof(buf));
+        }
+        next_test_offset += static_cast<std::uint64_t>(insns.size()) * 4u;
+        bsym.is_resolved = true;
+    }
+
+    std::vector<std::uint8_t> stub_bytes;
+    if (!arch_stub_bytes.empty() && !test_stub_bytes.empty()) {
+        stub_bytes = arch_stub_bytes;
+        const std::size_t pad_to = static_cast<std::size_t>(test_stub_base_va - opts.stub_base_va);
+        stub_bytes.resize(pad_to, 0u);
+        stub_bytes.insert(stub_bytes.end(), test_stub_bytes.begin(), test_stub_bytes.end());
+    } else if (!arch_stub_bytes.empty()) {
+        stub_bytes = arch_stub_bytes;
+    } else if (!test_stub_bytes.empty()) {
+        stub_bytes = test_stub_bytes;
     }
 
     // Allocate synthetic GOT base immediately after RO sections in __DATA_CONST,__got (8-byte aligned, R only).
@@ -1389,11 +1695,33 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
         return true;
     };
 
-    // Resolve undefined symbols per object and patch relocations.
+    // Resolve undefined/weak/common symbols per object and patch relocations.
+    std::map<std::string, MachOSymbolEntry> synthesized_boundary_syms;
     for (std::size_t oi = 0; oi < inputs.size(); ++oi) {
         const auto& parsed = inputs[oi].parsed;
         for (auto& sym : obj_symbols[oi]) {
-            if (sym.is_stab || sym.is_defined) {
+            if (sym.is_stab) {
+                continue;
+            }
+            if (sym.is_defined) {
+                // Ensure weak globals resolve to the winning global_defs entry (strong beats weak).
+                if (sym.is_external && (sym.n_desc & kNDescWeakDef) != 0u) {
+                    auto git = global_defs.find(sym.name);
+                    if (git != global_defs.end()) {
+                        sym.resolved_va = git->second.va;
+                        sym.classification = git->second.classification;
+                        sym.is_resolved = true;
+                    }
+                }
+                continue;
+            }
+            if (sym.is_common) {
+                auto git = global_defs.find(sym.name);
+                if (git != global_defs.end()) {
+                    sym.resolved_va = git->second.va;
+                    sym.classification = git->second.classification;
+                    sym.is_resolved = true;
+                }
                 continue;
             }
             if (sym.is_undefined) {
@@ -1401,16 +1729,30 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                 if (git != global_defs.end()) {
                     sym.resolved_va = git->second.va;
                     sym.classification = git->second.classification;
+                    sym.is_resolved = true;
                     continue;
                 }
                 auto bit = resolved_external_bindings.find(sym.name);
                 if (bit != resolved_external_bindings.end()) {
                     sym.resolved_va = bit->second.resolved_va;
                     sym.classification = bit->second.classification;
-                } else {
-                    sym.resolved_va = 0u;
-                    sym.classification = SymbolProvenanceClassification::UnresolvedExternal;
+                    sym.is_resolved = bit->second.is_resolved;
+                    continue;
                 }
+                auto sit = section_boundary_vas.find(sym.name);
+                if (sit != section_boundary_vas.end()) {
+                    sym.resolved_va = sit->second;
+                    sym.classification = SymbolProvenanceClassification::GenuineUpstream;
+                    sym.is_resolved = true;
+                    MachOSymbolEntry b_entry = sym;
+                    b_entry.is_defined = true;
+                    b_entry.is_undefined = false;
+                    synthesized_boundary_syms[sym.name] = b_entry;
+                    continue;
+                }
+                sym.resolved_va = 0u;
+                sym.is_resolved = false;
+                sym.classification = SymbolProvenanceClassification::UnresolvedExternal;
             }
         }
 
@@ -1427,12 +1769,65 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
             std::int64_t pending_addend = 0;
             std::int32_t pending_addend_raddr = 0;
 
+            bool has_pending_subtractor = false;
+            std::int32_t pending_sub_raddr = 0;
+            std::uint8_t pending_sub_len = 0;
+            std::uint64_t pending_sub_va = 0;
+            bool pending_sub_resolved = false;
+            std::string pending_sub_name;
+
+            auto record_unresolved = [&](const std::string& sym_name) {
+                out.has_unpatched_relocations = true;
+                if (!sym_name.empty() &&
+                    std::find(out.unresolved_symbols.begin(), out.unresolved_symbols.end(), sym_name) ==
+                        out.unresolved_symbols.end()) {
+                    out.unresolved_symbols.push_back(sym_name);
+                }
+            };
+
+            auto resolve_reloc_target = [&](const MachORelocEntry& e,
+                                            std::uint64_t& out_va,
+                                            std::string& out_name,
+                                            SymbolProvenanceClassification& out_cls) -> bool {
+                if (e.is_extern) {
+                    if (e.symbol_index >= obj_symbols[oi].size()) {
+                        return false;
+                    }
+                    const auto& ts = obj_symbols[oi][e.symbol_index];
+                    out_name = ts.name;
+                    out_cls = ts.classification;
+                    if (ts.is_resolved &&
+                        ts.classification != SymbolProvenanceClassification::UnresolvedExternal &&
+                        ts.classification != SymbolProvenanceClassification::UnsupportedSymbol) {
+                        out_va = ts.resolved_va;
+                        return true;
+                    }
+                    return false;
+                } else {
+                    const std::uint32_t sec_ordinal = e.symbol_index;
+                    if (sec_ordinal >= 1u && sec_ordinal <= parsed.sections.size()) {
+                        const std::size_t tgt_sec_idx = static_cast<std::size_t>(sec_ordinal - 1u);
+                        if (tgt_sec_idx < sec_map[oi].size() && sec_map[oi][tgt_sec_idx].placed) {
+                            out_name = parsed.sections[tgt_sec_idx].segname + "," +
+                                       parsed.sections[tgt_sec_idx].sectname;
+                            out_cls = SymbolProvenanceClassification::GenuineUpstream;
+                            out_va = sec_map[oi][tgt_sec_idx].va;
+                            return true;
+                        }
+                    }
+                    out_name = "section#" + std::to_string(sec_ordinal);
+                    out_cls = SymbolProvenanceClassification::UnresolvedExternal;
+                    return false;
+                }
+            };
+
             for (const auto& r : sec.relocations) {
                 MachORelocEntry entry = r;
                 entry.owner_object = inputs[oi].source_label;
 
                 if (entry.type == kArm64RelocAddend) {
-                    if (entry.is_extern || entry.pcrel || entry.length != 2u || has_pending_addend) {
+                    if (entry.is_extern || entry.pcrel || entry.length != 2u ||
+                        has_pending_addend || has_pending_subtractor) {
                         out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
                         out.error_message = "Malformed ARM64_RELOC_ADDEND entry in " + inputs[oi].source_label;
                         return out;
@@ -1463,6 +1858,17 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                 }
                 entry.addend = cur_addend;
 
+                if (has_pending_subtractor) {
+                    if (entry.type != kArm64RelocUnsigned ||
+                        entry.r_address != pending_sub_raddr ||
+                        entry.length != pending_sub_len ||
+                        entry.pcrel) {
+                        out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                        out.error_message = "ARM64_RELOC_SUBTRACTOR must immediately precede matching ARM64_RELOC_UNSIGNED";
+                        return out;
+                    }
+                }
+
                 const bool supported_text_reloc =
                     entry.type == kArm64RelocBranch26 ||
                     entry.type == kArm64RelocPage21 ||
@@ -1471,27 +1877,229 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                     entry.type == kArm64RelocGotLoadPageoff12;
 
                 if (!is_code_sec) {
-                    // Non-code data/init sections may contain UNSIGNED/AUTHENTICATED_POINTER relocs.
-                    if (entry.type == kArm64RelocUnsigned && entry.is_extern && !entry.pcrel && entry.length == 3u &&
-                        entry.r_address >= 0 && static_cast<std::uint64_t>(entry.r_address) + 8u <= staged_bytes.size() &&
-                        entry.symbol_index < obj_symbols[oi].size()) {
-                        const auto& target_sym = obj_symbols[oi][entry.symbol_index];
-                        entry.target_symbol = target_sym.name;
-                        entry.target_classification = target_sym.classification;
+                    const std::size_t byte_w = (entry.length == 3u) ? 8u : ((entry.length == 2u) ? 4u : 0u);
+                    const bool in_bounds = (byte_w > 0u) && (entry.r_address >= 0) &&
+                        static_cast<std::uint64_t>(entry.r_address) + byte_w <= staged_bytes.size();
+
+                    // ARM64_RELOC_SUBTRACTOR (type 1): must immediately precede paired UNSIGNED (type 0).
+                    if (entry.type == kArm64RelocSubtractor && !entry.pcrel &&
+                        (entry.length == 2u || entry.length == 3u)) {
+                        if (!in_bounds) {
+                            out.status = ObjectIntegrationStatus::RelocationOutOfBounds;
+                            out.error_message = "SUBTRACTOR relocation site out of bounds";
+                            return out;
+                        }
+                        if (entry.is_extern && entry.symbol_index >= obj_symbols[oi].size()) {
+                            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+                            out.error_message = "SUBTRACTOR symbol_index out of range";
+                            return out;
+                        }
                         (void)checked_add_u64(sec_va, static_cast<std::uint64_t>(entry.r_address), entry.site_va);
-                        if (target_sym.classification != SymbolProvenanceClassification::UnresolvedExternal &&
-                            target_sym.classification != SymbolProvenanceClassification::UnsupportedSymbol &&
-                            target_sym.resolved_va != 0u) {
-                            entry.target_va = target_sym.resolved_va;
-                            write_u64_le(staged_bytes.data() + entry.r_address, target_sym.resolved_va);
-                            entry.patched = true;
-                        } else if (std::find(out.unresolved_symbols.begin(), out.unresolved_symbols.end(), target_sym.name) ==
-                                   out.unresolved_symbols.end()) {
-                            out.unresolved_symbols.push_back(target_sym.name);
+                        std::uint64_t sub_va = 0;
+                        std::string sub_name;
+                        SymbolProvenanceClassification sub_cls = SymbolProvenanceClassification::UnresolvedExternal;
+                        const bool sub_ok = resolve_reloc_target(entry, sub_va, sub_name, sub_cls);
+                        entry.target_symbol = sub_name;
+                        entry.target_classification = sub_cls;
+                        entry.target_va = sub_va;
+                        entry.patched = false;
+
+                        has_pending_subtractor = true;
+                        pending_sub_raddr = entry.r_address;
+                        pending_sub_len = entry.length;
+                        pending_sub_va = sub_va;
+                        pending_sub_resolved = sub_ok;
+                        pending_sub_name = sub_name;
+                        if (!sub_ok) {
+                            record_unresolved(sub_name);
                         }
                         out.relocations.push_back(entry);
                         continue;
                     }
+
+                    // Paired ARM64_RELOC_UNSIGNED completing a SUBTRACTOR pair: *site = A - B + inplace_addend.
+                    if (has_pending_subtractor) {
+                        has_pending_subtractor = false;
+                        if (!in_bounds) {
+                            out.status = ObjectIntegrationStatus::RelocationOutOfBounds;
+                            out.error_message = "Paired SUBTRACTOR/UNSIGNED site out of bounds";
+                            return out;
+                        }
+                        if (entry.is_extern && entry.symbol_index >= obj_symbols[oi].size()) {
+                            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+                            out.error_message = "Paired UNSIGNED symbol_index out of range";
+                            return out;
+                        }
+                        (void)checked_add_u64(sec_va, static_cast<std::uint64_t>(entry.r_address), entry.site_va);
+                        std::uint64_t min_va = 0;
+                        std::string min_name;
+                        SymbolProvenanceClassification min_cls = SymbolProvenanceClassification::UnresolvedExternal;
+                        const bool min_ok = resolve_reloc_target(entry, min_va, min_name, min_cls);
+                        entry.target_symbol = min_name + "-" + pending_sub_name;
+                        entry.target_classification = min_cls;
+
+                        if (min_ok && pending_sub_resolved) {
+                            const bool is8 = (entry.length == 3u);
+                            const std::int64_t inplace_addend = is8
+                                ? read_i64_le(staged_bytes.data() + entry.r_address)
+                                : static_cast<std::int64_t>(read_i32_le(staged_bytes.data() + entry.r_address));
+                            std::int64_t diff = 0;
+                            std::int64_t total_diff = 0;
+                            if (!checked_sub_u64_to_i64(min_va, pending_sub_va, diff) ||
+                                !checked_add_i64(diff, inplace_addend, total_diff)) {
+                                out.status = ObjectIntegrationStatus::IntegerOverflow;
+                                out.error_message = "SUBTRACTOR/UNSIGNED difference overflow for " + entry.target_symbol;
+                                return out;
+                            }
+                            if (!is8 && (total_diff < (std::numeric_limits<std::int32_t>::min)() ||
+                                         total_diff > (std::numeric_limits<std::int32_t>::max)())) {
+                                out.status = ObjectIntegrationStatus::RelocationRangeOverflow;
+                                out.error_message = "32-bit SUBTRACTOR/UNSIGNED difference overflow for " + entry.target_symbol;
+                                return out;
+                            }
+                            entry.addend = inplace_addend;
+                            entry.target_va = static_cast<std::uint64_t>(total_diff);
+                            if (is8) {
+                                entry.original_qword = read_u64_le(staged_bytes.data() + entry.r_address);
+                                write_u64_le(staged_bytes.data() + entry.r_address, entry.target_va);
+                                entry.patched_qword = entry.target_va;
+                            } else {
+                                write_u32_le(staged_bytes.data() + entry.r_address,
+                                             static_cast<std::uint32_t>(static_cast<std::int32_t>(total_diff)));
+                            }
+                            entry.patched = true;
+                        } else if (!min_ok) {
+                            record_unresolved(min_name);
+                        }
+                        out.relocations.push_back(entry);
+                        continue;
+                    }
+
+                    // ARM64_RELOC_UNSIGNED (type 0): both extern symbol and section-relative (r_extern == 0).
+                    if (entry.type == kArm64RelocUnsigned && !entry.pcrel &&
+                        (entry.length == 2u || entry.length == 3u)) {
+                        if (!in_bounds) {
+                            out.status = ObjectIntegrationStatus::RelocationOutOfBounds;
+                            out.error_message = "UNSIGNED relocation site out of bounds";
+                            return out;
+                        }
+                        if (entry.is_extern && entry.symbol_index >= obj_symbols[oi].size()) {
+                            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+                            out.error_message = "UNSIGNED symbol_index out of range";
+                            return out;
+                        }
+                        (void)checked_add_u64(sec_va, static_cast<std::uint64_t>(entry.r_address), entry.site_va);
+                        std::uint64_t base_va = 0;
+                        std::string tgt_name;
+                        SymbolProvenanceClassification tgt_cls = SymbolProvenanceClassification::UnresolvedExternal;
+                        const bool tgt_ok = resolve_reloc_target(entry, base_va, tgt_name, tgt_cls);
+                        entry.target_symbol = tgt_name;
+                        entry.target_classification = tgt_cls;
+
+                        if (tgt_ok) {
+                            const bool is8 = (entry.length == 3u);
+                            const std::int64_t inplace_addend = is8
+                                ? read_i64_le(staged_bytes.data() + entry.r_address)
+                                : static_cast<std::int64_t>(read_i32_le(staged_bytes.data() + entry.r_address));
+                            std::uint64_t patched_va = 0;
+                            if (!checked_apply_signed_addend(base_va, inplace_addend + cur_addend, patched_va)) {
+                                out.status = ObjectIntegrationStatus::IntegerOverflow;
+                                out.error_message = "UNSIGNED reloc addend overflow for " + tgt_name;
+                                return out;
+                            }
+                            if (!is8 && patched_va > 0xFFFFFFFFULL) {
+                                out.status = ObjectIntegrationStatus::RelocationRangeOverflow;
+                                out.error_message = "32-bit UNSIGNED reloc range overflow for " + tgt_name;
+                                return out;
+                            }
+                            entry.target_va = patched_va;
+                            entry.addend = inplace_addend + cur_addend;
+                            if (is8) {
+                                entry.original_qword = read_u64_le(staged_bytes.data() + entry.r_address);
+                                write_u64_le(staged_bytes.data() + entry.r_address, patched_va);
+                                entry.patched_qword = patched_va;
+                            } else {
+                                write_u32_le(staged_bytes.data() + entry.r_address, static_cast<std::uint32_t>(patched_va & 0xFFFFFFFFu));
+                            }
+                            entry.patched = true;
+                        } else {
+                            record_unresolved(tgt_name);
+                        }
+                        out.relocations.push_back(entry);
+                        continue;
+                    }
+
+                    // ARM64_RELOC_AUTHENTICATED_POINTER (type 11): ARM64e signed 8-byte data pointer.
+                    // In-place 64-bit encoding:
+                    //   bit 63      = authenticated flag (1)
+                    //   bits 50:49  = PAC key (0=IA, 1=IB, 2=DA, 3=DB)
+                    //   bit 48      = address diversity flag (1 = blend site VA with 16-bit diversity)
+                    //   bits 47:32  = 16-bit diversity discriminator
+                    //   bits 31:0   = signed 32-bit addend
+                    if (entry.type == kArm64RelocAuthenticatedPointer && !entry.pcrel && entry.length == 3u) {
+                        if (!in_bounds) {
+                            out.status = ObjectIntegrationStatus::RelocationOutOfBounds;
+                            out.error_message = "AUTHENTICATED_POINTER relocation site out of bounds";
+                            return out;
+                        }
+                        if (entry.is_extern && entry.symbol_index >= obj_symbols[oi].size()) {
+                            out.status = ObjectIntegrationStatus::MalformedSymbolTable;
+                            out.error_message = "AUTHENTICATED_POINTER symbol_index out of range";
+                            return out;
+                        }
+                        (void)checked_add_u64(sec_va, static_cast<std::uint64_t>(entry.r_address), entry.site_va);
+                        const std::uint64_t existing_qword = read_u64_le(staged_bytes.data() + entry.r_address);
+                        entry.original_qword = existing_qword;
+
+                        std::uint64_t base_va = 0;
+                        std::string tgt_name;
+                        SymbolProvenanceClassification tgt_cls = SymbolProvenanceClassification::UnresolvedExternal;
+                        const bool tgt_ok = resolve_reloc_target(entry, base_va, tgt_name, tgt_cls);
+                        entry.target_symbol = tgt_name;
+                        entry.target_classification = tgt_cls;
+
+                        if (opts.enable_authenticated_pointer_signing && tgt_ok) {
+                            const std::uint32_t key_bits = static_cast<std::uint32_t>((existing_qword >> 49u) & 0x3ULL);
+                            cpu::PacKeyType key_type = cpu::PacKeyType::InstructionA;
+                            switch (key_bits) {
+                                case 0u: key_type = cpu::PacKeyType::InstructionA; break;
+                                case 1u: key_type = cpu::PacKeyType::InstructionB; break;
+                                case 2u: key_type = cpu::PacKeyType::DataA;        break;
+                                case 3u: key_type = cpu::PacKeyType::DataB;        break;
+                                default: break;
+                            }
+                            const bool addr_div = ((existing_qword >> 48u) & 1ULL) != 0ULL;
+                            const std::uint16_t diversity = static_cast<std::uint16_t>((existing_qword >> 32u) & 0xFFFFULL);
+                            const std::int32_t addend32 = static_cast<std::int32_t>(static_cast<std::uint32_t>(existing_qword & 0xFFFFFFFFULL));
+
+                            std::uint64_t eff_target_va = 0;
+                            if (!checked_apply_signed_addend(base_va, static_cast<std::int64_t>(addend32) + cur_addend, eff_target_va)) {
+                                out.status = ObjectIntegrationStatus::IntegerOverflow;
+                                out.error_message = "AUTHENTICATED_POINTER addend overflow for " + tgt_name;
+                                return out;
+                            }
+                            const std::uint64_t modifier = addr_div
+                                ? ((entry.site_va & 0x0000FFFFFFFFFFFFULL) | (static_cast<std::uint64_t>(diversity) << 48u))
+                                : static_cast<std::uint64_t>(diversity);
+
+                            cpu::Arm64ePointerAuth pac_signer(cpu::PacFaultMode::TrapException);
+                            pac_signer.set_keyring(opts.authenticated_pointer_keys);
+                            const std::uint64_t signed_ptr = pac_signer.sign_pointer(eff_target_va, modifier, key_type);
+                            write_u64_le(staged_bytes.data() + entry.r_address, signed_ptr);
+                            entry.patched_qword = signed_ptr;
+                            entry.target_va = eff_target_va;
+                            entry.addend = static_cast<std::int64_t>(addend32) + cur_addend;
+                            entry.patched = true;
+                        } else {
+                            entry.target_va = base_va;
+                            entry.patched = false;
+                            ++out.unpatched_authenticated_relocations;
+                            record_unresolved(tgt_name);
+                        }
+                        out.relocations.push_back(entry);
+                        continue;
+                    }
+
                     if (!opts.require_all_relocations_resolved) {
                         out.relocations.push_back(entry);
                         continue;
@@ -1506,9 +2114,17 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                     out.error_message = "Unsupported ARM64 code relocation type " + std::to_string(entry.type);
                     return out;
                 }
-                if (!entry.is_extern || entry.length != 2u) {
+                if (entry.length != 2u) {
                     out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
-                    out.error_message = "ARM64 code relocation must be extern and 4-byte length";
+                    out.error_message = "ARM64 code relocation must have 4-byte length";
+                    return out;
+                }
+                if (!entry.is_extern &&
+                    entry.type != kArm64RelocPage21 &&
+                    entry.type != kArm64RelocPageoff12 &&
+                    entry.type != kArm64RelocBranch26) {
+                    out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                    out.error_message = "GOT_LOAD relocation must have r_extern == 1";
                     return out;
                 }
                 const bool expects_pcrel =
@@ -1531,36 +2147,34 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                     out.error_message = "Code relocation site exceeds section size";
                     return out;
                 }
-                if (entry.symbol_index >= obj_symbols[oi].size()) {
+                if (entry.is_extern && entry.symbol_index >= obj_symbols[oi].size()) {
                     out.status = ObjectIntegrationStatus::MalformedSymbolTable;
                     out.error_message = "Relocation symbol_index out of range";
                     return out;
                 }
 
-                const auto& target_sym = obj_symbols[oi][entry.symbol_index];
-                entry.target_symbol = target_sym.name;
-                entry.target_classification = target_sym.classification;
+                std::uint64_t target_base_va = 0;
+                std::string target_name;
+                SymbolProvenanceClassification target_cls = SymbolProvenanceClassification::UnresolvedExternal;
+                const bool target_resolved = resolve_reloc_target(entry, target_base_va, target_name, target_cls);
+                entry.target_symbol = target_name;
+                entry.target_classification = target_cls;
                 if (!checked_add_u64(sec_va, off, entry.site_va)) {
                     out.status = ObjectIntegrationStatus::IntegerOverflow;
                     out.error_message = "Overflow computing relocation site VA";
                     return out;
                 }
 
-                if (target_sym.classification == SymbolProvenanceClassification::UnresolvedExternal ||
-                    target_sym.classification == SymbolProvenanceClassification::UnsupportedSymbol ||
-                    target_sym.resolved_va == 0u) {
-                    if (std::find(out.unresolved_symbols.begin(), out.unresolved_symbols.end(), target_sym.name) ==
-                        out.unresolved_symbols.end()) {
-                        out.unresolved_symbols.push_back(target_sym.name);
-                    }
+                if (!target_resolved) {
+                    record_unresolved(target_name);
                     out.relocations.push_back(entry);
                     continue;
                 }
 
                 std::uint64_t eff_target_va = 0;
-                if (!checked_apply_signed_addend(target_sym.resolved_va, cur_addend, eff_target_va)) {
+                if (!checked_apply_signed_addend(target_base_va, cur_addend, eff_target_va)) {
                     out.status = ObjectIntegrationStatus::IntegerOverflow;
-                    out.error_message = "Overflow applying relocation addend for " + target_sym.name;
+                    out.error_message = "Overflow applying relocation addend for " + target_name;
                     return out;
                 }
 
@@ -1580,9 +2194,9 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                                               entry.patched_insn, enc_err);
                 } else {
                     std::uint64_t slot_va = 0;
-                    if (!get_or_create_got_slot(target_sym.name, eff_target_va, target_sym.classification, slot_va)) {
+                    if (!get_or_create_got_slot(target_name, eff_target_va, target_cls, slot_va)) {
                         out.status = ObjectIntegrationStatus::IntegerOverflow;
-                        out.error_message = "Overflow allocating GOT slot for " + target_sym.name;
+                        out.error_message = "Overflow allocating GOT slot for " + target_name;
                         return out;
                     }
                     entry.target_va = slot_va;
@@ -1599,7 +2213,7 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
                     out.status = (enc_err.find("range") != std::string::npos)
                         ? ObjectIntegrationStatus::RelocationRangeOverflow
                         : ObjectIntegrationStatus::RelocationOpcodeMismatch;
-                    out.error_message = enc_err + " for symbol " + target_sym.name;
+                    out.error_message = enc_err + " for symbol " + target_name;
                     return out;
                 }
 
@@ -1611,6 +2225,11 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
             if (has_pending_addend) {
                 out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
                 out.error_message = "Dangling ARM64_RELOC_ADDEND without paired relocation";
+                return out;
+            }
+            if (has_pending_subtractor) {
+                out.status = ObjectIntegrationStatus::UnsupportedRelocationType;
+                out.error_message = "Dangling ARM64_RELOC_SUBTRACTOR without paired UNSIGNED relocation";
                 return out;
             }
         }
@@ -1648,15 +2267,26 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
     out.stub_va     = stub_bytes.empty() ? 0u : opts.stub_base_va;
     out.stub_size   = stub_bytes.size();
 
-    if (!stub_bytes.empty()) {
+    if (!arch_stub_bytes.empty()) {
+        MachOStagedSection arch_sec;
+        arch_sec.object_label = "winios-architectural-stubs";
+        arch_sec.segname      = "__ARCH_TEXT";
+        arch_sec.sectname     = "__stubs";
+        arch_sec.va           = opts.stub_base_va;
+        arch_sec.size         = arch_stub_bytes.size();
+        arch_sec.vm_prot      = 0x5u; // R | X
+        arch_sec.bytes        = std::move(arch_stub_bytes);
+        out.staged_sections.push_back(std::move(arch_sec));
+    }
+    if (!test_stub_bytes.empty()) {
         MachOStagedSection stub_sec;
-        stub_sec.object_label = out.has_test_harness_stubs ? "test-harness-stubs" : "winios-architectural-stubs";
+        stub_sec.object_label = "test-harness-stubs";
         stub_sec.segname      = "__STUB_TEXT";
         stub_sec.sectname     = "__stubs";
-        stub_sec.va           = out.stub_va;
-        stub_sec.size         = out.stub_size;
+        stub_sec.va           = test_stub_base_va;
+        stub_sec.size         = test_stub_bytes.size();
         stub_sec.vm_prot      = 0x5u; // R | X
-        stub_sec.bytes        = std::move(stub_bytes);
+        stub_sec.bytes        = std::move(test_stub_bytes);
         out.staged_sections.push_back(std::move(stub_sec));
     }
 
@@ -1684,16 +2314,19 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
         }
     }
 
-    // Emit unified resolved_symbols list (preferring global_defs + external bindings + per-object locals).
+    // Emit unified resolved_symbols list (defined + common + external bindings + boundary symbols).
     for (std::size_t oi = 0; oi < obj_symbols.size(); ++oi) {
         for (const auto& sym : obj_symbols[oi]) {
-            if (!sym.is_stab && sym.is_defined && sym.resolved_va != 0u) {
+            if (!sym.is_stab && (sym.is_defined || sym.is_common) && sym.is_resolved) {
                 out.resolved_symbols.push_back(sym);
             }
         }
     }
     for (const auto& [_, bsym] : resolved_external_bindings) {
         out.resolved_symbols.push_back(bsym);
+    }
+    for (const auto& [_, bnd_sym] : synthesized_boundary_syms) {
+        out.resolved_symbols.push_back(bnd_sym);
     }
 
     // Populate W^X provenance regions per staged section.
@@ -1704,9 +2337,9 @@ MachOMultiObjectLinkResult MachOObjectIntegrator::link_objects(
         reg.size     = s.size;
         reg.vm_prot  = s.vm_prot;
         if (s.segname == "__STUB_TEXT") {
-            reg.classification = out.has_test_harness_stubs
-                ? SymbolProvenanceClassification::TestHarnessStub
-                : SymbolProvenanceClassification::WinIOSArchitectural;
+            reg.classification = SymbolProvenanceClassification::TestHarnessStub;
+        } else if (s.segname == "__ARCH_TEXT") {
+            reg.classification = SymbolProvenanceClassification::WinIOSArchitectural;
         } else {
             reg.classification = SymbolProvenanceClassification::GenuineUpstream;
         }
@@ -1811,7 +2444,7 @@ MachOMultiObjectContainerResult MachOObjectIntegrator::build_bounded_multi_objec
     auto build_region_blob = [&](std::uint32_t prot, bool is_stub_only, std::uint64_t base_va, std::uint64_t total_sz) {
         std::vector<std::uint8_t> blob(static_cast<std::size_t>(total_sz), 0u);
         for (const auto& s : link.staged_sections) {
-            const bool is_stub = (s.segname == "__STUB_TEXT");
+            const bool is_stub = (s.segname == "__STUB_TEXT" || s.segname == "__ARCH_TEXT");
             if (s.vm_prot != prot || is_stub != is_stub_only || s.bytes.empty()) {
                 continue;
             }
@@ -1857,7 +2490,7 @@ MachOMultiObjectContainerResult MachOObjectIntegrator::build_bounded_multi_objec
     hdr.filetype   = kMhExecute;
     hdr.ncmds      = ncmds;
     hdr.sizeofcmds = sizeofcmds;
-    hdr.flags      = 0x00000001u;
+    hdr.flags      = link.unresolved_symbols.empty() ? 0x00000001u : 0u; // MH_NOUNDEFS only if fully resolved
 
     std::vector<std::uint8_t> bin(static_cast<std::size_t>(cur_fileoff), 0u);
     std::size_t woff = 0;
